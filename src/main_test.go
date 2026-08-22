@@ -8,6 +8,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const testAgentResponse = "test response"
+
+func newTestModel() model {
+	return newModel(func(string) string { return testAgentResponse })
+}
+
 func updateModel(t *testing.T, m model, msg tea.Msg) model {
 	t.Helper()
 	updated, _ := m.Update(msg)
@@ -27,7 +33,7 @@ func TestRequireOpenAIAPIKey(t *testing.T) {
 }
 
 func TestEnterAddsUserMessageAndDummyResponse(t *testing.T) {
-	m := newModel()
+	m := newTestModel()
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello agent")})
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 
@@ -37,7 +43,7 @@ func TestEnterAddsUserMessageAndDummyResponse(t *testing.T) {
 	if m.messages[0].role != "you" || m.messages[0].text != "hello agent" || m.messages[0].sentAt == "" {
 		t.Fatalf("unexpected user message: %#v", m.messages[0])
 	}
-	if m.messages[1] != (message{role: "agent", text: testResponse}) {
+	if m.messages[1] != (message{role: "agent", text: testAgentResponse}) {
 		t.Fatalf("unexpected agent message: %#v", m.messages[1])
 	}
 	if len(m.input) != 0 || m.cursor != 0 {
@@ -46,7 +52,7 @@ func TestEnterAddsUserMessageAndDummyResponse(t *testing.T) {
 }
 
 func TestSpaceKeyAddsSpaceToInput(t *testing.T) {
-	m := newModel()
+	m := newTestModel()
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello")})
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeySpace})
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("world")})
@@ -57,7 +63,7 @@ func TestSpaceKeyAddsSpaceToInput(t *testing.T) {
 }
 
 func TestEmptyInputDoesNotAddMessages(t *testing.T) {
-	m := newModel()
+	m := newTestModel()
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("   ")})
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 
@@ -67,14 +73,14 @@ func TestEmptyInputDoesNotAddMessages(t *testing.T) {
 }
 
 func TestLogKeepsNewestMessagesAtBottom(t *testing.T) {
-	m := newModel()
+	m := newTestModel()
 	m.messages = []message{
 		{role: "you", text: "old message", sentAt: "18:37"},
-		{role: "agent", text: testResponse},
+		{role: "agent", text: testAgentResponse},
 	}
 
 	log := m.renderLog(80, 2)
-	if !strings.Contains(log, testResponse) {
+	if !strings.Contains(log, testAgentResponse) {
 		t.Fatalf("newest message missing from clipped log: %q", log)
 	}
 	if strings.Contains(log, "old message") {
@@ -86,7 +92,7 @@ func TestLogKeepsNewestMessagesAtBottom(t *testing.T) {
 }
 
 func TestUserMessageShowsSentTime(t *testing.T) {
-	m := newModel()
+	m := newTestModel()
 	m.messages = []message{{role: "you", text: "hello", sentAt: "18:37"}}
 
 	log := m.renderLog(80, 3)
@@ -96,7 +102,7 @@ func TestUserMessageShowsSentTime(t *testing.T) {
 }
 
 func TestViewFillsTerminal(t *testing.T) {
-	m := newModel()
+	m := newTestModel()
 	m.width = 60
 	m.height = 18
 	view := m.View()

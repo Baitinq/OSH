@@ -22,7 +22,7 @@ type model struct {
 	input    []rune
 	cursor   int
 	messages []message
-	agent    agent
+	respond  func(string) string
 }
 
 var (
@@ -39,11 +39,11 @@ var (
 	cursorStyle = lipgloss.NewStyle().Reverse(true)
 )
 
-func newModel() model {
+func newModel(respond func(string) string) model {
 	return model{
-		width:  80,
-		height: 24,
-		agent:  newAgent(),
+		width:   80,
+		height:  24,
+		respond: respond,
 	}
 }
 
@@ -66,7 +66,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if text != "" {
 				m.messages = append(m.messages,
 					message{role: "you", text: text, sentAt: time.Now().Format("15:04")},
-					message{role: "agent", text: m.agent.respond(text)},
+					message{role: "agent", text: m.respond(text)},
 				)
 				m.input = nil
 				m.cursor = 0

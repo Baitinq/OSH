@@ -19,7 +19,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if _, err := tea.NewProgram(newModel(), tea.WithAltScreen()).Run(); err != nil {
+	agent := newAgent()
+	if _, err := tea.NewProgram(newModel(agent.respond), tea.WithAltScreen()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
