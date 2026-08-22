@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
@@ -12,8 +12,13 @@ const systemPrompt = "You're an extremely useful general purpose agent."
 const modelName = "gpt-5.6"
 
 type agent struct {
-	client             openai.Client
-	previousResponseID string
+	client  openai.Client
+	history []json.RawMessage
+}
+
+type conversationMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
 }
 
 func newAgent() agent {
@@ -21,24 +26,27 @@ func newAgent() agent {
 }
 
 func (a *agent) respond(msg string) response {
+	userMessage, err := json.Marshal(conversationMessage{Role: "user", Content: msg})
+	if err != nil {
+		panic(err)
+	}
+	a.history = append(a.history, userMessage)
+
 	params := responses.ResponseNewParams{
 		Model:        modelName,
 		Instructions: openai.String(systemPrompt),
-		Input: responses.ResponseNewParamsInputUnion{
-			OfString: openai.String(msg),
-		},
+		Store:        openai.Bool(false),
 	}
-	if a.previousResponseID != "" {
-		params.PreviousResponseID = openai.String(a.previousResponseID)
-	}
-
+	params.SetExtraFields(map[string]any{"input": a.history})
 	resp, err := a.client.Responses.New(context.TODO(), params)
 	if err != nil {
-		fmt.Println(err.Error())
-		panic(err.Error())
+		panic(err)
 	}
 
-	a.previousResponseID = resp.ID
+	for _, output := range resp.Output {
+		a.history = append(a.history, json.RawMessage(output.RawJSON()))
+	}
+
 	return response{
 		text:          resp.OutputText(),
 		contextTokens: resp.Usage.TotalTokens,
