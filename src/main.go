@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
+	"github.com/openai/openai-go/v3"
 )
 
 const testResponse = "test1234"
@@ -26,6 +27,7 @@ type model struct {
 	input    []rune
 	cursor   int
 	messages []message
+	openAI   openai.Client
 }
 
 var (
@@ -43,7 +45,11 @@ var (
 )
 
 func newModel() model {
-	return model{width: 80, height: 24}
+	return model{
+		width:  80,
+		height: 24,
+		openAI: openai.NewClient(),
+	}
 }
 
 func (model) Init() tea.Cmd {
@@ -257,7 +263,18 @@ func truncatePlainRunes(input []rune, width int) string {
 	return string(input[:fittingRunes(input, width)])
 }
 
+func requireOpenAIAPIKey() error {
+	if os.Getenv("OPENAI_API_KEY") == "" {
+		return fmt.Errorf("OPENAI_API_KEY must be set")
+	}
+	return nil
+}
+
 func main() {
+	if err := requireOpenAIAPIKey(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	if _, err := tea.NewProgram(newModel(), tea.WithAltScreen()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

@@ -19,9 +19,11 @@ OSH is a small foundation for terminal agents: accept messages, preserve the con
 
 ## Run
 
+OSH requires an OpenAI API key:
+
 ```sh
 cd src
-go run .
+OPENAI_API_KEY=your-api-key go run .
 ```
 
 ## Test
