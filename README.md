@@ -1,1 +1,32 @@
-Overly Simple Harness
+# OSH
+
+**Overly Simple Harness** — a tiny, minimal agent harness for the terminal.
+
+```text
+OSH
+──────────────────────────────────────────────
+
+
+
+
+╭────────────────────────────────────────────╮
+│ Type a message…                            │
+╰────────────────────────────────────────────╯
+enter send  ·  esc clear  ·  ctrl+c quit
+```
+
+OSH is a small foundation for terminal agents: accept messages, preserve the conversation, and connect model or tool logic without hiding the control loop.
+
+## Run
+
+```sh
+cd src
+go run .
+```
+
+## Test
+
+```sh
+cd src
+go test ./...
+```
