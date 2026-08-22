@@ -1,17 +1,36 @@
 package main
 
-import "github.com/openai/openai-go/v3"
+import (
+	"context"
+	"strings"
 
-const testResponse = "test1234"
+	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/responses"
+)
+
+const systemPrompt = "You're an extremely useful general purpose agent."
 
 type agent struct {
-	client openai.Client
+	client  openai.Client
+	context []string
 }
 
 func newAgent() agent {
-	return agent{client: openai.NewClient()}
+	return agent{
+		client:  openai.NewClient(),
+		context: []string{},
+	}
 }
 
-func (agent) respond(string) string {
-	return testResponse
+func (a *agent) respond(msg string) string {
+	a.context = append(a.context, msg)
+	resp, err := a.client.Responses.New(context.TODO(), responses.ResponseNewParams{
+		Model: "gpt-5.6",
+		Input: responses.ResponseNewParamsInputUnion{OfString: openai.String(systemPrompt + strings.Join(a.context, "\n"))},
+	})
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return resp.OutputText()
 }
