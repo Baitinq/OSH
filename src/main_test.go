@@ -9,9 +9,12 @@ import (
 )
 
 const testAgentResponse = "test response"
+const testModelName = "test-model"
 
 func newTestModel() model {
-	return newModel(func(string) string { return testAgentResponse })
+	return newModel(testModelName, func(string) response {
+		return response{text: testAgentResponse, contextTokens: 1234}
+	})
 }
 
 func updateModel(t *testing.T, m model, msg tea.Msg) model {
@@ -74,6 +77,9 @@ func TestResponseRunsAsynchronously(t *testing.T) {
 	if len(m.messages) != 2 || m.messages[1] != (message{role: "agent", text: testAgentResponse}) {
 		t.Fatalf("unexpected messages after response: %#v", m.messages)
 	}
+	if m.contextTokens != 1234 {
+		t.Fatalf("context tokens = %d, want 1234", m.contextTokens)
+	}
 }
 
 func TestEnterDoesNotStartAnotherResponseWhileWaiting(t *testing.T) {
@@ -135,6 +141,18 @@ func TestUserMessageShowsSentTime(t *testing.T) {
 	log := m.renderLog(80, 3)
 	if !strings.Contains(log, "[18:37] hello") {
 		t.Fatalf("user message is missing its timestamp: %q", log)
+	}
+}
+
+func TestViewShowsModelAndContextTokensBelowComposer(t *testing.T) {
+	m := newTestModel()
+	m.contextTokens = 1234567
+	view := m.View()
+
+	composer := m.renderComposer(m.width)
+	want := composer + "\n" + dimStyle.Render("model test-model  ·  context 1,234,567 tokens")
+	if !strings.Contains(view, want) {
+		t.Fatalf("model and context info is not below composer: %q", view)
 	}
 }
 

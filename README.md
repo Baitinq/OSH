@@ -12,7 +12,7 @@ OSH
 ╭────────────────────────────────────────────╮
 │ Type a message…                            │
 ╰────────────────────────────────────────────╯
-enter send  ·  esc clear  ·  ctrl+c quit
+model gpt-5.6  ·  context 0 tokens
 ```
 
 OSH is a small foundation for terminal agents: accept messages, preserve the conversation, and connect model or tool logic without hiding the control loop.

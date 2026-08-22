@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -16,18 +17,25 @@ type message struct {
 	sentAt string
 }
 
-type model struct {
-	width        int
-	height       int
-	input        []rune
-	cursor       int
-	messages     []message
-	respond      func(string) string
-	responding   bool
-	spinnerFrame int
+type response struct {
+	text          string
+	contextTokens int64
 }
 
-type responseMsg string
+type model struct {
+	width         int
+	height        int
+	input         []rune
+	cursor        int
+	messages      []message
+	modelName     string
+	contextTokens int64
+	respond       func(string) response
+	responding    bool
+	spinnerFrame  int
+}
+
+type responseMsg response
 type spinnerTickMsg struct{}
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -48,11 +56,12 @@ var (
 	cursorStyle = lipgloss.NewStyle().Reverse(true)
 )
 
-func newModel(respond func(string) string) model {
+func newModel(modelName string, respond func(string) response) model {
 	return model{
-		width:   80,
-		height:  24,
-		respond: respond,
+		width:     80,
+		height:    24,
+		modelName: modelName,
+		respond:   respond,
 	}
 }
 
@@ -60,7 +69,7 @@ func (model) Init() tea.Cmd {
 	return nil
 }
 
-func waitForResponse(respond func(string) string, input string) tea.Cmd {
+func waitForResponse(respond func(string) response, input string) tea.Cmd {
 	return func() tea.Msg {
 		return responseMsg(respond(input))
 	}
@@ -79,7 +88,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 	case responseMsg:
-		m.messages = append(m.messages, message{role: "agent", text: string(msg)})
+		m.messages = append(m.messages, message{role: "agent", text: msg.text})
+		m.contextTokens = msg.contextTokens
 		m.responding = false
 		return m, nil
 	case spinnerTickMsg:
@@ -153,11 +163,7 @@ func (m model) View() string {
 	header := titleStyle.Render("OSH")
 	rule := dimStyle.Render(strings.Repeat("─", width))
 	composer := m.renderComposer(width)
-	hintText := "enter send  ·  esc clear  ·  ctrl+c quit"
-	if m.responding {
-		hintText = "waiting for response  ·  ctrl+c quit"
-	}
-	hint := dimStyle.Render(hintText)
+	info := dimStyle.Render("model " + m.modelName + "  ·  context " + formatTokenCount(m.contextTokens) + " tokens")
 	logHeight := height - 6
 
 	return strings.Join([]string{
@@ -165,8 +171,16 @@ func (m model) View() string {
 		rule,
 		m.renderLog(width, logHeight),
 		composer,
-		hint,
+		info,
 	}, "\n")
+}
+
+func formatTokenCount(tokens int64) string {
+	digits := strconv.FormatInt(tokens, 10)
+	for i := len(digits) - 3; i > 0; i -= 3 {
+		digits = digits[:i] + "," + digits[i:]
+	}
+	return digits
 }
 
 func (m model) renderComposer(width int) string {

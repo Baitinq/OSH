@@ -2,35 +2,45 @@ package main
 
 import (
 	"context"
-	"strings"
+	"fmt"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
 )
 
 const systemPrompt = "You're an extremely useful general purpose agent."
+const modelName = "gpt-5.6"
 
 type agent struct {
-	client  openai.Client
-	context []string
+	client             openai.Client
+	previousResponseID string
 }
 
 func newAgent() agent {
-	return agent{
-		client:  openai.NewClient(),
-		context: []string{},
-	}
+	return agent{client: openai.NewClient()}
 }
 
-func (a *agent) respond(msg string) string {
-	a.context = append(a.context, msg)
-	resp, err := a.client.Responses.New(context.TODO(), responses.ResponseNewParams{
-		Model: "gpt-5.6",
-		Input: responses.ResponseNewParamsInputUnion{OfString: openai.String(systemPrompt + strings.Join(a.context, "\n"))},
-	})
+func (a *agent) respond(msg string) response {
+	params := responses.ResponseNewParams{
+		Model:        modelName,
+		Instructions: openai.String(systemPrompt),
+		Input: responses.ResponseNewParamsInputUnion{
+			OfString: openai.String(msg),
+		},
+	}
+	if a.previousResponseID != "" {
+		params.PreviousResponseID = openai.String(a.previousResponseID)
+	}
+
+	resp, err := a.client.Responses.New(context.TODO(), params)
 	if err != nil {
+		fmt.Println(err.Error())
 		panic(err.Error())
 	}
 
-	return resp.OutputText()
+	a.previousResponseID = resp.ID
+	return response{
+		text:          resp.OutputText(),
+		contextTokens: resp.Usage.TotalTokens,
+	}
 }
