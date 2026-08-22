@@ -17,13 +17,22 @@ type message struct {
 }
 
 type model struct {
-	width    int
-	height   int
-	input    []rune
-	cursor   int
-	messages []message
-	respond  func(string) string
+	width        int
+	height       int
+	input        []rune
+	cursor       int
+	messages     []message
+	respond      func(string) string
+	responding   bool
+	spinnerFrame int
 }
+
+type responseMsg string
+type spinnerTickMsg struct{}
+
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+const spinnerInterval = 80 * time.Millisecond
 
 var (
 	titleStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
@@ -51,25 +60,47 @@ func (model) Init() tea.Cmd {
 	return nil
 }
 
+func waitForResponse(respond func(string) string, input string) tea.Cmd {
+	return func() tea.Msg {
+		return responseMsg(respond(input))
+	}
+}
+
+func tickSpinner() tea.Cmd {
+	return tea.Tick(spinnerInterval, func(time.Time) tea.Msg {
+		return spinnerTickMsg{}
+	})
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
+	case responseMsg:
+		m.messages = append(m.messages, message{role: "agent", text: string(msg)})
+		m.responding = false
+		return m, nil
+	case spinnerTickMsg:
+		if !m.responding {
+			return m, nil
+		}
+		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+		return m, tickSpinner()
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlC:
 			return m, tea.Quit
 		case tea.KeyEnter:
 			text := strings.TrimSpace(string(m.input))
-			if text != "" {
-				m.messages = append(m.messages,
-					message{role: "you", text: text, sentAt: time.Now().Format("15:04")},
-					message{role: "agent", text: m.respond(text)},
-				)
+			if text != "" && !m.responding {
+				m.messages = append(m.messages, message{role: "you", text: text, sentAt: time.Now().Format("15:04")})
 				m.input = nil
 				m.cursor = 0
+				m.responding = true
+				m.spinnerFrame = 0
+				return m, tea.Batch(waitForResponse(m.respond, text), tickSpinner())
 			}
 		case tea.KeyEsc, tea.KeyCtrlU:
 			m.input = nil
@@ -122,7 +153,11 @@ func (m model) View() string {
 	header := titleStyle.Render("OSH")
 	rule := dimStyle.Render(strings.Repeat("─", width))
 	composer := m.renderComposer(width)
-	hint := dimStyle.Render("enter send  ·  esc clear  ·  ctrl+c quit")
+	hintText := "enter send  ·  esc clear  ·  ctrl+c quit"
+	if m.responding {
+		hintText = "waiting for response  ·  ctrl+c quit"
+	}
+	hint := dimStyle.Render(hintText)
 	logHeight := height - 6
 
 	return strings.Join([]string{
@@ -166,7 +201,7 @@ func renderInput(input []rune, cursor, width int) string {
 }
 
 func (m model) renderLog(width, height int) string {
-	if len(m.messages) == 0 {
+	if len(m.messages) == 0 && !m.responding {
 		empty := dimStyle.Render("No messages yet. Type below to start the conversation.")
 		return padLines([]string{empty}, height)
 	}
@@ -194,6 +229,9 @@ func (m model) renderLog(width, height int) string {
 		for _, line := range wrapText(msg.text, contentWidth) {
 			lines = append(lines, "    "+bodyStyle.Render(line))
 		}
+	}
+	if m.responding {
+		lines = append(lines, "", "    "+titleStyle.Render(spinnerFrames[m.spinnerFrame])+dimStyle.Render(" Thinking…"))
 	}
 
 	if len(lines) > height {

@@ -20,6 +20,12 @@ func updateModel(t *testing.T, m model, msg tea.Msg) model {
 	return updated.(model)
 }
 
+func updateModelWithCmd(t *testing.T, m model, msg tea.Msg) (model, tea.Cmd) {
+	t.Helper()
+	updated, cmd := m.Update(msg)
+	return updated.(model), cmd
+}
+
 func TestRequireOpenAIAPIKey(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "")
 	if err := requireOpenAIAPIKey(); err == nil {
@@ -32,22 +38,53 @@ func TestRequireOpenAIAPIKey(t *testing.T) {
 	}
 }
 
-func TestEnterAddsUserMessageAndDummyResponse(t *testing.T) {
+func TestResponseRunsAsynchronously(t *testing.T) {
 	m := newTestModel()
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello agent")})
-	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	var cmd tea.Cmd
+	m, cmd = updateModelWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 
-	if len(m.messages) != 2 {
-		t.Fatalf("got %d messages, want 2", len(m.messages))
+	if len(m.messages) != 1 {
+		t.Fatalf("got %d messages before response, want 1", len(m.messages))
 	}
 	if m.messages[0].role != "you" || m.messages[0].text != "hello agent" || m.messages[0].sentAt == "" {
 		t.Fatalf("unexpected user message: %#v", m.messages[0])
 	}
-	if m.messages[1] != (message{role: "agent", text: testAgentResponse}) {
-		t.Fatalf("unexpected agent message: %#v", m.messages[1])
+	if !m.responding {
+		t.Fatal("model should be waiting for a response")
+	}
+	if cmd == nil {
+		t.Fatal("enter did not return an asynchronous command")
 	}
 	if len(m.input) != 0 || m.cursor != 0 {
 		t.Fatalf("input was not reset: %q at %d", string(m.input), m.cursor)
+	}
+	if !strings.Contains(m.View(), "Thinking…") {
+		t.Fatal("view does not show the loading spinner")
+	}
+
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok || len(batch) != 2 {
+		t.Fatalf("command returned %#v, want response and spinner commands", batch)
+	}
+	m = updateModel(t, m, batch[0]())
+	if m.responding {
+		t.Fatal("model still waiting after response")
+	}
+	if len(m.messages) != 2 || m.messages[1] != (message{role: "agent", text: testAgentResponse}) {
+		t.Fatalf("unexpected messages after response: %#v", m.messages)
+	}
+}
+
+func TestEnterDoesNotStartAnotherResponseWhileWaiting(t *testing.T) {
+	m := newTestModel()
+	m.responding = true
+	m.input = []rune("another message")
+	m.cursor = len(m.input)
+
+	m, cmd := updateModelWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil || len(m.messages) != 0 {
+		t.Fatalf("enter started another response while waiting: %#v", m.messages)
 	}
 }
 
