@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 
@@ -71,12 +72,12 @@ func newAgent() agent {
 	}
 }
 
-func runShell(ctx context.Context, command string) string {
+func runShell(ctx context.Context, command string) (string, error) {
 	out, err := exec.CommandContext(ctx, "sh", "-c", command).CombinedOutput()
 	if err != nil {
-		return string(out) + "\nexit status: " + err.Error()
+		return string(out), err
 	}
-	return string(out)
+	return string(out), nil
 }
 
 func (a *agent) respond(msg string, emit func(toolEvent), ctx context.Context) response {
@@ -103,30 +104,32 @@ func (a *agent) respond(msg string, emit func(toolEvent), ctx context.Context) r
 			if ctx.Err() != nil {
 				return response{}
 			}
-			panic(err)
+			return response{err: fmt.Errorf("request failed: %w", err)}
 		}
 		contextTokens = resp.Usage.TotalTokens
 
+		var items []responses.ResponseInputItemUnionParam
 		var toolCalls []responses.ResponseFunctionToolCall
 		for _, output := range resp.Output {
 			var item responses.ResponseInputItemUnionParam
-			switch {
-			case output.Type == "message":
+			switch output.Type {
+			case "message":
 				msg := output.AsMessage().ToParam()
 				item.OfOutputMessage = &msg
-			case output.Type == "reasoning":
+			case "reasoning":
 				r := output.AsReasoning().ToParam()
 				item.OfReasoning = &r
-			case output.Type == "function_call":
+			case "function_call":
 				fc := output.AsFunctionCall()
 				param := fc.ToParam()
 				item.OfFunctionCall = &param
 				toolCalls = append(toolCalls, fc)
 			default:
-				panic("unhandled output item type: " + output.Type)
+				return response{err: fmt.Errorf("unsupported response item type %q", output.Type)}
 			}
-			a.history = append(a.history, item)
+			items = append(items, item)
 		}
+		a.history = append(a.history, items...)
 		if len(toolCalls) == 0 {
 			text = resp.OutputText()
 			break
@@ -136,15 +139,29 @@ func (a *agent) respond(msg string, emit func(toolEvent), ctx context.Context) r
 		}
 
 		for _, call := range toolCalls {
-			var args struct {
-				Command string `json:"command"`
+			output := ""
+			if call.Name != "shell" {
+				output = fmt.Sprintf("tool error: unsupported tool %q", call.Name)
+				emit(toolEvent{phase: "error", name: call.Name, detail: output})
+			} else {
+				var args struct {
+					Command string `json:"command"`
+				}
+				if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+					output = "tool error: invalid shell arguments: " + err.Error()
+					emit(toolEvent{phase: "error", name: call.Name, detail: output})
+				} else {
+					emit(toolEvent{phase: "call", name: call.Name, detail: args.Command})
+					var err error
+					output, err = runShell(ctx, args.Command)
+					if err != nil {
+						output += "\nexit status: " + err.Error()
+						emit(toolEvent{phase: "error", name: call.Name, detail: output})
+					} else {
+						emit(toolEvent{phase: "result", name: call.Name, detail: output})
+					}
+				}
 			}
-			if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
-				panic(err)
-			}
-			emit(toolEvent{phase: "call", name: call.Name, detail: args.Command})
-			output := runShell(ctx, args.Command)
-			emit(toolEvent{phase: "result", name: call.Name, detail: output})
 			a.history = append(a.history, responses.ResponseInputItemUnionParam{
 				OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{
 					CallID: call.CallID,

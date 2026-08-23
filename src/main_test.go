@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -107,6 +108,45 @@ func TestResponseRunsAsynchronously(t *testing.T) {
 	}
 	if m.contextTokens != 1234 {
 		t.Fatalf("context tokens = %d, want 1234", m.contextTokens)
+	}
+}
+
+func TestResponseErrorIsAddedToConversation(t *testing.T) {
+	m := newTestModel()
+	m.responding = true
+	m.nextRequestID = 1
+	m.contextTokens = 42
+
+	m = updateModel(t, m, responseMsg{id: 1, err: errors.New("request failed")})
+
+	if m.responding {
+		t.Fatal("model still waiting after response error")
+	}
+	if m.contextTokens != 42 {
+		t.Fatalf("response error reset context tokens to %d", m.contextTokens)
+	}
+	if len(m.messages) != 1 || m.messages[0].role != "error" || m.messages[0].text != "request failed" {
+		t.Fatalf("response error was not added to conversation: %#v", m.messages)
+	}
+	if !strings.Contains(m.View().Content, errorStyle.Render(" request failed ")) {
+		t.Fatalf("response error does not use the error style: %q", m.View().Content)
+	}
+}
+
+func TestToolErrorIsAddedToConversation(t *testing.T) {
+	m := newTestModel()
+	m.responding = true
+	m.nextRequestID = 1
+	ch := make(chan toolEvent)
+
+	m = updateModel(t, m, toolEventMsg{
+		toolEvent: toolEvent{phase: "error", name: "shell", detail: "exit status 1"},
+		requestID: 1,
+		ch:        ch,
+	})
+
+	if len(m.messages) != 1 || m.messages[0].role != "error" || m.messages[0].text != "exit status 1" {
+		t.Fatalf("tool error was not added to conversation: %#v", m.messages)
 	}
 }
 
@@ -527,6 +567,15 @@ func TestMouseDragCopiesSelection(t *testing.T) {
 	}
 	if m.selectionStart == nil || m.selectionEnd == nil {
 		t.Fatal("selection was not retained for highlighting")
+	}
+}
+
+func TestClipboardErrorIsAddedToConversation(t *testing.T) {
+	m := newTestModel()
+	m = updateModel(t, m, uiErrorMsg{err: errors.New("clipboard unavailable")})
+
+	if len(m.messages) != 1 || m.messages[0].role != "error" || m.messages[0].text != "clipboard unavailable" {
+		t.Fatalf("clipboard error was not added to conversation: %#v", m.messages)
 	}
 }
 

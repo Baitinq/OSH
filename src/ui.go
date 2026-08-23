@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -25,10 +26,11 @@ type response struct {
 	id            int
 	text          string
 	contextTokens int64
+	err           error
 }
 
 type toolEvent struct {
-	phase  string // "call" or "result"
+	phase  string // "call", "result", or "error"
 	name   string
 	detail string
 }
@@ -39,6 +41,8 @@ type toolEventMsg struct {
 	ch        <-chan toolEvent
 }
 type responseMsg response
+
+type uiErrorMsg struct{ err error }
 
 type pendingInput struct {
 	kind string
@@ -94,6 +98,7 @@ var (
 			Padding(0, 1)
 	toolStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("71"))
 	toolOutputStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("247"))
+	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("160"))
 	pendingInputStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	selectionStyle    = lipgloss.NewStyle().Reverse(true)
 )
@@ -304,8 +309,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.cancel = nil
-		m.contextTokens = msg.contextTokens
+		if msg.err == nil {
+			m.contextTokens = msg.contextTokens
+		}
 		m.responding = false
+
+		if msg.err != nil {
+			m.appendMessage(message{role: "error", text: msg.err.Error()})
+		}
 
 		// Preserve the completed response before injecting a steer. This keeps the
 		// visible transcript aligned with the agent's internal history.
@@ -327,15 +338,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.startRequest(text, true))
 		}
 		return m, tea.Batch(cmds...)
+	case uiErrorMsg:
+		if msg.err != nil {
+			m.appendMessage(message{role: "error", text: msg.err.Error()})
+		}
+		return m, nil
 	case toolEventMsg:
 		if msg.requestID != m.nextRequestID {
 			return m, nil
 		}
 		text := msg.detail
+		role := "tool"
 		if msg.phase == "call" {
 			text = "$ " + text
+		} else if msg.phase == "error" {
+			role = "error"
 		}
-		m.appendMessage(message{role: "tool", text: text})
+		m.appendMessage(message{role: role, text: text})
 		return m, listenToolEvents(msg.ch, msg.requestID)
 	case spinnerTickMsg:
 		if !m.responding {
@@ -370,7 +389,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		copySelection := m.copySelection
 		return m, func() tea.Msg {
-			_ = copySelection(text)
+			if err := copySelection(text); err != nil {
+				return uiErrorMsg{err: fmt.Errorf("clipboard: %w", err)}
+			}
 			return nil
 		}
 	case tea.MouseWheelMsg:
@@ -561,6 +582,12 @@ func renderMessageLines(msg message, width int) []string {
 		return lines
 	case "system":
 		return []string{"    " + dimStyle.Render(msg.text)}
+	case "error":
+		var lines []string
+		for _, line := range wrapText(msg.text, contentWidth-2) {
+			lines = append(lines, "    "+errorStyle.Render(" "+line+" "))
+		}
+		return lines
 	case "tool":
 		style := toolStyle
 		if !strings.HasPrefix(msg.text, "$") {
