@@ -63,11 +63,11 @@ var (
 	userMessageStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("255")).
 				Background(lipgloss.Color("236"))
-	bodyStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	inputStyle       = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("39")).
-				Padding(0, 1)
+	bodyStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	inputStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("39")).
+			Padding(0, 1)
 	toolStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("71"))
 	toolOutputStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("247"))
 	cursorStyle     = lipgloss.NewStyle().Reverse(true)
@@ -76,6 +76,7 @@ var (
 func newModel(modelName string, respond func(string, func(toolEvent), context.Context) response) model {
 	return model{
 		width:     80,
+		height:    24,
 		modelName: modelName,
 		respond:   respond,
 	}
@@ -109,13 +110,14 @@ func (m *model) appendMessage(msg message) (evicted string) {
 	width := max(m.width, 20)
 	m.messages = append(m.messages, msg)
 	m.bodyLines = append(m.bodyLines, renderMessageLines(msg, width)...)
+	m.bodyLines = append(m.bodyLines, "") // spacing between messages
 
 	composerH := lipgloss.Height(m.renderComposer(width))
 	statusH := 0
 	if m.responding {
 		statusH = 1
 	}
-	bodyHeight := max(max(m.height, 8)-2-statusH-1-composerH, 1)
+	bodyHeight := max(max(m.height, 8)-statusH-1-composerH, 1)
 
 	if len(m.bodyLines) > bodyHeight {
 		evictedCount := len(m.bodyLines) - bodyHeight
@@ -244,10 +246,6 @@ func insertRunes(input []rune, at int, added []rune) []rune {
 
 func (m model) View() string {
 	width := max(m.width, 20)
-	height := max(m.height, 8)
-
-	header := titleStyle.Render("OSH")
-	rule := dimStyle.Render(strings.Repeat("\u2500", width))
 	composer := m.renderComposer(width)
 	info := dimStyle.Render("model " + m.modelName + "  \u00b7  context " + formatTokenCount(m.contextTokens) + " tokens")
 
@@ -260,18 +258,22 @@ func (m model) View() string {
 	if status != "" {
 		bottom = append([]string{status}, bottom...)
 	}
-	bodyHeight := max(height-2-len(bottom)-lipgloss.Height(composer)+1, 1)
-
+	height := max(m.height, 8)
+	statusH := 0
+	if m.responding {
+		statusH = 1
+	}
 	body := m.bodyLines
 	if !m.started {
 		body = []string{"", "    " + dimStyle.Render("No messages yet. Type below to start the conversation.")}
 	}
-	if len(body) > bodyHeight {
-		body = body[len(body)-bodyHeight:]
+	availBody := max(height-statusH-1-lipgloss.Height(composer), 1)
+	if len(body) > availBody {
+		body = body[len(body)-availBody:]
 	}
 
-	filler := max(bodyHeight-len(body), 0)
-	lines := append([]string{header, rule}, make([]string, filler)...)
+	filler := availBody - len(body)
+	lines := make([]string, filler)
 	lines = append(lines, body...)
 	lines = append(lines, bottom...)
 	return strings.Join(lines, "\n")
