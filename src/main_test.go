@@ -43,6 +43,20 @@ func updateModelWithCmd(t *testing.T, m model, msg tea.Msg) (model, tea.Cmd) {
 	return updated.(model), cmd
 }
 
+func TestBuildSystemPrompt(t *testing.T) {
+	prompt := buildSystemPrompt("/work/project")
+	for _, want := range []string{
+		"expert general-purpose assistant operating inside OSH",
+		"Available tools:",
+		"Do not run destructive or difficult-to-reverse commands",
+		"Current working directory: /work/project",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("system prompt does not contain %q", want)
+		}
+	}
+}
+
 func TestRequireOpenAIAPIKey(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "")
 	if err := requireOpenAIAPIKey(); err == nil {
