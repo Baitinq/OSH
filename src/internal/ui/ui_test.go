@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	tui "github.com/grindlemire/go-tui"
 )
 
 const testModelName = "test-model"
@@ -133,8 +135,10 @@ func TestEnterSteersAndShiftEnterQueues(t *testing.T) {
 	s, _ := newState(func(string, func(toolEvent), context.Context) response { return response{} })
 	s.responding = true
 
-	s.submitInput("queued follow-up", true)
-	s.submitInput("priority correction", false)
+	s.textarea.SetText("queued follow-up")
+	s.handleKey(tui.KeyEvent{Key: tui.KeyEnter, Mod: tui.ModShift})
+	s.textarea.SetText("priority correction")
+	s.handleKey(tui.KeyEvent{Key: tui.KeyEnter})
 
 	if len(s.queued) != 1 || s.queued[0] != "queued follow-up" {
 		t.Fatalf("queue = %#v", s.queued)

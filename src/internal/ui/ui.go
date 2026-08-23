@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -624,7 +625,21 @@ func Run(modelName string, respond func(string, func(agent.ToolEvent), context.C
 		return err
 	}
 	defer term.ExitRawMode()
-	term.NegotiateKittyKeyboard()
+	// Request xterm extended-key mode as well as Kitty keyboard mode. tmux
+	// recognizes the former and, when configured for CSI-u output, forwards
+	// Shift+Enter in the same form understood by go-tui. Unsupported terminals
+	// ignore both sequences.
+	if _, err := io.WriteString(os.Stdout, "\x1b[>4;1m"); err != nil {
+		return err
+	}
+	defer io.WriteString(os.Stdout, "\x1b[>4m")
+
+	// Some multiplexers accept the Kitty keyboard push sequence but do not
+	// answer the capability query. In that case negotiation disables the mode
+	// again, so restore it with a direct push.
+	if !term.NegotiateKittyKeyboard() {
+		term.EnableKittyKeyboard()
+	}
 	defer term.DisableKittyKeyboard()
 	term.HideCursor()
 	defer term.ShowCursor()

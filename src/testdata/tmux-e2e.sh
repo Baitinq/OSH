@@ -31,6 +31,20 @@ all=$(capture)
 grep -q 'STREAM-LINE-01' <<<"$all"
 grep -q 'STREAM-LINE-32' <<<"$all"
 
+# Shift+Enter queues while plain Enter steers; the steer must run first.
+"${tmux[@]}" send-keys -t "$session" -l stream
+"${tmux[@]}" send-keys -t "$session" Enter
+wait_for 'STREAM-LINE-03'
+"${tmux[@]}" send-keys -t "$session" -l queued-order
+"${tmux[@]}" send-keys -t "$session" S-Enter
+"${tmux[@]}" send-keys -t "$session" -l steer-order
+"${tmux[@]}" send-keys -t "$session" Enter
+wait_for 'ECHO<queued-order>'
+all=$(capture)
+steer_line=$(grep -n 'ECHO<steer-order>' <<<"$all" | head -1 | cut -d: -f1)
+queue_line=$(grep -n 'ECHO<queued-order>' <<<"$all" | head -1 | cut -d: -f1)
+[[ -n "$steer_line" && -n "$queue_line" && "$steer_line" -lt "$queue_line" ]]
+
 # tmux's native search and selection can reach finalized transcript output.
 "${tmux[@]}" copy-mode -t "$session"
 "${tmux[@]}" send-keys -t "$session" -X history-top
@@ -82,8 +96,8 @@ wait_for 'Cancelled.'
 "${tmux[@]}" resize-window -t "$session" -x 36 -y 12
 sleep .2
 all=$(capture)
-[[ $(grep -c 'STREAM-LINE-01' <<<"$all") -eq 2 ]]
-[[ $(grep -c 'STREAM-LINE-32' <<<"$all") -eq 2 ]]
+[[ $(grep -c 'STREAM-LINE-01' <<<"$all") -eq 3 ]]
+[[ $(grep -c 'STREAM-LINE-32' <<<"$all") -eq 3 ]]
 grep -q 'Cancelled.' <<<"$all"
 "${tmux[@]}" resize-window -t "$session" -x 72 -y 24
 sleep .2
