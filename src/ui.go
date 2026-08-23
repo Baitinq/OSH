@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/mattn/go-runewidth"
@@ -45,10 +46,10 @@ type pendingInput struct {
 type model struct {
 	width         int
 	height        int
-	input         []rune
-	cursor        int
+	composer      textarea.Model
 	messages      []message
 	bodyLines     []string
+	scrollOffset  int // rendered body lines above the newest viewport
 	started       bool
 	modelName     string
 	contextTokens int64
@@ -84,16 +85,46 @@ var (
 	toolOutputStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("247"))
 	queuedMessageStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	steerMessageStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
-	cursorStyle        = lipgloss.NewStyle().Reverse(true)
 )
 
 func newModel(modelName string, respond func(string, func(toolEvent), context.Context) response) model {
-	return model{
+	composer := textarea.New()
+	composer.Prompt = ""
+	composer.Placeholder = "Type a message…"
+	composer.ShowLineNumbers = false
+	composer.DynamicHeight = true
+	composer.MinHeight = 1
+	composer.MaxHeight = 20
+	composer.SetVirtualCursor(true)
+	styles := composer.Styles()
+	styles.Focused.Base = lipgloss.NewStyle()
+	styles.Focused.Text = bodyStyle
+	styles.Focused.CursorLine = lipgloss.NewStyle()
+	styles.Focused.EndOfBuffer = lipgloss.NewStyle()
+	styles.Focused.Placeholder = dimStyle
+	styles.Blurred = styles.Focused
+	styles.Cursor.Blink = false
+	styles.Cursor.Color = lipgloss.Color("255")
+	composer.SetStyles(styles)
+	composer.Focus()
+
+	m := model{
 		width:     80,
 		height:    24,
+		composer:  composer,
 		modelName: modelName,
 		respond:   respond,
 	}
+	m.resizeComposer()
+	return m
+}
+
+func (m *model) resizeComposer() {
+	width := max(m.width, 20)
+	outerWidth := max(width-2, 1)
+	innerWidth := max(outerWidth-4, 1) // border and horizontal padding
+	m.composer.MaxHeight = max(max(m.height, 8)-5, 1)
+	m.composer.SetWidth(innerWidth)
 }
 
 func (model) Init() tea.Cmd {
@@ -125,27 +156,23 @@ func listenToolEvents(ch <-chan toolEvent, requestID int) tea.Cmd {
 	}
 }
 
-// evictOverflow prints body lines that scrolled out of the frame into the
-// terminal's native scrollback, so history survives leaving the viewport.
-func (m *model) appendMessage(msg message) (evicted string) {
+func (m *model) appendMessage(msg message) {
 	width := max(m.width, 20)
+	lines := renderMessageLines(msg, width)
+	lines = append(lines, "") // spacing between messages
 	m.messages = append(m.messages, msg)
-	m.bodyLines = append(m.bodyLines, renderMessageLines(msg, width)...)
-	m.bodyLines = append(m.bodyLines, "") // spacing between messages
+	m.bodyLines = append(m.bodyLines, lines...)
 
-	bodyHeight := m.availableBodyHeight(width)
-
-	if len(m.bodyLines) > bodyHeight {
-		evictedCount := len(m.bodyLines) - bodyHeight
-		evicted = strings.Join(m.bodyLines[:evictedCount], "\n")
-		m.bodyLines = m.bodyLines[evictedCount:]
+	// Keep the same content under the viewport when new output arrives while
+	// the user is reading history. At the bottom, continue following output.
+	if m.scrollOffset > 0 {
+		m.scrollOffset += len(lines)
 	}
-	return evicted
+	m.clampScrollOffset(width)
 }
 
-// reflowBody rebuilds the viewport from message history after a resize. Lines
-// previously moved into terminal scrollback can then fill newly available rows
-// instead of leaving a gap above the retained viewport contents.
+// reflowBody rebuilds the viewport from message history after a resize, so
+// messages outside the current viewport can backfill newly available rows.
 func (m *model) reflowBody() {
 	width := max(m.width, 20)
 	lines := make([]string, 0, len(m.bodyLines))
@@ -154,11 +181,19 @@ func (m *model) reflowBody() {
 		lines = append(lines, "")
 	}
 
-	bodyHeight := m.availableBodyHeight(width)
-	if len(lines) > bodyHeight {
-		lines = lines[len(lines)-bodyHeight:]
-	}
 	m.bodyLines = lines
+	m.clampScrollOffset(width)
+}
+
+func (m *model) clampScrollOffset(width int) {
+	maxOffset := max(len(m.bodyLines)-m.availableBodyHeight(width), 0)
+	m.scrollOffset = min(max(m.scrollOffset, 0), maxOffset)
+}
+
+func (m *model) scrollBody(delta int) {
+	width := max(m.width, 20)
+	m.scrollOffset += delta
+	m.clampScrollOffset(width)
 }
 
 func (m model) availableBodyHeight(width int) int {
@@ -170,6 +205,17 @@ func (m model) availableBodyHeight(width int) int {
 		reservedHeight += lipgloss.Height(pending)
 	}
 	return max(max(m.height, 8)-reservedHeight, 1)
+}
+
+// availablePendingHeight limits queued and steering previews so they can never
+// push the composer below the bottom of the terminal. The most recently
+// submitted preview lines are retained when there is not enough room.
+func (m model) availablePendingHeight(width int) int {
+	reservedHeight := 1 + lipgloss.Height(m.renderComposer(width)) // info + composer
+	if m.responding {
+		reservedHeight++
+	}
+	return max(max(m.height, 8)-reservedHeight-1, 0) // retain one body row
 }
 
 func tickSpinner() tea.Cmd {
@@ -188,27 +234,22 @@ func (m *model) startRequest(text string, showUser bool) tea.Cmd {
 	m.cancel = cancel
 	m.reflowBody()
 
-	var cmds []tea.Cmd
 	if showUser {
-		if evicted := m.appendMessage(message{role: "you", text: text, sentAt: time.Now().Format("15:04")}); evicted != "" {
-			cmds = append(cmds, tea.Println(evicted))
-		}
+		m.appendMessage(message{role: "you", text: text, sentAt: time.Now().Format("15:04")})
 	}
-	cmds = append(cmds,
+	return tea.Batch(
 		waitForResponse(m.respond, text, m.toolEvents, ctx, m.nextRequestID),
 		listenToolEvents(m.toolEvents, m.nextRequestID),
 		tickSpinner(),
 	)
-	return tea.Batch(cmds...)
 }
 
 func (m *model) submitInput(queue bool) tea.Cmd {
-	text := strings.TrimSpace(string(m.input))
+	text := strings.TrimSpace(m.composer.Value())
 	if text == "" {
 		return nil
 	}
-	m.input = nil
-	m.cursor = 0
+	m.composer.Reset()
 
 	if !m.responding {
 		return m.startRequest(text, true)
@@ -220,18 +261,16 @@ func (m *model) submitInput(queue bool) tea.Cmd {
 		return nil
 	}
 
-	// A steer interrupts the current response. Wait for its goroutine to finish
-	// before starting the next request so the agent's local history is only ever
-	// mutated by one response loop at a time.
+	// A steer is a high-priority follow-up, not a hard cancellation. Let the
+	// active response finish so its history (including any tool calls) remains
+	// complete, then submit the steer before ordinary queued messages. Escape is
+	// the explicit hard-cancel control.
 	if m.pendingSteer == "" {
 		m.pendingSteer = text
 	} else {
 		m.pendingSteer += "\n\n" + text
 	}
 	m.pendingInputs = append(m.pendingInputs, pendingInput{kind: "steer", text: text})
-	if m.cancel != nil {
-		m.cancel()
-	}
 	m.reflowBody()
 	return nil
 }
@@ -241,6 +280,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.resizeComposer()
 		m.reflowBody()
 		return m, nil
 	case responseMsg:
@@ -249,22 +289,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.cancel = nil
 		m.contextTokens = msg.contextTokens
+		m.responding = false
 
+		// Preserve the completed response before injecting a steer. This keeps the
+		// visible transcript aligned with the agent's internal history.
+		if msg.text != "" {
+			m.appendMessage(message{role: "agent", text: msg.text})
+		}
 		if m.pendingSteer != "" {
 			text := m.pendingSteer
 			m.pendingSteer = ""
 			m.removePendingInputs("steer", -1)
-			m.responding = false
 			return m, m.startRequest(text, true)
 		}
 
-		m.responding = false
 		var cmds []tea.Cmd
-		if msg.text != "" {
-			if evicted := m.appendMessage(message{role: "agent", text: msg.text}); evicted != "" {
-				cmds = append(cmds, tea.Println(evicted))
-			}
-		}
 		if len(m.queued) > 0 {
 			text := m.queued[0]
 			m.queued = m.queued[1:]
@@ -280,9 +319,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.phase == "call" {
 			text = "$ " + text
 		}
-		if evicted := m.appendMessage(message{role: "tool", text: text}); evicted != "" {
-			return m, tea.Batch(tea.Println(evicted), listenToolEvents(msg.ch, msg.requestID))
-		}
+		m.appendMessage(message{role: "tool", text: text})
 		return m, listenToolEvents(msg.ch, msg.requestID)
 	case spinnerTickMsg:
 		if !m.responding {
@@ -290,10 +327,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
 		return m, tickSpinner()
+	case tea.MouseWheelMsg:
+		switch msg.Button {
+		case tea.MouseWheelUp:
+			m.scrollBody(3)
+		case tea.MouseWheelDown:
+			m.scrollBody(-3)
+		}
+		return m, nil
 	case tea.KeyPressMsg:
 		switch msg.Keystroke() {
 		case "ctrl+c":
 			return m, tea.Quit
+		case "pgup":
+			m.scrollBody(max(m.availableBodyHeight(max(m.width, 20))-1, 1))
+			return m, nil
+		case "pgdown":
+			m.scrollBody(-max(m.availableBodyHeight(max(m.width, 20))-1, 1))
+			return m, nil
 		case "shift+enter":
 			return m, m.submitInput(true)
 		case "enter":
@@ -307,63 +358,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cancel = nil
 				m.responding = false
 				m.reflowBody()
-				if evicted := m.appendMessage(message{role: "system", text: "Cancelled."}); evicted != "" {
-					return m, tea.Println(evicted)
-				}
+				m.appendMessage(message{role: "system", text: "Cancelled."})
 			}
 			return m, nil
-		case "ctrl+u":
-			m.input = nil
-			m.cursor = 0
-		case "left":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "right":
-			if m.cursor < len(m.input) {
-				m.cursor++
-			}
-		case "home", "ctrl+a":
-			m.cursor = 0
-		case "end", "ctrl+e":
-			m.cursor = len(m.input)
-		case "backspace", "ctrl+h":
-			if m.cursor > 0 {
-				m.input = append(m.input[:m.cursor-1], m.input[m.cursor:]...)
-				m.cursor--
-			}
-		case "space":
-			m.input = insertRunes(m.input, m.cursor, []rune{' '})
-			m.cursor++
-		case "delete":
-			if m.cursor < len(m.input) {
-				m.input = append(m.input[:m.cursor], m.input[m.cursor+1:]...)
-			}
 		default:
-			if msg.Text != "" {
-				added := []rune(msg.Text)
-				m.input = insertRunes(m.input, m.cursor, added)
-				m.cursor += len(added)
-			}
+			var cmd tea.Cmd
+			m.composer, cmd = m.composer.Update(msg)
+			return m, cmd
 		}
 	}
 
-	return m, nil
-}
-
-func insertRunes(input []rune, at int, added []rune) []rune {
-	result := make([]rune, 0, len(input)+len(added))
-	result = append(result, input[:at]...)
-	result = append(result, added...)
-	result = append(result, input[at:]...)
-	return result
+	var cmd tea.Cmd
+	m.composer, cmd = m.composer.Update(msg)
+	return m, cmd
 }
 
 func (m model) View() tea.View {
 	width := max(m.width, 20)
 	composer := m.renderComposer(width)
 	pending := m.renderPendingMessages(width)
-	info := dimStyle.Render("model " + m.modelName + "  \u00b7  context " + formatTokenCount(m.contextTokens) + " tokens")
+	infoText := "model " + m.modelName + "  ·  context " + formatTokenCount(m.contextTokens) + " tokens"
+	// Never occupy the terminal's final column. Terminals may autowrap a
+	// full-width line without reporting the extra row to Bubble Tea, which
+	// shifts subsequent rows over the composer while the spinner redraws.
+	info := dimStyle.Render(truncatePlainRunes([]rune(infoText), max(width-2, 0)))
 
 	status := ""
 	if m.responding {
@@ -375,7 +393,11 @@ func (m model) View() tea.View {
 		if len(m.queued) > 0 {
 			queueInfo = " · " + strconv.Itoa(len(m.queued)) + " queued"
 		}
-		status = "    " + titleStyle.Render(spinnerFrames[m.spinnerFrame]) + dimStyle.Render(activity+queueInfo+" · enter steer · shift+enter queue · esc cancel")
+		prefix := "    " + titleStyle.Render(spinnerFrames[m.spinnerFrame])
+		statusText := activity + queueInfo
+		status = prefix + dimStyle.Render(truncatePlainRunes(
+			[]rune(statusText), max(width-runesWidth([]rune("    "+spinnerFrames[m.spinnerFrame]))-2, 0),
+		))
 	}
 
 	bottom := []string{composer, info}
@@ -385,20 +407,21 @@ func (m model) View() tea.View {
 	if status != "" {
 		bottom = append([]string{status}, bottom...)
 	}
-	body := m.bodyLines
-	if !m.started {
-		body = []string{"", "    " + dimStyle.Render("No messages yet. Type below to start the conversation.")}
-	}
 	availBody := m.availableBodyHeight(width)
-	if len(body) > availBody {
-		body = body[len(body)-availBody:]
-	}
+	maxOffset := max(len(m.bodyLines)-availBody, 0)
+	offset := min(max(m.scrollOffset, 0), maxOffset)
+	end := len(m.bodyLines) - offset
+	start := max(end-availBody, 0)
+	body := m.bodyLines[start:end]
 
 	filler := availBody - len(body)
 	lines := make([]string, filler)
 	lines = append(lines, body...)
 	lines = append(lines, bottom...)
-	return tea.NewView(strings.Join(lines, "\n"))
+	view := tea.NewView(strings.Join(lines, "\n"))
+	view.AltScreen = true
+	view.MouseMode = tea.MouseModeCellMotion
+	return view
 }
 
 func formatTokenCount(tokens int64) string {
@@ -469,6 +492,9 @@ func (m model) renderPendingMessages(width int) string {
 		}
 		lines = append(lines, renderPendingMessage(item.kind, item.text, style, width)...)
 	}
+	if limit := m.availablePendingHeight(width); len(lines) > limit {
+		lines = lines[len(lines)-limit:]
+	}
 	return strings.Join(lines, "\n")
 }
 
@@ -489,34 +515,15 @@ func renderPendingMessage(label, text string, style lipgloss.Style, width int) [
 }
 
 func (m model) renderComposer(width int) string {
-	innerWidth := max(width-4, 1)
-	content := renderInput(m.input, m.cursor, innerWidth)
-	return inputStyle.Width(max(width-2, 1)).Render(content)
-}
-
-func renderInput(input []rune, cursor, width int) string {
-	if len(input) == 0 {
-		placeholder := truncatePlainRunes([]rune(" Type a message…"), width-1)
-		return cursorStyle.Render(" ") + dimStyle.Render(placeholder)
-	}
-
-	start := 0
-	for runesWidth(input[start:cursor])+1 > width && start < cursor {
-		start++
-	}
-
-	visible := input[start:]
-	cursorInView := cursor - start
-	before := string(visible[:cursorInView])
-	cursorRune := " "
-	rest := visible[cursorInView:]
-	if len(rest) > 0 {
-		cursorRune = string(rest[0])
-		rest = rest[1:]
-	}
-
-	remaining := width - runewidth.StringWidth(before) - runewidth.StringWidth(cursorRune)
-	return before + cursorStyle.Render(cursorRune) + truncatePlainRunes(rest, remaining)
+	// Keep the composer clear of the terminal's right edge. Some terminals
+	// autowrap a line that occupies the final column; frequent spinner redraws
+	// can then scroll or overwrite the composer while a response is active.
+	outerWidth := max(width-2, 1)
+	innerWidth := max(outerWidth-4, 1) // border and horizontal padding
+	composer := m.composer
+	composer.SetWidth(innerWidth)
+	content := composer.View()
+	return inputStyle.Width(outerWidth).Render(content)
 }
 
 func wrapText(text string, width int) []string {
