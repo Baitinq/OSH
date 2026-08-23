@@ -10,7 +10,10 @@ import (
 	tui "github.com/grindlemire/go-tui"
 )
 
-const testModelName = "test-model"
+const (
+	testModelName       = "test-model"
+	testReasoningEffort = "medium"
+)
 
 type testRuntime struct{ calls chan func() }
 
@@ -29,7 +32,7 @@ func (r *testRuntime) runNext(t *testing.T) {
 
 func newState(respond func(string, func(toolEvent), context.Context) response) (*oshUI, *testRuntime) {
 	runtime := newTestRuntime()
-	s := newUI(testModelName, respond)
+	s := newUI(testModelName, testReasoningEffort, respond)
 	s.ensureTextarea()
 	s.dispatch = runtime.Dispatch
 	s.emit = func(message) {}
@@ -363,8 +366,12 @@ func TestShortDocumentFillsAndBottomAlignsViewport(t *testing.T) {
 	if lines[0] != "" {
 		t.Fatalf("first row = %q, want viewport filler", lines[0])
 	}
-	if !strings.Contains(stripANSI(lines[len(lines)-1]), "model test-model") {
+	footer := stripANSI(lines[len(lines)-1])
+	if !strings.Contains(footer, "test-model (medium)") {
 		t.Fatalf("footer is not bottom-aligned: %q", lines[len(lines)-1])
+	}
+	if strings.HasPrefix(footer, "model ") {
+		t.Fatalf("footer retains redundant model label: %q", footer)
 	}
 }
 

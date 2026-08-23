@@ -73,6 +73,9 @@ type Response struct {
 // ModelName returns the configured model identifier.
 func (a *Agent) ModelName() string { return a.modelName }
 
+// ReasoningEffort returns the configured reasoning level.
+func (a *Agent) ReasoningEffort() string { return string(reasoningEffort) }
+
 type Agent struct {
 	client       openai.Client
 	modelName    string

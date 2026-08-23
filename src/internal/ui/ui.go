@@ -27,31 +27,32 @@ type toolEvent = agent.ToolEvent
 type pendingInput struct{ kind, text string }
 
 type oshUI struct {
-	modelName     string
-	contextTokens int64
-	respond       func(string, func(toolEvent), context.Context) response
-	textarea      *tui.TextArea
-	textareaWidth int
-	messages      []message
-	streamingText string
-	responding    bool
-	spinnerFrame  int
-	queued        []string
-	pendingSteer  string
-	pendingInputs []pendingInput
-	nextRequestID int
-	cancel        context.CancelFunc
-	dispatch      func(func())
-	invalidate    func()
-	emit          func(message)
+	modelName       string
+	reasoningEffort string
+	contextTokens   int64
+	respond         func(string, func(toolEvent), context.Context) response
+	textarea        *tui.TextArea
+	textareaWidth   int
+	messages        []message
+	streamingText   string
+	responding      bool
+	spinnerFrame    int
+	queued          []string
+	pendingSteer    string
+	pendingInputs   []pendingInput
+	nextRequestID   int
+	cancel          context.CancelFunc
+	dispatch        func(func())
+	invalidate      func()
+	emit            func(message)
 }
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 const spinnerInterval = 80 * time.Millisecond
 
-func newUI(modelName string, respond func(string, func(toolEvent), context.Context) response) *oshUI {
-	s := &oshUI{modelName: modelName, respond: respond}
+func newUI(modelName, reasoningEffort string, respond func(string, func(toolEvent), context.Context) response) *oshUI {
+	s := &oshUI{modelName: modelName, reasoningEffort: reasoningEffort, respond: respond}
 	s.ensureTextarea()
 	s.emit = func(message) {}
 	return s
@@ -383,7 +384,7 @@ func (s *oshUI) render(width int, viewportHeight ...int) ([]string, int, int) {
 	editor, crow, ccol := renderEditor(s.textarea.Text(), s.textarea.CursorPos(), width)
 	cursorRow := len(lines) + crow
 	lines = append(lines, editor...)
-	info := fmt.Sprintf("model %s  ·  context %s tokens", s.modelName, formatTokenCount(s.contextTokens))
+	info := fmt.Sprintf("%s (%s)  ·  context %s tokens", s.modelName, s.reasoningEffort, formatTokenCount(s.contextTokens))
 	lines = append(lines, ansi256FG(242, truncateCells(info, max(width-2, 0))))
 	if len(viewportHeight) > 0 {
 		filler := max(viewportHeight[0]-len(lines), 0)
@@ -616,7 +617,7 @@ func formatTokenCount(n int64) string {
 	return d
 }
 
-func Run(modelName string, respond func(string, func(agent.ToolEvent), context.Context) agent.Response) error {
+func Run(modelName, reasoningEffort string, respond func(string, func(agent.ToolEvent), context.Context) agent.Response) error {
 	term, err := tui.NewANSITerminal(os.Stdout, os.Stdin)
 	if err != nil {
 		return err
@@ -650,7 +651,7 @@ func Run(modelName string, respond func(string, func(agent.ToolEvent), context.C
 	defer reader.Close()
 	updates := make(chan func(), 256)
 	wake := make(chan struct{}, 1)
-	root := newUI(modelName, func(input string, emit func(toolEvent), ctx context.Context) response {
+	root := newUI(modelName, reasoningEffort, func(input string, emit func(toolEvent), ctx context.Context) response {
 		result := respond(input, emit, ctx)
 		return response{Text: result.Text, ContextTokens: result.ContextTokens, Err: result.Err}
 	})

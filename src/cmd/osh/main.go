@@ -21,7 +21,7 @@ func main() {
 		os.Exit(1)
 	}
 	a := agent.New()
-	if err := ui.Run(a.ModelName(), a.Respond); err != nil {
+	if err := ui.Run(a.ModelName(), a.ReasoningEffort(), a.Respond); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
