@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -35,6 +36,10 @@ func buildSystemPrompt(cwd string) string {
 		return systemPrompt
 	}
 	return systemPrompt + "\n\nCurrent working directory: " + cwd
+}
+
+func prefixUserMessage(msg string, now time.Time) string {
+	return fmt.Sprintf("[%s]\n\n%s", now.Format(time.RFC3339), msg)
 }
 
 const baseURL = "https://api.openai.com/v1/"
@@ -104,7 +109,7 @@ func (a *Agent) Respond(msg string, emit func(ToolEvent), ctx context.Context) R
 	a.history = append(a.history, responses.ResponseInputItemUnionParam{
 		OfMessage: &responses.EasyInputMessageParam{
 			Role:    responses.EasyInputMessageRoleUser,
-			Content: responses.EasyInputMessageContentUnionParam{OfString: openai.String(msg)},
+			Content: responses.EasyInputMessageContentUnionParam{OfString: openai.String(prefixUserMessage(msg, time.Now()))},
 		},
 	})
 

@@ -4,9 +4,6 @@ python env? rlm
 computer use? (screenshot, move mouse, press key?)
 auto-compact
 session persistance?
-ctrl c stops, ctrl c x2 exits, esc removes text from input box.
-inject current time/date into every user message
-restructure into "proper" go program (internal/ etc)
 agents.md? (autoloading vs not)
 cli mode so it can spawn itself?
 say in prompt something about verifiable iteration?
@@ -21,7 +18,3 @@ other-agent aware (e.g. if other agents are working maybe it can somehow know id
 hardware awareness? where is it running on (specs, os)
 press up arrow to go back in prompts
 /tree
-
-
-committed prefix and mutable suffix (like pi)
-

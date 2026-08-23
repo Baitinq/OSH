@@ -56,11 +56,11 @@ Completions API is not sufficient.
 - `Enter` — send a message; while responding, steer after the active turn finishes
 - `Shift+Enter` — queue a message behind the active response
 - `Ctrl+J` — insert a newline in the input editor
-- `Escape` — cancel the active response
+- `Ctrl+C` — cancel the active response; press twice within one second to quit
+- `Escape` — clear the input editor
 - Primary-screen rendering keeps terminal scrollback, selection, search, and copying native
 - `Ctrl/Alt+←/→` or `Alt+B/F` — move through input word by word
 - `Ctrl+W`, `Alt+D`, `Ctrl+U`, `Ctrl+K` — delete words or text around the cursor
-- `Ctrl+C` — quit
 
 Distinguishing `Shift+Enter` requires terminal keyboard-enhancement support. On
 legacy terminals that report it as plain Enter, it behaves as a steer.

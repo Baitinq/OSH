@@ -85,12 +85,19 @@ grep -q '\$ printf tool-output' <<<"$all"
 grep -q '│ tool-output' <<<"$all"
 grep -q 'tool turn complete' <<<"$all"
 
-# Cancellation must replace mutable output without leaving the terminal dirty.
+# Ctrl+C cancels the active task without exiting.
 "${tmux[@]}" send-keys -t "$session" -l cancel
 "${tmux[@]}" send-keys -t "$session" Enter
 wait_for 'WAITING-FOR-CANCEL'
-"${tmux[@]}" send-keys -t "$session" Escape
+"${tmux[@]}" send-keys -t "$session" C-c
 wait_for 'Cancelled.'
+
+# Escape clears the editor without cancelling or exiting.
+"${tmux[@]}" send-keys -t "$session" -l discard-me
+"${tmux[@]}" send-keys -t "$session" Escape
+sleep .05
+visible=$("${tmux[@]}" capture-pane -p -t "$session")
+! grep -q 'discard-me' <<<"$visible"
 
 # Pi-style resize replay must retain the semantic transcript at both widths.
 "${tmux[@]}" resize-window -t "$session" -x 36 -y 12
@@ -116,7 +123,8 @@ all=$(capture)
 grep -q 'EDIT-01' <<<"$all"
 grep -q 'EDIT-14' <<<"$all"
 
-# Exit and prove the shell is usable and the cursor cell was not overwritten.
+# A second consecutive Ctrl+C exits and leaves the terminal usable.
+"${tmux[@]}" send-keys -t "$session" C-c
 "${tmux[@]}" send-keys -t "$session" C-c
 wait_for '^PASS$'
 "${tmux[@]}" send-keys -t "$session" "printf 'TERMINAL-CLEAN\\n'" Enter

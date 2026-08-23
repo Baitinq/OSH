@@ -3,6 +3,7 @@ package agent
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBuildSystemPrompt(t *testing.T) {
@@ -16,6 +17,15 @@ func TestBuildSystemPrompt(t *testing.T) {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("system prompt does not contain %q", want)
 		}
+	}
+}
+
+func TestPrefixUserMessageIncludesCurrentDateAndTime(t *testing.T) {
+	now := time.Date(2026, time.August, 23, 19, 42, 17, 0, time.FixedZone("PDT", -7*60*60))
+	got := prefixUserMessage("hello", now)
+	want := "[2026-08-23T19:42:17-07:00]\n\nhello"
+	if got != want {
+		t.Fatalf("prefixed message = %q, want %q", got, want)
 	}
 }
 

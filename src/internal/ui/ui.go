@@ -41,6 +41,7 @@ type oshUI struct {
 	pendingSteer    string
 	pendingInputs   []pendingInput
 	nextRequestID   int
+	lastCtrlC       time.Time
 	cancel          context.CancelFunc
 	dispatch        func(func())
 	invalidate      func()
@@ -49,7 +50,10 @@ type oshUI struct {
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-const spinnerInterval = 80 * time.Millisecond
+const (
+	spinnerInterval          = 80 * time.Millisecond
+	ctrlCDoublePressInterval = time.Second
+)
 
 func newUI(modelName, reasoningEffort string, respond func(string, func(toolEvent), context.Context) response) *oshUI {
 	s := &oshUI{modelName: modelName, reasoningEffort: reasoningEffort, respond: respond}
@@ -317,13 +321,18 @@ func (s *oshUI) replaceTextRange(text []rune, start, end int) {
 
 func (s *oshUI) handleKey(k tui.KeyEvent) bool {
 	if k.Key == tui.KeyRune && k.Rune == 'c' && k.Mod.Has(tui.ModCtrl) {
-		if s.cancel != nil {
-			s.cancel()
+		now := time.Now()
+		if !s.lastCtrlC.IsZero() && now.Sub(s.lastCtrlC) <= ctrlCDoublePressInterval {
+			return false
 		}
-		return false
-	}
-	if k.Key == tui.KeyEscape {
+		s.lastCtrlC = now
 		s.cancelRequest()
+		return true
+	}
+	s.lastCtrlC = time.Time{}
+	if k.Key == tui.KeyEscape {
+		s.textarea.Clear()
+		s.markDirty()
 		return true
 	}
 	if k.Key == tui.KeyEnter && k.Mod.Has(tui.ModShift) {

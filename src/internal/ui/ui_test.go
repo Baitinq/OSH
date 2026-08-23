@@ -182,7 +182,61 @@ func TestSteerRunsBeforeQueuedMessage(t *testing.T) {
 	s.cancelRequest()
 }
 
-func TestEscapeCancelsAndIgnoresStaleResponse(t *testing.T) {
+func TestCtrlCCancelsThenExitsOnSecondPress(t *testing.T) {
+	s, _ := newState(func(string, func(toolEvent), context.Context) response { return response{} })
+	ctx, cancel := context.WithCancel(context.Background())
+	s.responding = true
+	s.cancel = cancel
+	s.nextRequestID = 3
+	ctrlC := tui.KeyEvent{Key: tui.KeyRune, Rune: 'c', Mod: tui.ModCtrl}
+
+	if keepRunning := s.handleKey(ctrlC); !keepRunning {
+		t.Fatal("first Ctrl+C exited")
+	}
+	if ctx.Err() == nil || s.responding || s.cancel != nil {
+		t.Fatalf("request was not cancelled: %#v", s)
+	}
+	if len(s.messages) != 1 || s.messages[0].text != "Cancelled." {
+		t.Fatalf("cancellation message missing: %#v", s.messages)
+	}
+	if keepRunning := s.handleKey(ctrlC); keepRunning {
+		t.Fatal("second Ctrl+C did not exit")
+	}
+}
+
+func TestCtrlCExitSequenceExpiresOrIsInterrupted(t *testing.T) {
+	s, _ := newState(nil)
+	ctrlC := tui.KeyEvent{Key: tui.KeyRune, Rune: 'c', Mod: tui.ModCtrl}
+	s.lastCtrlC = time.Now().Add(-ctrlCDoublePressInterval - time.Millisecond)
+	if keepRunning := s.handleKey(ctrlC); !keepRunning {
+		t.Fatal("expired Ctrl+C sequence exited")
+	}
+	s.handleKey(tui.KeyEvent{Key: tui.KeyRune, Rune: 'x'})
+	if keepRunning := s.handleKey(ctrlC); !keepRunning {
+		t.Fatal("interrupted Ctrl+C sequence exited")
+	}
+}
+
+func TestEscapeClearsInputWithoutCancelling(t *testing.T) {
+	s, _ := newState(nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	s.responding = true
+	s.cancel = cancel
+	s.textarea.SetText("draft")
+
+	if keepRunning := s.handleKey(tui.KeyEvent{Key: tui.KeyEscape}); !keepRunning {
+		t.Fatal("Escape exited")
+	}
+	if got := s.textarea.Text(); got != "" {
+		t.Fatalf("input = %q, want empty", got)
+	}
+	if ctx.Err() != nil || !s.responding {
+		t.Fatal("Escape cancelled the active request")
+	}
+	cancel()
+}
+
+func TestCancelIgnoresStaleResponse(t *testing.T) {
 	s, _ := newState(func(string, func(toolEvent), context.Context) response { return response{} })
 	ctx, cancel := context.WithCancel(context.Background())
 	s.responding = true
