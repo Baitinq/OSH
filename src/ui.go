@@ -326,6 +326,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
 		return m, tickSpinner()
+	case tea.MouseWheelMsg:
+		switch msg.Button {
+		case tea.MouseWheelUp:
+			m.scrollBody(3)
+		case tea.MouseWheelDown:
+			m.scrollBody(-3)
+		}
+		return m, nil
 	case tea.KeyPressMsg:
 		switch msg.Keystroke() {
 		case "ctrl+c":
@@ -404,8 +412,7 @@ func (m model) View() tea.View {
 	lines = append(lines, bottom...)
 	view := tea.NewView(strings.Join(lines, "\n"))
 	view.AltScreen = true
-	// Leave mouse reporting disabled so the terminal can select and copy text.
-	view.MouseMode = tea.MouseModeNone
+	view.MouseMode = tea.MouseModeCellMotion
 	return view
 }
 

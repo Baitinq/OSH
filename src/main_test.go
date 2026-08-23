@@ -461,6 +461,27 @@ func TestPendingMessagesCannotPushComposerOffscreen(t *testing.T) {
 	}
 }
 
+func TestMouseWheelScrollsConversationHistory(t *testing.T) {
+	m := newTestModel()
+	m.width = 40
+	m.height = 8
+	for _, text := range []string{"first message", "second message", "third message"} {
+		m.appendMessage(message{role: "agent", text: text})
+	}
+
+	if strings.Contains(m.View().Content, "first message") {
+		t.Fatal("oldest message should initially be above the viewport")
+	}
+	m = updateModel(t, m, tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	if !strings.Contains(m.View().Content, "first message") {
+		t.Fatal("mouse wheel did not reveal retained conversation history")
+	}
+	m = updateModel(t, m, tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	if m.scrollOffset != 0 || strings.Contains(m.View().Content, "first message") {
+		t.Fatal("mouse wheel did not return to the latest messages")
+	}
+}
+
 func TestPageKeysScrollConversationHistory(t *testing.T) {
 	m := newTestModel()
 	m.width = 40
@@ -479,13 +500,13 @@ func TestPageKeysScrollConversationHistory(t *testing.T) {
 	}
 }
 
-func TestViewAllowsTerminalTextSelection(t *testing.T) {
+func TestViewCapturesMouseForScrolling(t *testing.T) {
 	view := newTestModel().View()
 	if !view.AltScreen {
 		t.Fatal("view should use the alternate screen")
 	}
-	if view.MouseMode != tea.MouseModeNone {
-		t.Fatalf("mouse mode = %v, want none so the terminal can select text", view.MouseMode)
+	if view.MouseMode != tea.MouseModeCellMotion {
+		t.Fatalf("mouse mode = %v, want cell motion", view.MouseMode)
 	}
 }
 
