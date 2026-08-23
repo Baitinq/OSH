@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"context"
@@ -56,16 +56,33 @@ var shellTool = responses.ToolUnionParam{
 	},
 }
 
-type agent struct {
+// ToolEvent describes streamed text and shell-tool activity during a turn.
+type ToolEvent struct {
+	Phase  string
+	Name   string
+	Detail string
+}
+
+// Response is the completed result of an agent turn.
+type Response struct {
+	Text          string
+	ContextTokens int64
+	Err           error
+}
+
+// ModelName returns the configured model identifier.
+func (a *Agent) ModelName() string { return a.modelName }
+
+type Agent struct {
 	client       openai.Client
 	modelName    string
 	instructions string
 	history      []responses.ResponseInputItemUnionParam
 }
 
-func newAgent() agent {
+func New() *Agent {
 	cwd, _ := os.Getwd()
-	return agent{
+	return &Agent{
 		client:       openai.NewClient(option.WithBaseURL(baseURL)),
 		modelName:    modelName,
 		instructions: buildSystemPrompt(cwd),
@@ -80,7 +97,7 @@ func runShell(ctx context.Context, command string) (string, error) {
 	return string(out), nil
 }
 
-func (a *agent) respond(msg string, emit func(toolEvent), ctx context.Context) response {
+func (a *Agent) Respond(msg string, emit func(ToolEvent), ctx context.Context) Response {
 	a.history = append(a.history, responses.ResponseInputItemUnionParam{
 		OfMessage: &responses.EasyInputMessageParam{
 			Role:    responses.EasyInputMessageRoleUser,
@@ -99,14 +116,14 @@ func (a *agent) respond(msg string, emit func(toolEvent), ctx context.Context) r
 			Tools:        []responses.ToolUnionParam{shellTool},
 			Store:        openai.Bool(false),
 		}
-		emit(toolEvent{phase: "text_reset"})
+		emit(ToolEvent{Phase: "text_reset"})
 		stream := a.client.Responses.NewStreaming(ctx, params)
 		var resp responses.Response
 		for stream.Next() {
 			event := stream.Current()
 			switch event.Type {
 			case "response.output_text.delta":
-				emit(toolEvent{phase: "text_delta", detail: event.AsResponseOutputTextDelta().Delta})
+				emit(ToolEvent{Phase: "text_delta", Detail: event.AsResponseOutputTextDelta().Delta})
 			case "response.completed":
 				resp = event.AsResponseCompleted().Response
 			}
@@ -115,12 +132,12 @@ func (a *agent) respond(msg string, emit func(toolEvent), ctx context.Context) r
 		_ = stream.Close()
 		if streamErr != nil {
 			if ctx.Err() != nil {
-				return response{}
+				return Response{}
 			}
-			return response{err: fmt.Errorf("request failed: %w", streamErr)}
+			return Response{Err: fmt.Errorf("request failed: %w", streamErr)}
 		}
 		if resp.ID == "" {
-			return response{err: fmt.Errorf("request failed: stream ended without a completed response")}
+			return Response{Err: fmt.Errorf("request failed: stream ended without a completed response")}
 		}
 		contextTokens = resp.Usage.TotalTokens
 
@@ -141,7 +158,7 @@ func (a *agent) respond(msg string, emit func(toolEvent), ctx context.Context) r
 				item.OfFunctionCall = &param
 				toolCalls = append(toolCalls, fc)
 			default:
-				return response{err: fmt.Errorf("unsupported response item type %q", output.Type)}
+				return Response{Err: fmt.Errorf("unsupported response item type %q", output.Type)}
 			}
 			items = append(items, item)
 		}
@@ -151,30 +168,30 @@ func (a *agent) respond(msg string, emit func(toolEvent), ctx context.Context) r
 			break
 		}
 		if ctx.Err() != nil {
-			return response{}
+			return Response{}
 		}
 
 		for _, call := range toolCalls {
 			output := ""
 			if call.Name != "shell" {
 				output = fmt.Sprintf("tool error: unsupported tool %q", call.Name)
-				emit(toolEvent{phase: "error", name: call.Name, detail: output})
+				emit(ToolEvent{Phase: "error", Name: call.Name, Detail: output})
 			} else {
 				var args struct {
 					Command string `json:"command"`
 				}
 				if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
 					output = "tool error: invalid shell arguments: " + err.Error()
-					emit(toolEvent{phase: "error", name: call.Name, detail: output})
+					emit(ToolEvent{Phase: "error", Name: call.Name, Detail: output})
 				} else {
-					emit(toolEvent{phase: "call", name: call.Name, detail: args.Command})
+					emit(ToolEvent{Phase: "call", Name: call.Name, Detail: args.Command})
 					var err error
 					output, err = runShell(ctx, args.Command)
 					if err != nil {
 						output += "\nexit status: " + err.Error()
-						emit(toolEvent{phase: "error", name: call.Name, detail: output})
+						emit(ToolEvent{Phase: "error", Name: call.Name, Detail: output})
 					} else {
-						emit(toolEvent{phase: "result", name: call.Name, detail: output})
+						emit(ToolEvent{Phase: "result", Name: call.Name, Detail: output})
 					}
 				}
 			}
@@ -187,5 +204,5 @@ func (a *agent) respond(msg string, emit func(toolEvent), ctx context.Context) r
 		}
 	}
 
-	return response{text: text, contextTokens: contextTokens}
+	return Response{Text: text, ContextTokens: contextTokens}
 }

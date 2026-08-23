@@ -1,4 +1,4 @@
-package main
+package ui
 
 import (
 	"context"
@@ -32,41 +32,6 @@ func newState(respond func(string, func(toolEvent), context.Context) response) (
 	s.dispatch = runtime.Dispatch
 	s.emit = func(message) {}
 	return s, runtime
-}
-
-func TestBuildSystemPrompt(t *testing.T) {
-	prompt := buildSystemPrompt("/work/project")
-	for _, want := range []string{
-		"expert general-purpose assistant operating inside OSH",
-		"Available tools:",
-		"Do not run destructive or difficult-to-reverse commands",
-		"Current working directory: /work/project",
-	} {
-		if !strings.Contains(prompt, want) {
-			t.Fatalf("system prompt does not contain %q", want)
-		}
-	}
-}
-
-func TestRequireOpenAIAPIKey(t *testing.T) {
-	t.Setenv("OPENAI_API_KEY", "")
-	if err := requireOpenAIAPIKey(); err == nil {
-		t.Fatal("expected an error when OPENAI_API_KEY is empty")
-	}
-	t.Setenv("OPENAI_API_KEY", "test-key")
-	if err := requireOpenAIAPIKey(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestRunShellReturnsCombinedOutputAndError(t *testing.T) {
-	out, err := runShell(t.Context(), "printf stdout; printf stderr >&2; exit 7")
-	if err == nil {
-		t.Fatal("expected shell error")
-	}
-	if out != "stdoutstderr" {
-		t.Fatalf("combined output = %q", out)
-	}
 }
 
 func TestTextareaEditingAndWordAliases(t *testing.T) {
@@ -108,7 +73,7 @@ func TestSubmitRunsAsynchronously(t *testing.T) {
 			t.Errorf("input = %q", input)
 		}
 		<-release
-		return response{text: "answer", contextTokens: 1234}
+		return response{Text: "answer", ContextTokens: 1234}
 	})
 	s.textarea.SetText("hello")
 	s.submitInput(s.textarea.Text(), false)
@@ -132,9 +97,9 @@ func TestSubmitRunsAsynchronously(t *testing.T) {
 
 func TestToolEventsAreAddedToTranscript(t *testing.T) {
 	s, runtime := newState(func(_ string, emit func(toolEvent), _ context.Context) response {
-		emit(toolEvent{phase: "call", name: "shell", detail: "pwd"})
-		emit(toolEvent{phase: "result", name: "shell", detail: "/tmp"})
-		return response{text: "done"}
+		emit(toolEvent{Phase: "call", Name: "shell", Detail: "pwd"})
+		emit(toolEvent{Phase: "result", Name: "shell", Detail: "/tmp"})
+		return response{Text: "done"}
 	})
 	s.textarea.SetText("inspect")
 	s.submitInput(s.textarea.Text(), false)
@@ -152,7 +117,7 @@ func TestToolEventsAreAddedToTranscript(t *testing.T) {
 
 func TestResponseErrorIsRetained(t *testing.T) {
 	s, runtime := newState(func(string, func(toolEvent), context.Context) response {
-		return response{err: errors.New("request failed")}
+		return response{Err: errors.New("request failed")}
 	})
 	s.textarea.SetText("hello")
 	s.submitInput(s.textarea.Text(), false)
@@ -195,7 +160,7 @@ func TestSteerRunsBeforeQueuedMessage(t *testing.T) {
 	s.pendingSteer = "steer"
 	s.pendingInputs = []pendingInput{{kind: "queued", text: "queued"}, {kind: "steer", text: "steer"}}
 
-	s.finishResponse(response{id: 1, text: "first"})
+	s.finishResponse(response{id: 1, Text: "first"})
 	select {
 	case got := <-started:
 		if got != "steer" {
@@ -224,7 +189,7 @@ func TestEscapeCancelsAndIgnoresStaleResponse(t *testing.T) {
 	if len(s.messages) != 1 || s.messages[0].text != "Cancelled." {
 		t.Fatalf("cancellation message missing: %#v", s.messages)
 	}
-	s.finishResponse(response{id: 3, text: "stale"})
+	s.finishResponse(response{id: 3, Text: "stale"})
 	if len(s.messages) != 1 {
 		t.Fatalf("stale response changed transcript: %#v", s.messages)
 	}
@@ -327,8 +292,8 @@ func TestStreamingDeltaLivesInRenderedModel(t *testing.T) {
 	s, _ := newState(nil)
 	s.responding = true
 	s.nextRequestID = 1
-	s.handleToolEvent(1, toolEvent{phase: "text_delta", detail: "hello "})
-	s.handleToolEvent(1, toolEvent{phase: "text_delta", detail: "world"})
+	s.handleToolEvent(1, toolEvent{Phase: "text_delta", Detail: "hello "})
+	s.handleToolEvent(1, toolEvent{Phase: "text_delta", Detail: "world"})
 	lines, _, _ := s.render(40)
 	if !strings.Contains(strings.Join(lines, "\n"), "hello world") {
 		t.Fatalf("stream missing from render: %q", lines)

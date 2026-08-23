@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"osh/internal/agent"
+	"osh/internal/ui"
 )
 
 func requireOpenAIAPIKey() error {
@@ -17,8 +20,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	agent := newAgent()
-	if err := runUI(agent.modelName, agent.respond); err != nil {
+	a := agent.New()
+	if err := ui.Run(a.ModelName(), a.Respond); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

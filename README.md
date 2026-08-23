@@ -15,21 +15,21 @@ model without hiding the agent control loop behind a framework.
 ```sh
 cd src
 export OPENAI_API_KEY='...'
-go run .
+go run ./cmd/osh
 ```
 
 To build a local binary:
 
 ```sh
 cd src
-go build -o osh .
+go build -o osh ./cmd/osh
 ./osh
 ```
 
 ## Configuration
 
 The endpoint and model are intentionally configured as constants near the top of
-`src/agent.go`:
+`src/internal/agent/agent.go`:
 
 ```go
 const baseURL = "https://api.openai.com/v1/"

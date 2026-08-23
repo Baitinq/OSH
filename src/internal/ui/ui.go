@@ -1,4 +1,4 @@
-package main
+package ui
 
 import (
 	"context"
@@ -11,16 +11,18 @@ import (
 	"unicode"
 
 	tui "github.com/grindlemire/go-tui"
+
+	"osh/internal/agent"
 )
 
 type message struct{ role, text, sentAt string }
 type response struct {
 	id            int
-	text          string
-	contextTokens int64
-	err           error
+	Text          string
+	ContextTokens int64
+	Err           error
 }
-type toolEvent struct{ phase, name, detail string }
+type toolEvent = agent.ToolEvent
 type pendingInput struct{ kind, text string }
 
 type oshUI struct {
@@ -145,20 +147,20 @@ func (s *oshUI) handleToolEvent(id int, ev toolEvent) {
 	if id != s.nextRequestID || !s.responding {
 		return
 	}
-	if ev.phase == "text_reset" {
+	if ev.Phase == "text_reset" {
 		s.streamingText = ""
 		s.markDirty()
 		return
 	}
-	if ev.phase == "text_delta" {
-		s.streamingText += ev.detail
+	if ev.Phase == "text_delta" {
+		s.streamingText += ev.Detail
 		s.markDirty()
 		return
 	}
-	text, role := ev.detail, "tool"
-	if ev.phase == "call" {
+	text, role := ev.Detail, "tool"
+	if ev.Phase == "call" {
 		text = "$ " + text
-	} else if ev.phase == "error" {
+	} else if ev.Phase == "error" {
 		role = "error"
 	}
 	s.addMessage(message{role: role, text: text})
@@ -169,18 +171,18 @@ func (s *oshUI) finishResponse(resp response) {
 		return
 	}
 	s.cancel, s.responding = nil, false
-	if resp.err == nil {
-		s.contextTokens = resp.contextTokens
+	if resp.Err == nil {
+		s.contextTokens = resp.ContextTokens
 	}
-	if resp.err != nil {
-		s.addMessage(message{role: "error", text: resp.err.Error()})
+	if resp.Err != nil {
+		s.addMessage(message{role: "error", text: resp.Err.Error()})
 	}
-	if resp.text == "" {
-		resp.text = s.streamingText
+	if resp.Text == "" {
+		resp.Text = s.streamingText
 	}
 	s.streamingText = ""
-	if resp.text != "" {
-		s.addMessage(message{role: "agent", text: resp.text})
+	if resp.Text != "" {
+		s.addMessage(message{role: "agent", text: resp.Text})
 	}
 	if s.pendingSteer != "" {
 		text := s.pendingSteer
@@ -613,7 +615,7 @@ func formatTokenCount(n int64) string {
 	return d
 }
 
-func runUI(modelName string, respond func(string, func(toolEvent), context.Context) response) error {
+func Run(modelName string, respond func(string, func(agent.ToolEvent), context.Context) agent.Response) error {
 	term, err := tui.NewANSITerminal(os.Stdout, os.Stdin)
 	if err != nil {
 		return err
@@ -633,7 +635,10 @@ func runUI(modelName string, respond func(string, func(toolEvent), context.Conte
 	defer reader.Close()
 	updates := make(chan func(), 256)
 	wake := make(chan struct{}, 1)
-	root := newUI(modelName, respond)
+	root := newUI(modelName, func(input string, emit func(toolEvent), ctx context.Context) response {
+		result := respond(input, emit, ctx)
+		return response{Text: result.Text, ContextTokens: result.ContextTokens, Err: result.Err}
+	})
 	root.dispatch = func(fn func()) { updates <- fn }
 	root.invalidate = func() {
 		select {

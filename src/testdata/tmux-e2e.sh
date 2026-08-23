@@ -10,7 +10,7 @@ cleanup() { "${tmux[@]}" kill-server 2>/dev/null || true; rm -f "$binary"; }
 trap cleanup EXIT
 
 cd "$root"
-go test -c -o "$binary" .
+go test -c -o "$binary" ./internal/ui
 "${tmux[@]}" new-session -d -x 60 -y 18 -s "$session" /bin/sh
 "${tmux[@]}" set-option -t "$session" remain-on-exit on
 "${tmux[@]}" send-keys -t "$session" "OSH_TMUX_HARNESS=1 '$binary' -test.run '^TestTmuxHarness$' -test.count=1" Enter
