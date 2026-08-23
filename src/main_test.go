@@ -117,7 +117,7 @@ func TestEnterDefersSteerUntilInProgressResponseFinishes(t *testing.T) {
 		t.Fatalf("steer should remain above the input until injected: %#v", m)
 	}
 	view := m.View().Content
-	if !strings.Contains(view, steerMessageStyle.Render("    steer  change direction")) ||
+	if !strings.Contains(view, pendingInputStyle.Render("    steer  change direction")) ||
 		strings.Index(view, "steer") > strings.Index(view, m.renderComposer(m.width)) {
 		t.Fatalf("steer is not shown above the composer: %q", view)
 	}
@@ -177,7 +177,7 @@ func TestShiftEnterQueuesUntilCurrentResponseFinishes(t *testing.T) {
 		t.Fatalf("queued message should not appear in conversation history yet: %#v", m.messages)
 	}
 	view := m.View().Content
-	if !strings.Contains(view, queuedMessageStyle.Render("    queued  do this next")) ||
+	if !strings.Contains(view, pendingInputStyle.Render("    queued  do this next")) ||
 		strings.Index(view, "queued") > strings.Index(view, m.renderComposer(m.width)) {
 		t.Fatalf("queued message is not shown above the composer: %q", view)
 	}
@@ -201,8 +201,8 @@ func TestPendingMessagesGrowDownwardInSubmissionOrder(t *testing.T) {
 	m = updateModel(t, m, keyPress(tea.KeyEnter))
 
 	view := m.View().Content
-	queued := queuedMessageStyle.Render("    queued  first queued")
-	steer := steerMessageStyle.Render("    steer  then steer")
+	queued := pendingInputStyle.Render("    queued  first queued")
+	steer := pendingInputStyle.Render("    steer  then steer")
 	queuedAt := strings.Index(view, queued)
 	steerAt := strings.Index(view, steer)
 	composerAt := strings.Index(view, m.renderComposer(m.width))

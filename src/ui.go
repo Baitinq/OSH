@@ -81,10 +81,9 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("39")).
 			Padding(0, 1)
-	toolStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("71"))
-	toolOutputStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("247"))
-	queuedMessageStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	steerMessageStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
+	toolStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("71"))
+	toolOutputStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("247"))
+	pendingInputStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 )
 
 func newModel(modelName string, respond func(string, func(toolEvent), context.Context) response) model {
@@ -483,11 +482,7 @@ func (m *model) removePendingInputs(kind string, limit int) {
 func (m model) renderPendingMessages(width int) string {
 	var lines []string
 	for _, item := range m.pendingInputs {
-		style := queuedMessageStyle
-		if item.kind == "steer" {
-			style = steerMessageStyle
-		}
-		lines = append(lines, renderPendingMessage(item.kind, item.text, style, width)...)
+		lines = append(lines, renderPendingMessage(item.kind, item.text, pendingInputStyle, width)...)
 	}
 	if limit := m.availablePendingHeight(width); len(lines) > limit {
 		lines = lines[len(lines)-limit:]
