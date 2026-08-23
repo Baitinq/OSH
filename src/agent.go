@@ -6,11 +6,13 @@ import (
 	"os/exec"
 
 	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
 )
 
 const systemPrompt = "You're an extremely useful general purpose agent."
+const baseURL = "https://api.openai.com/v1/"
 const modelName = "gpt-5.6-sol"
 const reasoningEffort = shared.ReasoningEffortMedium
 
@@ -30,12 +32,16 @@ var shellTool = responses.ToolUnionParam{
 }
 
 type agent struct {
-	client  openai.Client
-	history []responses.ResponseInputItemUnionParam
+	client    openai.Client
+	modelName string
+	history   []responses.ResponseInputItemUnionParam
 }
 
 func newAgent() agent {
-	return agent{client: openai.NewClient()}
+	return agent{
+		client:    openai.NewClient(option.WithBaseURL(baseURL)),
+		modelName: modelName,
+	}
 }
 
 func runShell(ctx context.Context, command string) string {
@@ -58,7 +64,7 @@ func (a *agent) respond(msg string, emit func(toolEvent), ctx context.Context) r
 	var contextTokens int64
 	for {
 		params := responses.ResponseNewParams{
-			Model:        modelName,
+			Model:        a.modelName,
 			Instructions: openai.String(systemPrompt),
 			Input:        responses.ResponseNewParamsInputUnion{OfInputItemList: responses.ResponseInputParam(a.history)},
 			Reasoning:    shared.ReasoningParam{Effort: reasoningEffort},
