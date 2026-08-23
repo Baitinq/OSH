@@ -12,7 +12,7 @@ const testAgentResponse = "test response"
 const testModelName = "test-model"
 
 func newTestModel() model {
-	return newModel(testModelName, func(string) response {
+	return newModel(testModelName, func(string, func(toolEvent)) response {
 		return response{text: testAgentResponse, contextTokens: 1234}
 	})
 }
@@ -67,8 +67,8 @@ func TestResponseRunsAsynchronously(t *testing.T) {
 	}
 
 	batch, ok := cmd().(tea.BatchMsg)
-	if !ok || len(batch) != 2 {
-		t.Fatalf("command returned %#v, want response and spinner commands", batch)
+	if !ok || len(batch) != 3 {
+		t.Fatalf("command returned %#v, want response, tool-events and spinner commands", batch)
 	}
 	m = updateModel(t, m, batch[0]())
 	if m.responding {
@@ -167,5 +167,16 @@ func TestViewFillsTerminal(t *testing.T) {
 	}
 	if got := lipgloss.Width(view); got != m.width {
 		t.Fatalf("view width = %d, want %d", got, m.width)
+	}
+}
+
+func TestToolEventsAppearInLog(t *testing.T) {
+	m := newTestModel()
+	m = updateModel(t, m, toolEventMsg{phase: "call", name: "shell", detail: "echo hi"})
+	m = updateModel(t, m, toolEventMsg{phase: "result", name: "shell", detail: "hi\n"})
+
+	log := m.renderLog(80, 10)
+	if !strings.Contains(log, "$ echo hi") || !strings.Contains(log, "hi") {
+		t.Fatalf("tool call/output missing from log: %q", log)
 	}
 }

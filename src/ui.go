@@ -22,6 +22,15 @@ type response struct {
 	contextTokens int64
 }
 
+type toolEvent struct {
+	phase  string // "call" or "result"
+	name   string
+	detail string
+}
+
+type toolEventMsg toolEvent
+type responseMsg response
+
 type model struct {
 	width         int
 	height        int
@@ -30,12 +39,12 @@ type model struct {
 	messages      []message
 	modelName     string
 	contextTokens int64
-	respond       func(string) response
+	respond       func(string, func(toolEvent)) response
+	toolEvents    chan toolEvent
 	responding    bool
 	spinnerFrame  int
 }
 
-type responseMsg response
 type spinnerTickMsg struct{}
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -53,10 +62,12 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("39")).
 			Padding(0, 1)
+	toolStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("71"))
+	toolOutputStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("247"))
 	cursorStyle = lipgloss.NewStyle().Reverse(true)
 )
 
-func newModel(modelName string, respond func(string) response) model {
+func newModel(modelName string, respond func(string, func(toolEvent)) response) model {
 	return model{
 		width:     80,
 		height:    24,
@@ -69,9 +80,19 @@ func (model) Init() tea.Cmd {
 	return nil
 }
 
-func waitForResponse(respond func(string) response, input string) tea.Cmd {
+func waitForResponse(respond func(string, func(toolEvent)) response, input string, emit func(toolEvent)) tea.Cmd {
 	return func() tea.Msg {
-		return responseMsg(respond(input))
+		return responseMsg(respond(input, emit))
+	}
+}
+
+func listenToolEvents(ch <-chan toolEvent) tea.Cmd {
+	return func() tea.Msg {
+		ev, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return toolEventMsg(ev)
 	}
 }
 
@@ -92,6 +113,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.contextTokens = msg.contextTokens
 		m.responding = false
 		return m, nil
+	case toolEventMsg:
+		if msg.phase == "call" {
+			m.messages = append(m.messages, message{role: "tool", text: "$ " + msg.detail})
+		} else {
+			m.messages = append(m.messages, message{role: "tool", text: msg.detail})
+		}
+		return m, listenToolEvents(m.toolEvents)
 	case spinnerTickMsg:
 		if !m.responding {
 			return m, nil
@@ -110,7 +138,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor = 0
 				m.responding = true
 				m.spinnerFrame = 0
-				return m, tea.Batch(waitForResponse(m.respond, text), tickSpinner())
+				m.toolEvents = make(chan toolEvent)
+				emit := func(ev toolEvent) { m.toolEvents <- ev }
+				return m, tea.Batch(waitForResponse(m.respond, text, emit), listenToolEvents(m.toolEvents), tickSpinner())
 			}
 		case tea.KeyEsc, tea.KeyCtrlU:
 			m.input = nil
@@ -237,6 +267,16 @@ func (m model) renderLog(width, height int) string {
 				text := linePrefix + line
 				bubble := " " + text + strings.Repeat(" ", max(contentWidth-runesWidth([]rune(text)), 0)) + " "
 				lines = append(lines, "  "+userMessageStyle.Render(bubble))
+			}
+			continue
+		}
+		if msg.role == "tool" {
+			style := toolStyle
+			if !strings.HasPrefix(msg.text, "$") {
+				style = toolOutputStyle
+			}
+			for _, line := range wrapText(msg.text, contentWidth-2) {
+				lines = append(lines, "    "+style.Render("│ "+line))
 			}
 			continue
 		}
