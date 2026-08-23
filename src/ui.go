@@ -386,9 +386,6 @@ func (m model) View() tea.View {
 	status := ""
 	if m.responding {
 		activity := " Thinking…"
-		if m.pendingSteer != "" {
-			activity = " Steering…"
-		}
 		queueInfo := ""
 		if len(m.queued) > 0 {
 			queueInfo = " · " + strconv.Itoa(len(m.queued)) + " queued"

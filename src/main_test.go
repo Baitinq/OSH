@@ -121,6 +121,9 @@ func TestEnterDefersSteerUntilInProgressResponseFinishes(t *testing.T) {
 		strings.Index(view, "steer") > strings.Index(view, m.renderComposer(m.width)) {
 		t.Fatalf("steer is not shown above the composer: %q", view)
 	}
+	if !strings.Contains(view, "Thinking…") || strings.Contains(view, "Steering…") {
+		t.Fatalf("pending steer changed the thinking status: %q", view)
+	}
 
 	m, cmd = updateModelWithCmd(t, m, responseMsg{id: 1, text: "completed response", contextTokens: 42})
 	if cmd == nil || !m.responding || m.nextRequestID != 2 || m.pendingSteer != "" {
