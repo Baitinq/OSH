@@ -7,10 +7,12 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
+	"github.com/openai/openai-go/v3/shared"
 )
 
 const systemPrompt = "You're an extremely useful general purpose agent."
-const modelName = "gpt-5.6"
+const modelName = "gpt-5.6-sol"
+const reasoningEffort = shared.ReasoningEffortMedium
 
 var shellTool = responses.ToolUnionParam{
 	OfFunction: &responses.FunctionToolParam{
@@ -36,15 +38,15 @@ func newAgent() agent {
 	return agent{client: openai.NewClient()}
 }
 
-func runShell(command string) string {
-	out, err := exec.Command("sh", "-c", command).CombinedOutput()
+func runShell(ctx context.Context, command string) string {
+	out, err := exec.CommandContext(ctx, "sh", "-c", command).CombinedOutput()
 	if err != nil {
 		return string(out) + "\nexit status: " + err.Error()
 	}
 	return string(out)
 }
 
-func (a *agent) respond(msg string, emit func(toolEvent)) response {
+func (a *agent) respond(msg string, emit func(toolEvent), ctx context.Context) response {
 	a.history = append(a.history, responses.ResponseInputItemUnionParam{
 		OfMessage: &responses.EasyInputMessageParam{
 			Role:    responses.EasyInputMessageRoleUser,
@@ -59,11 +61,15 @@ func (a *agent) respond(msg string, emit func(toolEvent)) response {
 			Model:        modelName,
 			Instructions: openai.String(systemPrompt),
 			Input:        responses.ResponseNewParamsInputUnion{OfInputItemList: responses.ResponseInputParam(a.history)},
+			Reasoning:    shared.ReasoningParam{Effort: reasoningEffort},
 			Tools:        []responses.ToolUnionParam{shellTool},
 			Store:        openai.Bool(false),
 		}
-		resp, err := a.client.Responses.New(context.TODO(), params)
+		resp, err := a.client.Responses.New(ctx, params)
 		if err != nil {
+			if ctx.Err() != nil {
+				return response{}
+			}
 			panic(err)
 		}
 		contextTokens = resp.Usage.TotalTokens
@@ -92,6 +98,9 @@ func (a *agent) respond(msg string, emit func(toolEvent)) response {
 			text = resp.OutputText()
 			break
 		}
+		if ctx.Err() != nil {
+			return response{}
+		}
 
 		for _, call := range toolCalls {
 			var args struct {
@@ -101,12 +110,12 @@ func (a *agent) respond(msg string, emit func(toolEvent)) response {
 				panic(err)
 			}
 			emit(toolEvent{phase: "call", name: call.Name, detail: args.Command})
-			output := runShell(args.Command)
+			output := runShell(ctx, args.Command)
 			emit(toolEvent{phase: "result", name: call.Name, detail: output})
 			a.history = append(a.history, responses.ResponseInputItemUnionParam{
 				OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{
 					CallID: call.CallID,
-					Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{OfString: openai.String(runShell(args.Command))},
+					Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{OfString: openai.String(output)},
 				},
 			})
 		}

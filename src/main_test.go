@@ -1,18 +1,18 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 const testAgentResponse = "test response"
 const testModelName = "test-model"
 
 func newTestModel() model {
-	return newModel(testModelName, func(string, func(toolEvent)) response {
+	return newModel(testModelName, func(string, func(toolEvent), context.Context) response {
 		return response{text: testAgentResponse, contextTokens: 1234}
 	})
 }
@@ -47,11 +47,8 @@ func TestResponseRunsAsynchronously(t *testing.T) {
 	var cmd tea.Cmd
 	m, cmd = updateModelWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 
-	if len(m.messages) != 1 {
-		t.Fatalf("got %d messages before response, want 1", len(m.messages))
-	}
-	if m.messages[0].role != "you" || m.messages[0].text != "hello agent" || m.messages[0].sentAt == "" {
-		t.Fatalf("unexpected user message: %#v", m.messages[0])
+	if !m.responding {
+		t.Fatal("model should be waiting for a response")
 	}
 	if !m.responding {
 		t.Fatal("model should be waiting for a response")
@@ -67,15 +64,20 @@ func TestResponseRunsAsynchronously(t *testing.T) {
 	}
 
 	batch, ok := cmd().(tea.BatchMsg)
-	if !ok || len(batch) != 3 {
+	if !ok {
+		t.Fatalf("command returned %#v, want a batch", cmd())
+	}
+	if len(batch) != 3 {
 		t.Fatalf("command returned %#v, want response, tool-events and spinner commands", batch)
 	}
-	m = updateModel(t, m, batch[0]())
+	result := batch[0]()
+	m = updateModel(t, m, result)
 	if m.responding {
 		t.Fatal("model still waiting after response")
 	}
-	if len(m.messages) != 2 || m.messages[1] != (message{role: "agent", text: testAgentResponse}) {
-		t.Fatalf("unexpected messages after response: %#v", m.messages)
+	respPrint, ok := result.(responseMsg)
+	if !ok || respPrint.text != testAgentResponse {
+		t.Fatalf("unexpected response message: %#v", result)
 	}
 	if m.contextTokens != 1234 {
 		t.Fatalf("context tokens = %d, want 1234", m.contextTokens)
@@ -89,8 +91,8 @@ func TestEnterDoesNotStartAnotherResponseWhileWaiting(t *testing.T) {
 	m.cursor = len(m.input)
 
 	m, cmd := updateModelWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd != nil || len(m.messages) != 0 {
-		t.Fatalf("enter started another response while waiting: %#v", m.messages)
+	if cmd != nil {
+		t.Fatal("enter started another response while waiting")
 	}
 }
 
@@ -108,39 +110,27 @@ func TestSpaceKeyAddsSpaceToInput(t *testing.T) {
 func TestEmptyInputDoesNotAddMessages(t *testing.T) {
 	m := newTestModel()
 	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("   ")})
-	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, cmd := updateModelWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
 
-	if len(m.messages) != 0 {
-		t.Fatalf("got %d messages, want none", len(m.messages))
+	if cmd != nil {
+		t.Fatalf("empty input started a command: %#v", cmd)
 	}
 }
 
-func TestLogKeepsNewestMessagesAtBottom(t *testing.T) {
-	m := newTestModel()
-	m.messages = []message{
-		{role: "you", text: "old message", sentAt: "18:37"},
-		{role: "agent", text: testAgentResponse},
+func TestRenderedMessagesIncludeTimestampAndToolOutput(t *testing.T) {
+	user := renderMessageLines(message{role: "you", text: "hello", sentAt: "18:37"}, 80)
+	if len(user) == 0 || !strings.Contains(user[0], "[18:37] hello") {
+		t.Fatalf("user message is missing its timestamp: %q", user)
 	}
 
-	log := m.renderLog(80, 2)
-	if !strings.Contains(log, testAgentResponse) {
-		t.Fatalf("newest message missing from clipped log: %q", log)
+	call := strings.Join(renderMessageLines(message{role: "tool", text: "$ echo hi"}, 80), "\n")
+	if !strings.Contains(call, "$ echo hi") {
+		t.Fatalf("tool call line missing: %q", call)
 	}
-	if strings.Contains(log, "old message") {
-		t.Fatalf("old message should have scrolled out: %q", log)
-	}
-	if strings.Contains(log, "YOU") || strings.Contains(log, "AGENT") {
-		t.Fatalf("log should not contain role labels: %q", log)
-	}
-}
 
-func TestUserMessageShowsSentTime(t *testing.T) {
-	m := newTestModel()
-	m.messages = []message{{role: "you", text: "hello", sentAt: "18:37"}}
-
-	log := m.renderLog(80, 3)
-	if !strings.Contains(log, "[18:37] hello") {
-		t.Fatalf("user message is missing its timestamp: %q", log)
+	output := strings.Join(renderMessageLines(message{role: "tool", text: "hi\n"}, 80), "\n")
+	if !strings.Contains(output, "hi") {
+		t.Fatalf("tool output line missing: %q", output)
 	}
 }
 
@@ -156,27 +146,55 @@ func TestViewShowsModelAndContextTokensBelowComposer(t *testing.T) {
 	}
 }
 
-func TestViewFillsTerminal(t *testing.T) {
+func TestViewShowsSpinnerWhileResponding(t *testing.T) {
 	m := newTestModel()
-	m.width = 60
-	m.height = 18
-	view := m.View()
-
-	if got := lipgloss.Height(view); got != m.height {
-		t.Fatalf("view height = %d, want %d", got, m.height)
+	if strings.Contains(m.View(), "Thinking…") {
+		t.Fatal("spinner shown while idle")
 	}
-	if got := lipgloss.Width(view); got != m.width {
-		t.Fatalf("view width = %d, want %d", got, m.width)
+	m.responding = true
+	if !strings.Contains(m.View(), "Thinking… (esc to cancel)") {
+		t.Fatal("spinner not shown while responding")
+	}
+}
+func TestEscCancelsInProgressResponse(t *testing.T) {
+	m := newTestModel()
+	m.responding = true
+	cancelled := false
+	m.cancel = func() { cancelled = true }
+	m.nextRequestID = 1
+
+	m, _ = updateModelWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+
+	if !cancelled {
+		t.Fatal("esc did not cancel the in-flight request")
+	}
+	if m.responding || m.cancel != nil {
+		t.Fatal("model should not be responding after esc")
+	}
+	if len(m.messages) != 1 || m.messages[0].text != "Cancelled." {
+		t.Fatalf("unexpected messages after cancel: %#v", m.messages)
+	}
+	m = updateModel(t, m, responseMsg{id: 1, text: testAgentResponse, contextTokens: 1234})
+	if len(m.messages) != 1 {
+		t.Fatalf("stale response was appended after cancellation: %#v", m.messages)
 	}
 }
 
-func TestToolEventsAppearInLog(t *testing.T) {
+func TestResizeRedrawsFrame(t *testing.T) {
 	m := newTestModel()
-	m = updateModel(t, m, toolEventMsg{phase: "call", name: "shell", detail: "echo hi"})
-	m = updateModel(t, m, toolEventMsg{phase: "result", name: "shell", detail: "hi\n"})
+	m.width = 60
+	m.height = 18
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
 
-	log := m.renderLog(80, 10)
-	if !strings.Contains(log, "$ echo hi") || !strings.Contains(log, "hi") {
-		t.Fatalf("tool call/output missing from log: %q", log)
+	if m.width != 100 || m.height != 30 {
+		t.Fatalf("size not updated: %dx%d", m.width, m.height)
+	}
+	view := m.View()
+	if height := strings.Count(strings.TrimSuffix(view, "\n"), "\n") + 1; height != 30 {
+		t.Fatalf("view height = %d, want 30 after resize", height)
+	}
+	composer := m.renderComposer(100)
+	if first := strings.Split(composer, "\n")[0]; len(first) < 96 {
+		t.Fatalf("composer not resized to new width: %q", first)
 	}
 }

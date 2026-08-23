@@ -20,7 +20,7 @@ func main() {
 		os.Exit(1)
 	}
 	agent := newAgent()
-	if _, err := tea.NewProgram(newModel(modelName, agent.respond), tea.WithAltScreen()).Run(); err != nil {
+	if _, err := tea.NewProgram(newModel(modelName, agent.respond)).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
