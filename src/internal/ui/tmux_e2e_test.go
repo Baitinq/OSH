@@ -18,7 +18,7 @@ func TestTmuxHarness(t *testing.T) {
 	if os.Getenv("OSH_TMUX_HARNESS") != "1" {
 		t.Skip("tmux harness")
 	}
-	respond := func(input string, emit func(agent.ToolEvent), ctx context.Context) agent.Response {
+	respond := func(input string, steer <-chan string, emit func(agent.ToolEvent), ctx context.Context) agent.Response {
 		switch input {
 		case "stream":
 			for i := 1; i <= 32; i++ {
@@ -30,10 +30,40 @@ func TestTmuxHarness(t *testing.T) {
 				emit(toolEvent{Phase: "text_delta", Detail: fmt.Sprintf("STREAM-LINE-%02d abcdefghijklmnopqrstuvwxyz\n", i)})
 			}
 			return agent.Response{Text: strings.TrimSuffix(buildNumberedLines("STREAM-LINE", 32), "\n"), ContextTokens: 321}
+		case "steertest":
+			emit(toolEvent{Phase: "text_delta", Detail: "STEER-WAIT"})
+			select {
+			case correction := <-steer:
+				emit(toolEvent{Phase: "steer_consumed", Detail: correction})
+				emit(toolEvent{Phase: "text_reset"})
+				emit(toolEvent{Phase: "text_delta", Detail: "STEERED<" + correction + ">"})
+				return agent.Response{Text: "STEERED<" + correction + ">", ContextTokens: 901}
+			case <-ctx.Done():
+				return agent.Response{}
+			}
+		case "toolburst":
+			emit(toolEvent{Phase: "call", Name: "shell", ID: "burst-call", Detail: "produce 60 lines"})
+			var output strings.Builder
+			for i := 1; i <= 60; i++ {
+				line := fmt.Sprintf("BURST-%02d\n", i)
+				output.WriteString(line)
+				emit(toolEvent{Phase: "update", Name: "shell", ID: "burst-call", Detail: line})
+				time.Sleep(10 * time.Millisecond)
+			}
+			// Leave enough time for the last partial update to be rendered before
+			// completion, so the tmux test proves this was genuinely live.
+			time.Sleep(250 * time.Millisecond)
+			emit(toolEvent{Phase: "result", Name: "shell", ID: "burst-call", Detail: output.String()})
+			emit(toolEvent{Phase: "text_delta", Detail: "burst complete"})
+			return agent.Response{Text: "burst complete", ContextTokens: 876}
 		case "tools":
-			emit(toolEvent{Phase: "call", Name: "shell", Detail: "printf tool-output"})
-			time.Sleep(80 * time.Millisecond)
-			emit(toolEvent{Phase: "result", Name: "shell", Detail: "tool-output"})
+			emit(toolEvent{Phase: "call", Name: "shell", ID: "tool-call", Detail: "printf tool-output"})
+			time.Sleep(40 * time.Millisecond)
+			emit(toolEvent{Phase: "update", Name: "shell", ID: "tool-call", Detail: "LIVE-"})
+			time.Sleep(40 * time.Millisecond)
+			emit(toolEvent{Phase: "update", Name: "shell", ID: "tool-call", Detail: "PARTIAL"})
+			time.Sleep(200 * time.Millisecond)
+			emit(toolEvent{Phase: "result", Name: "shell", ID: "tool-call", Detail: "tool-output"})
 			for _, chunk := range []string{"tool ", "turn ", "complete"} {
 				emit(toolEvent{Phase: "text_delta", Detail: chunk})
 				time.Sleep(20 * time.Millisecond)

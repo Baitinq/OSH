@@ -5,8 +5,9 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 socket="osh-e2e-$$"
 session=osh-e2e
 binary=$(mktemp "${TMPDIR:-/tmp}/osh-e2e.XXXXXX")
+render_log=$(mktemp "${TMPDIR:-/tmp}/osh-render-log.XXXXXX")
 tmux=(tmux -L "$socket")
-cleanup() { "${tmux[@]}" kill-server 2>/dev/null || true; rm -f "$binary"; }
+cleanup() { "${tmux[@]}" kill-server 2>/dev/null || true; rm -f "$binary" "$render_log"; }
 trap cleanup EXIT
 
 cd "$root"
@@ -14,6 +15,9 @@ go test -c -o "$binary" ./internal/ui
 "${tmux[@]}" new-session -d -x 60 -y 18 -s "$session" /bin/sh
 "${tmux[@]}" set-option -t "$session" remain-on-exit on
 "${tmux[@]}" send-keys -t "$session" "OSH_TMUX_HARNESS=1 '$binary' -test.run '^TestTmuxHarness$' -test.count=1" Enter
+# Type before initialization finishes. Startup input must survive terminal-mode
+# setup and appear in the editor rather than as stray text above the UI.
+"${tmux[@]}" send-keys -t "$session" -l STARTUP-DRAFT
 
 capture() { "${tmux[@]}" capture-pane -p -t "$session" -S -; }
 wait_for() {
@@ -21,7 +25,8 @@ wait_for() {
   for _ in $(seq 1 200); do capture | grep -q "$pattern" && return 0; sleep .025; done
   echo "timed out waiting for $pattern" >&2; capture >&2; return 1
 }
-wait_for 'Type a message'
+wait_for '│ STARTUP-DRAFT'
+"${tmux[@]}" send-keys -t "$session" Escape
 
 # Stream past the viewport and verify both ends reached native tmux history.
 "${tmux[@]}" send-keys -t "$session" -l stream
@@ -79,11 +84,50 @@ wait_for 'ECHO<alpha'
 # Tool call, result, and streamed final response share the logical transcript.
 "${tmux[@]}" send-keys -t "$session" -l tools
 "${tmux[@]}" send-keys -t "$session" Enter
+wait_for 'LIVE-PARTIAL'
 wait_for 'context 654 tokens'
 all=$(capture)
 grep -q '\$ printf tool-output' <<<"$all"
-grep -q '│ tool-output' <<<"$all"
+grep -q '^ tool-output' <<<"$all"
 grep -q 'tool turn complete' <<<"$all"
+
+# Enter while active steers the same response instead of starting a follow-up.
+"${tmux[@]}" send-keys -t "$session" -l steertest
+"${tmux[@]}" send-keys -t "$session" Enter
+wait_for 'STEER-WAIT'
+"${tmux[@]}" send-keys -t "$session" -l change-direction
+"${tmux[@]}" send-keys -t "$session" Enter
+wait_for 'STEERED<change-direction>'
+wait_for 'context 901 tokens'
+
+# A sustained tool stream remains live without rendering every individual
+# chunk. Capture raw pane output and count synchronized renderer frames.
+"${tmux[@]}" send-keys -t "$session" -l toolburst
+wait_for '│ toolburst'
+printf -v pipe_command 'cat > %q' "$render_log"
+"${tmux[@]}" pipe-pane -t "$session" "$pipe_command"
+sleep .05
+"${tmux[@]}" send-keys -t "$session" Enter
+wait_for 'BURST-60'
+! capture | grep -q 'context 876 tokens'
+wait_for 'context 876 tokens'
+"${tmux[@]}" pipe-pane -t "$session"
+sleep .05
+render_frames=$(python3 - "$render_log" <<'PY'
+import pathlib
+import sys
+print(pathlib.Path(sys.argv[1]).read_bytes().count(b"\x1b[?2026h"))
+PY
+)
+if [[ "$render_frames" -gt 13 ]]; then
+  echo "tool burst caused $render_frames renderer frames, want at most 13" >&2
+  exit 1
+fi
+all=$(capture)
+! grep -q 'BURST-01' <<<"$all"
+grep -q 'earlier lines' <<<"$all"
+grep -q 'BURST-60' <<<"$all"
+grep -q 'burst complete' <<<"$all"
 
 # Ctrl+C cancels the active task without exiting.
 "${tmux[@]}" send-keys -t "$session" -l cancel
@@ -114,7 +158,7 @@ for i in $(seq -w 1 14); do
   "${tmux[@]}" send-keys -t "$session" -l "EDIT-$i"
   [[ "$i" == 14 ]] || "${tmux[@]}" send-keys -t "$session" C-j
 done
-sleep .1
+wait_for '│ EDIT-14'
 visible=$("${tmux[@]}" capture-pane -p -t "$session")
 grep -q '│ EDIT-14' <<<"$visible"
 "${tmux[@]}" send-keys -t "$session" Enter
@@ -134,4 +178,4 @@ if capture | grep -q '│  ype a message'; then
   exit 1
 fi
 
-printf 'tmux e2e passed: streaming, tools, history, scroll anchoring, dynamic multiline input, cancellation, resize, and cleanup\n'
+printf 'tmux e2e passed: streaming, active-loop steering, throttled tool bursts (%s frames), tools, history, scroll anchoring, dynamic multiline input, cancellation, resize, and cleanup\n' "$render_frames"

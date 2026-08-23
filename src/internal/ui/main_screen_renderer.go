@@ -53,6 +53,12 @@ func (r *mainScreenRenderer) render(lines []string, cursorRow, cursorCol int) er
 	fullRender := func(clear bool) error {
 		var b strings.Builder
 		b.WriteString("\x1b[?2026h")
+		if len(r.previousLines) == 0 {
+			// Input can be echoed before raw mode is established. The first
+			// frame owns the current line, so clear that echo without touching
+			// the shell output and scrollback above it.
+			b.WriteString("\r\x1b[2K")
+		}
 		if clear {
 			b.WriteString("\x1b[2J\x1b[H\x1b[3J")
 		}
@@ -207,6 +213,19 @@ func (r *mainScreenRenderer) stop() error {
 }
 
 func lineWidth(s string) int { return tui.StringWidth(stripANSI(s)) }
+
+func sanitizeTerminalText(s string) string {
+	s = stripANSI(s)
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	s = strings.ReplaceAll(s, "\t", "    ")
+	return strings.Map(func(r rune) rune {
+		if r < ' ' && r != '\n' || r >= 0x7f && r < 0xa0 {
+			return -1
+		}
+		return r
+	}, s)
+}
 
 func stripANSI(s string) string {
 	var b strings.Builder

@@ -1,4 +1,3 @@
-streaming reasoning tokens
 web search tool like pi?
 python env? rlm
 computer use? (screenshot, move mouse, press key?)
@@ -16,5 +15,5 @@ slash summarize? when u loose context of what happened and slash model and slash
 git-first?
 other-agent aware (e.g. if other agents are working maybe it can somehow know idk)
 hardware awareness? where is it running on (specs, os)
-press up arrow to go back in prompts
 /tree
+todo: install cli

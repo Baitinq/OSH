@@ -30,7 +30,7 @@ func (r *testRuntime) runNext(t *testing.T) {
 	}
 }
 
-func newState(respond func(string, func(toolEvent), context.Context) response) (*oshUI, *testRuntime) {
+func newState(respond func(string, <-chan string, func(toolEvent), context.Context) response) (*oshUI, *testRuntime) {
 	runtime := newTestRuntime()
 	s := newUI(testModelName, testReasoningEffort, respond)
 	s.ensureTextarea()
@@ -60,6 +60,47 @@ func TestTextareaEditingAndWordAliases(t *testing.T) {
 	}
 }
 
+func TestInputHistoryNavigatesOlderAndRestoresDraft(t *testing.T) {
+	s, _ := newState(nil)
+	s.responding = true
+	s.submitInput("first message", false)
+	s.submitInput("second message", false)
+	s.textarea.SetText("unfinished draft")
+
+	up := tui.KeyEvent{Key: tui.KeyUp}
+	down := tui.KeyEvent{Key: tui.KeyDown}
+	for _, step := range []struct {
+		key  tui.KeyEvent
+		want string
+	}{
+		{up, "second message"},
+		{up, "first message"},
+		{up, "first message"},
+		{down, "second message"},
+		{down, "unfinished draft"},
+	} {
+		s.handleKey(step.key)
+		if got := s.textarea.Text(); got != step.want {
+			t.Fatalf("history navigation produced %q, want %q", got, step.want)
+		}
+	}
+}
+
+func TestUpArrowStillMovesWithinMultilineDraft(t *testing.T) {
+	s, _ := newState(nil)
+	s.inputHistory = []string{"older message"}
+	s.textarea.SetText("first line\nsecond line")
+	s.textarea.SetCursorPos(runeToClusterIndex(s.textarea.Text(), len([]rune(s.textarea.Text()))))
+
+	s.handleKey(tui.KeyEvent{Key: tui.KeyUp})
+	if got := s.textarea.Text(); got != "first line\nsecond line" {
+		t.Fatalf("multiline navigation recalled history: %q", got)
+	}
+	if s.historyIndex != -1 {
+		t.Fatalf("multiline navigation entered history at index %d", s.historyIndex)
+	}
+}
+
 func TestPendingInputsAreRecordedInOrder(t *testing.T) {
 	s, _ := newState(nil)
 	s.responding = true
@@ -73,7 +114,7 @@ func TestPendingInputsAreRecordedInOrder(t *testing.T) {
 
 func TestSubmitRunsAsynchronously(t *testing.T) {
 	release := make(chan struct{})
-	s, runtime := newState(func(input string, _ func(toolEvent), _ context.Context) response {
+	s, runtime := newState(func(input string, _ <-chan string, _ func(toolEvent), _ context.Context) response {
 		if input != "hello" {
 			t.Errorf("input = %q", input)
 		}
@@ -101,9 +142,9 @@ func TestSubmitRunsAsynchronously(t *testing.T) {
 }
 
 func TestToolEventsAreAddedToTranscript(t *testing.T) {
-	s, runtime := newState(func(_ string, emit func(toolEvent), _ context.Context) response {
-		emit(toolEvent{Phase: "call", Name: "shell", Detail: "pwd"})
-		emit(toolEvent{Phase: "result", Name: "shell", Detail: "/tmp"})
+	s, runtime := newState(func(_ string, _ <-chan string, emit func(toolEvent), _ context.Context) response {
+		emit(toolEvent{Phase: "call", Name: "shell", ID: "call-1", Detail: "pwd"})
+		emit(toolEvent{Phase: "result", Name: "shell", ID: "call-1", Detail: "/tmp"})
 		return response{Text: "done"}
 	})
 	s.textarea.SetText("inspect")
@@ -112,16 +153,51 @@ func TestToolEventsAreAddedToTranscript(t *testing.T) {
 	for s.responding {
 		runtime.runNext(t)
 	}
-	if len(s.messages) != 4 {
+	if len(s.messages) != 3 {
 		t.Fatalf("messages = %#v", s.messages)
 	}
-	if s.messages[1].text != "$ pwd" || s.messages[2].text != "/tmp" {
-		t.Fatalf("tool events out of order: %#v", s.messages)
+	tool := s.messages[1]
+	if tool.role != "tool" || tool.toolCommand != "pwd" || tool.toolResult != "/tmp" || tool.toolState != "success" {
+		t.Fatalf("tool card was not updated in place: %#v", tool)
+	}
+}
+
+func TestToolUpdatesStreamIntoPendingCard(t *testing.T) {
+	s, _ := newState(nil)
+	s.responding = true
+	s.nextRequestID = 1
+	s.handleToolEvent(1, toolEvent{Phase: "call", Name: "shell", ID: "call-1", Detail: "work"})
+	s.handleToolEvent(1, toolEvent{Phase: "update", Name: "shell", ID: "call-1", Detail: "first"})
+	s.handleToolEvent(1, toolEvent{Phase: "update", Name: "shell", ID: "call-1", Detail: " second"})
+
+	tool := s.messages[0]
+	if tool.toolState != "pending" || tool.toolResult != "first second" {
+		t.Fatalf("streaming tool card = %#v", tool)
+	}
+	s.handleToolEvent(1, toolEvent{Phase: "result", Name: "shell", ID: "call-1", Detail: "first second"})
+	if s.messages[0].toolState != "success" || s.messages[0].toolResult != "first second" {
+		t.Fatalf("completed tool card = %#v", s.messages[0])
+	}
+}
+
+func TestToolResultsUpdateMatchingCallID(t *testing.T) {
+	s, _ := newState(nil)
+	s.responding = true
+	s.nextRequestID = 1
+	s.handleToolEvent(1, toolEvent{Phase: "call", Name: "shell", ID: "first", Detail: "one"})
+	s.handleToolEvent(1, toolEvent{Phase: "call", Name: "shell", ID: "second", Detail: "two"})
+	s.handleToolEvent(1, toolEvent{Phase: "result", Name: "shell", ID: "first", Detail: "one-result"})
+
+	if s.messages[0].toolResult != "one-result" || s.messages[0].toolState != "success" {
+		t.Fatalf("first tool card was not updated: %#v", s.messages)
+	}
+	if s.messages[1].toolResult != "" || s.messages[1].toolState != "pending" {
+		t.Fatalf("second tool card was changed: %#v", s.messages)
 	}
 }
 
 func TestResponseErrorIsRetained(t *testing.T) {
-	s, runtime := newState(func(string, func(toolEvent), context.Context) response {
+	s, runtime := newState(func(string, <-chan string, func(toolEvent), context.Context) response {
 		return response{Err: errors.New("request failed")}
 	})
 	s.textarea.SetText("hello")
@@ -135,7 +211,7 @@ func TestResponseErrorIsRetained(t *testing.T) {
 }
 
 func TestEnterSteersAndShiftEnterQueues(t *testing.T) {
-	s, _ := newState(func(string, func(toolEvent), context.Context) response { return response{} })
+	s, _ := newState(func(string, <-chan string, func(toolEvent), context.Context) response { return response{} })
 	s.responding = true
 
 	s.textarea.SetText("queued follow-up")
@@ -146,17 +222,52 @@ func TestEnterSteersAndShiftEnterQueues(t *testing.T) {
 	if len(s.queued) != 1 || s.queued[0] != "queued follow-up" {
 		t.Fatalf("queue = %#v", s.queued)
 	}
-	if s.pendingSteer != "priority correction" {
-		t.Fatalf("steer = %q", s.pendingSteer)
+	if len(s.pendingSteer) != 1 || s.pendingSteer[0] != "priority correction" {
+		t.Fatalf("steer = %#v", s.pendingSteer)
 	}
 	if len(s.pendingInputs) != 2 || s.pendingInputs[0].kind != "queued" || s.pendingInputs[1].kind != "steer" {
 		t.Fatalf("pending inputs = %#v", s.pendingInputs)
 	}
 }
 
+func TestSteerIsDeliveredIntoActiveResponse(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	s, runtime := newState(func(_ string, steer <-chan string, emit func(toolEvent), _ context.Context) response {
+		close(started)
+		text := <-steer
+		emit(toolEvent{Phase: "steer_consumed", Detail: text})
+		<-release
+		return response{Text: "continued"}
+	})
+	s.submitInput("initial", false)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("initial response did not start")
+	}
+
+	s.submitInput("change direction", false)
+	runtime.runNext(t)
+	if !s.responding {
+		t.Fatal("steering ended the active response")
+	}
+	if len(s.pendingSteer) != 0 || len(s.pendingInputs) != 0 {
+		t.Fatalf("consumed steer still pending: steer=%#v inputs=%#v", s.pendingSteer, s.pendingInputs)
+	}
+	if got := s.messages[len(s.messages)-1]; got.role != "you" || got.text != "change direction" {
+		t.Fatalf("consumed steer was not added to transcript: %#v", s.messages)
+	}
+
+	close(release)
+	for s.responding {
+		runtime.runNext(t)
+	}
+}
+
 func TestSteerRunsBeforeQueuedMessage(t *testing.T) {
 	started := make(chan string, 2)
-	s, _ := newState(func(input string, _ func(toolEvent), ctx context.Context) response {
+	s, _ := newState(func(input string, _ <-chan string, _ func(toolEvent), ctx context.Context) response {
 		started <- input
 		<-ctx.Done()
 		return response{}
@@ -164,7 +275,7 @@ func TestSteerRunsBeforeQueuedMessage(t *testing.T) {
 	s.responding = true
 	s.nextRequestID = 1
 	s.queued = []string{"queued"}
-	s.pendingSteer = "steer"
+	s.pendingSteer = []string{"steer"}
 	s.pendingInputs = []pendingInput{{kind: "queued", text: "queued"}, {kind: "steer", text: "steer"}}
 
 	s.finishResponse(response{id: 1, Text: "first"})
@@ -183,11 +294,12 @@ func TestSteerRunsBeforeQueuedMessage(t *testing.T) {
 }
 
 func TestCtrlCCancelsThenExitsOnSecondPress(t *testing.T) {
-	s, _ := newState(func(string, func(toolEvent), context.Context) response { return response{} })
+	s, _ := newState(func(string, <-chan string, func(toolEvent), context.Context) response { return response{} })
 	ctx, cancel := context.WithCancel(context.Background())
 	s.responding = true
 	s.cancel = cancel
 	s.nextRequestID = 3
+	s.messages = append(s.messages, message{role: "tool", toolCommand: "sleep 10", toolState: "pending"})
 	ctrlC := tui.KeyEvent{Key: tui.KeyRune, Rune: 'c', Mod: tui.ModCtrl}
 
 	if keepRunning := s.handleKey(ctrlC); !keepRunning {
@@ -196,8 +308,11 @@ func TestCtrlCCancelsThenExitsOnSecondPress(t *testing.T) {
 	if ctx.Err() == nil || s.responding || s.cancel != nil {
 		t.Fatalf("request was not cancelled: %#v", s)
 	}
-	if len(s.messages) != 1 || s.messages[0].text != "Cancelled." {
+	if len(s.messages) != 2 || s.messages[1].text != "Cancelled." {
 		t.Fatalf("cancellation message missing: %#v", s.messages)
+	}
+	if s.messages[0].toolState != "error" || s.messages[0].toolResult != "Cancelled." {
+		t.Fatalf("pending tool was not marked cancelled: %#v", s.messages[0])
 	}
 	if keepRunning := s.handleKey(ctrlC); keepRunning {
 		t.Fatal("second Ctrl+C did not exit")
@@ -237,7 +352,7 @@ func TestEscapeClearsInputWithoutCancelling(t *testing.T) {
 }
 
 func TestCancelIgnoresStaleResponse(t *testing.T) {
-	s, _ := newState(func(string, func(toolEvent), context.Context) response { return response{} })
+	s, _ := newState(func(string, <-chan string, func(toolEvent), context.Context) response { return response{} })
 	ctx, cancel := context.WithCancel(context.Background())
 	s.responding = true
 	s.cancel = cancel
@@ -264,32 +379,174 @@ func TestFormatTokenCount(t *testing.T) {
 	}
 }
 
-func TestRenderedMultilineMessageRestoresStylePerLine(t *testing.T) {
+func TestRenderedMultilineErrorRestoresStylePerLine(t *testing.T) {
 	got := renderedMessage(message{role: "error", text: "first\nsecond"}, 80)
-	if strings.Count(got, ";48;5;160m") != 2 {
+	if strings.Count(got, "38;2;204;102;102") != 2 {
 		t.Fatalf("multiline error did not style each line independently: %q", got)
 	}
-	if !strings.Contains(got, " first ") || !strings.Contains(got, " second ") {
-		t.Fatalf("multiline error lost indentation: %q", got)
+	if !strings.Contains(got, "first") || !strings.Contains(got, "second") {
+		t.Fatalf("multiline error lost content: %q", got)
 	}
 }
 
-func TestRenderedMessagesUseOriginalANSIPalette(t *testing.T) {
+func TestRenderedMessagesUsePiDarkTheme(t *testing.T) {
 	tests := []struct {
 		message message
 		code    string
 	}{
-		{message{role: "you", text: "hello", sentAt: "12:34"}, "38;5;255;48;5;236"},
-		{message{role: "agent", text: "hello"}, "38;5;252"},
-		{message{role: "tool", text: "$ pwd"}, "38;5;71"},
-		{message{role: "tool", text: "/tmp"}, "38;5;247"},
-		{message{role: "error", text: "failed"}, "38;5;255;48;5;160"},
+		{message{role: "you", text: "hello"}, "38;2;212;212;212;48;2;52;53;65"},
+		{message{role: "agent", text: "hello"}, "38;2;212;212;212"},
+		{message{role: "reasoning", text: "thinking"}, "3;38;2;128;128;128"},
+		{message{role: "tool", toolCommand: "pwd", toolState: "pending"}, "1;38;2;212;212;212;48;2;40;40;50"},
+		{message{role: "tool", toolResult: "/tmp", toolState: "success"}, "38;2;128;128;128;48;2;40;50;40"},
+		{message{role: "error", text: "failed"}, "38;2;204;102;102"},
 		{message{role: "system", text: "cancelled"}, "38;5;242"},
 	}
 	for _, test := range tests {
 		if got := renderedMessage(test.message, 80); !strings.Contains(got, test.code) {
-			t.Errorf("rendered %s message missing ANSI palette %q: %q", test.message.role, test.code, got)
+			t.Errorf("rendered %s message missing Pi theme %q: %q", test.message.role, test.code, got)
 		}
+	}
+}
+
+func TestToolOutputCannotEmitTerminalControlSequences(t *testing.T) {
+	got := renderedMessage(message{
+		role:        "tool",
+		toolCommand: "printf evil\033[2A",
+		toolResult:  "first\rsecond\033[8AOVER\bWRITE\tend\a",
+		toolState:   "success",
+	}, 40)
+	if strings.Contains(got, "\x1b[8A") || strings.Contains(got, "\x1b[2A") {
+		t.Fatalf("tool card retained cursor movement: %q", got)
+	}
+	plain := stripANSI(got)
+	for _, control := range []string{"\r", "\b", "\a", "\t"} {
+		if strings.Contains(plain, control) {
+			t.Fatalf("tool card retained control character %q: %q", control, plain)
+		}
+	}
+	for i, line := range strings.Split(got, "\n") {
+		if width := lineWidth(line); width > 40 {
+			t.Fatalf("tool card line %d width = %d: %q", i, width, line)
+		}
+	}
+}
+
+func TestToolCardPreviewsLastFiveVisualLines(t *testing.T) {
+	got := stripANSI(renderedMessage(message{
+		role: "tool", toolCommand: "many", toolResult: buildNumberedLines("OUTPUT", 12), toolState: "success",
+	}, 40))
+	if strings.Contains(got, "OUTPUT-01") || !strings.Contains(got, "OUTPUT-12") {
+		t.Fatalf("tool preview did not keep the tail: %q", got)
+	}
+	if !strings.Contains(got, "... (7 earlier lines)") {
+		t.Fatalf("tool preview lacks omitted-line count: %q", got)
+	}
+}
+
+func TestStreamingToolOutputBufferIsBounded(t *testing.T) {
+	s, _ := newState(nil)
+	s.responding = true
+	s.nextRequestID = 1
+	s.handleToolEvent(1, toolEvent{Phase: "call", Name: "shell", ID: "large", Detail: "many"})
+	chunk := strings.Repeat("a", maxToolDisplayBytes+4096)
+	s.handleToolEvent(1, toolEvent{Phase: "update", Name: "shell", ID: "large", Detail: chunk})
+	if got := len(s.messages[0].toolResult); got > maxToolDisplayBytes {
+		t.Fatalf("streaming tool buffer = %d bytes, limit = %d", got, maxToolDisplayBytes)
+	}
+}
+
+func TestToolDurationFormatsAndPersists(t *testing.T) {
+	for _, test := range []struct {
+		duration time.Duration
+		want     string
+	}{
+		{350 * time.Millisecond, "350ms"},
+		{1250 * time.Millisecond, "1.2s"},
+		{65 * time.Second, "1m 05s"},
+	} {
+		if got := formatToolDuration(test.duration); got != test.want {
+			t.Errorf("formatToolDuration(%s) = %q, want %q", test.duration, got, test.want)
+		}
+	}
+
+	started := time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC)
+	finished := started.Add(1250 * time.Millisecond)
+	msg := message{
+		role: "tool", toolCommand: "sleep 1", toolState: "success",
+		toolStartedAt: started, toolFinishedAt: finished,
+	}
+	if got := stripANSI(renderedMessage(msg, 40)); !strings.Contains(got, "$ sleep 1 (1.2s)") {
+		t.Fatalf("completed tool duration missing from card: %q", got)
+	}
+	if got := toolDurationLabel(msg, finished.Add(time.Hour)); got != " (1.2s)" {
+		t.Fatalf("completed duration changed after completion: %q", got)
+	}
+	pending := message{toolStartedAt: started}
+	if got := toolDurationLabel(pending, started.Add(350*time.Millisecond)); got != " (350ms)" {
+		t.Fatalf("pending duration did not use current time: %q", got)
+	}
+}
+
+func TestToolEventsRecordDuration(t *testing.T) {
+	s, _ := newState(nil)
+	s.responding = true
+	s.nextRequestID = 1
+	s.handleToolEvent(1, toolEvent{Phase: "call", Name: "shell", ID: "timed", Detail: "work"})
+	if s.messages[0].toolStartedAt.IsZero() || !s.messages[0].toolFinishedAt.IsZero() {
+		t.Fatalf("pending tool timestamps = %#v", s.messages[0])
+	}
+	s.handleToolEvent(1, toolEvent{Phase: "result", Name: "shell", ID: "timed", Detail: "done"})
+	if s.messages[0].toolFinishedAt.IsZero() || s.messages[0].toolFinishedAt.Before(s.messages[0].toolStartedAt) {
+		t.Fatalf("completed tool timestamps = %#v", s.messages[0])
+	}
+}
+
+func TestToolCardChangesBackgroundWithState(t *testing.T) {
+	for state, color := range map[string]string{
+		"pending": "48;2;40;40;50",
+		"success": "48;2;40;50;40",
+		"error":   "48;2;60;40;40",
+	} {
+		got := renderedMessage(message{role: "tool", toolCommand: "pwd", toolState: state}, 40)
+		if !strings.Contains(got, color) {
+			t.Errorf("%s tool card missing background %q: %q", state, color, got)
+		}
+	}
+}
+
+func TestUserMessageUsesFullWidthPiBoxWithoutTimestamp(t *testing.T) {
+	got := renderedMessage(message{role: "you", text: "hello"}, 30)
+	lines := strings.Split(got, "\n")
+	if len(lines) != 3 {
+		t.Fatalf("user box has %d lines, want vertical padding and content: %q", len(lines), got)
+	}
+	for i, line := range lines {
+		if width := lineWidth(line); width != 30 {
+			t.Errorf("user box line %d width = %d, want 30", i, width)
+		}
+	}
+	if strings.Contains(stripANSI(got), "[") {
+		t.Fatalf("user box contains a timestamp: %q", got)
+	}
+}
+
+func TestUserMessageRendersPlainText(t *testing.T) {
+	got := renderedMessage(message{role: "you", text: "Hello **world** and `code`"}, 50)
+	plain := stripANSI(got)
+	if !strings.Contains(plain, "Hello **world** and `code`") {
+		t.Fatalf("user text was changed: %q", plain)
+	}
+}
+
+func TestMainScreenRendererClearsStartupEchoFromCurrentLine(t *testing.T) {
+	var out strings.Builder
+	r := newMainScreenRenderer(&out, 20, 4)
+	if err := r.render([]string{"input"}, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); !strings.Contains(got, "\r\x1b[2Kinput") {
+		t.Fatalf("initial render did not clear the current line: %q", got)
 	}
 }
 
@@ -361,6 +618,112 @@ func TestStreamingDeltaLivesInRenderedModel(t *testing.T) {
 	}
 	if len(s.messages) != 0 {
 		t.Fatalf("stream was finalized early: %#v", s.messages)
+	}
+}
+
+func TestReasoningStreamUsesPiStyleAndPersists(t *testing.T) {
+	s, _ := newState(nil)
+	s.responding = true
+	s.nextRequestID = 1
+	s.handleToolEvent(1, toolEvent{Phase: "reasoning_delta", Detail: "Inspecting "})
+	s.handleToolEvent(1, toolEvent{Phase: "reasoning_delta", Detail: "the project"})
+
+	lines, _, _ := s.render(50)
+	rendered := strings.Join(lines, "\n")
+	if !strings.Contains(rendered, "Inspecting the project") {
+		t.Fatalf("reasoning missing from render: %q", lines)
+	}
+	if !strings.Contains(rendered, "3;38;2;128;128;128") || strings.Contains(rendered, "48;2;") {
+		t.Fatalf("reasoning is not italic gray without a background: %q", rendered)
+	}
+	if len(s.messages) != 0 {
+		t.Fatalf("reasoning was finalized while still streaming: %#v", s.messages)
+	}
+
+	s.handleToolEvent(1, toolEvent{Phase: "reasoning_done"})
+	if s.reasoningText != "" || len(s.messages) != 1 || s.messages[0].role != "reasoning" {
+		t.Fatalf("reasoning was not finalized into transcript: state=%q messages=%#v", s.reasoningText, s.messages)
+	}
+	lines, _, _ = s.render(50)
+	if !strings.Contains(strings.Join(lines, "\n"), "Inspecting the project") {
+		t.Fatalf("finalized reasoning disappeared: %q", lines)
+	}
+}
+
+func TestOutputAndToolsFinalizeReasoning(t *testing.T) {
+	for _, event := range []toolEvent{
+		{Phase: "text_delta", Detail: "answer"},
+		{Phase: "call", Name: "shell", Detail: "pwd"},
+	} {
+		s, _ := newState(nil)
+		s.responding = true
+		s.nextRequestID = 1
+		s.reasoningText = "completed reasoning"
+		s.handleToolEvent(1, event)
+		if s.reasoningText != "" {
+			t.Errorf("%s event did not finish reasoning", event.Phase)
+		}
+		if len(s.messages) == 0 || s.messages[0].role != "reasoning" || s.messages[0].text != "completed reasoning" {
+			t.Errorf("%s event did not retain reasoning: %#v", event.Phase, s.messages)
+		}
+	}
+}
+
+func TestStreamedContentPreservesReasoningTextAndToolOrder(t *testing.T) {
+	s, _ := newState(nil)
+	s.responding = true
+	s.nextRequestID = 1
+	for _, event := range []toolEvent{
+		{Phase: "text_delta", Detail: "before tool"},
+		{Phase: "reasoning_delta", Detail: "more thought"},
+		{Phase: "text_delta", Detail: "after thought"},
+		{Phase: "call", Name: "shell", ID: "call-1", Detail: "pwd"},
+	} {
+		s.handleToolEvent(1, event)
+	}
+	roles := make([]string, len(s.messages))
+	for i, message := range s.messages {
+		roles[i] = message.role
+	}
+	if got := strings.Join(roles, ","); got != "agent,reasoning,agent,tool" {
+		t.Fatalf("content order = %s, messages = %#v", got, s.messages)
+	}
+	if s.messages[0].text != "before tool" || s.messages[2].text != "after thought" {
+		t.Fatalf("text blocks were not retained: %#v", s.messages)
+	}
+}
+
+func TestAssistantAndReasoningRenderPlainText(t *testing.T) {
+	assistant := renderedMessage(message{role: "agent", text: "Use **bold** and `code`"}, 50)
+	if plain := stripANSI(assistant); !strings.Contains(plain, "Use **bold** and `code`") {
+		t.Fatalf("assistant text was changed: %q", plain)
+	}
+	reasoning := renderedMessage(message{role: "reasoning", text: "Check **carefully**"}, 50)
+	if plain := stripANSI(reasoning); !strings.Contains(plain, "Check **carefully**") {
+		t.Fatalf("reasoning text was changed: %q", plain)
+	}
+	if !strings.Contains(reasoning, "\x1b[3;38;2;128;128;128m") {
+		t.Fatalf("reasoning is not italic gray: %q", reasoning)
+	}
+}
+
+func TestWorkingAndPendingLabelsUsePiWording(t *testing.T) {
+	s, _ := newState(nil)
+	s.responding = true
+	s.pendingInputs = []pendingInput{{kind: "steer", text: "fix"}, {kind: "queued", text: "later"}}
+	lines, _, _ := s.render(60)
+	plain := stripANSI(strings.Join(lines, "\n"))
+	for _, want := range []string{"Working…", "Steering: fix", "Queued: later"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("render missing %q: %q", want, plain)
+		}
+	}
+	for _, line := range strings.Split(plain, "\n") {
+		for _, label := range []string{"Working…", "Steering:", "Queued:"} {
+			if strings.Contains(line, label) && strings.HasPrefix(line, " ") {
+				t.Errorf("%s line has left padding: %q", label, line)
+			}
+		}
 	}
 }
 

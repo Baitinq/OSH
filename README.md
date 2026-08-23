@@ -53,9 +53,12 @@ Completions API is not sufficient.
 
 ## Controls
 
-- `Enter` — send a message; while responding, steer after the active turn finishes
-- `Shift+Enter` — queue a message behind the active response
+- `Enter` — send a message; while responding, steer the active agent after its current tool-call batch
+- `Shift+Enter` — queue a follow-up until the active agent finishes
+- Reasoning summaries stream as italic gray text and remain in the transcript
+- Shell calls stream live in Pi-style cards with elapsed time; cards preview the last five lines and model-visible output is capped at 2,000 lines or 50KB
 - `Ctrl+J` — insert a newline in the input editor
+- `↑` / `↓` — navigate previously submitted messages and return to the current draft
 - `Ctrl+C` — cancel the active response; press twice within one second to quit
 - `Escape` — clear the input editor
 - Primary-screen rendering keeps terminal scrollback, selection, search, and copying native

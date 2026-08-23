@@ -16,7 +16,12 @@ import (
 	"osh/internal/agent"
 )
 
-type message struct{ role, text, sentAt string }
+type message struct {
+	role, text                    string
+	toolID, toolName, toolCommand string
+	toolResult, toolState         string
+	toolStartedAt, toolFinishedAt time.Time
+}
 type response struct {
 	id            int
 	Text          string
@@ -30,16 +35,21 @@ type oshUI struct {
 	modelName       string
 	reasoningEffort string
 	contextTokens   int64
-	respond         func(string, func(toolEvent), context.Context) response
+	respond         func(string, <-chan string, func(toolEvent), context.Context) response
 	textarea        *tui.TextArea
 	textareaWidth   int
 	messages        []message
 	streamingText   string
+	reasoningText   string
 	responding      bool
 	spinnerFrame    int
 	queued          []string
-	pendingSteer    string
+	pendingSteer    []string
+	steer           chan string
 	pendingInputs   []pendingInput
+	inputHistory    []string
+	historyIndex    int
+	historyDraft    string
 	nextRequestID   int
 	lastCtrlC       time.Time
 	cancel          context.CancelFunc
@@ -53,10 +63,20 @@ var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 const (
 	spinnerInterval          = 80 * time.Millisecond
 	ctrlCDoublePressInterval = time.Second
+	// Background streams can produce many updates per second. Rendering each
+	// one is especially expensive for growing tool cards because the card pushes
+	// the spinner and editor down. Ten frames per second still looks live while
+	// substantially reducing terminal rewrites; direct input and resize events
+	// bypass this limit below.
+	backgroundRenderInterval = 100 * time.Millisecond
+	eventPollInterval        = 10 * time.Millisecond
+	maxUpdatesPerIteration   = 64
+	toolPreviewLines         = 5
+	maxToolDisplayBytes      = 50 * 1024
 )
 
-func newUI(modelName, reasoningEffort string, respond func(string, func(toolEvent), context.Context) response) *oshUI {
-	s := &oshUI{modelName: modelName, reasoningEffort: reasoningEffort, respond: respond}
+func newUI(modelName, reasoningEffort string, respond func(string, <-chan string, func(toolEvent), context.Context) response) *oshUI {
+	s := &oshUI{modelName: modelName, reasoningEffort: reasoningEffort, respond: respond, historyIndex: -1}
 	s.ensureTextarea()
 	s.emit = func(message) {}
 	return s
@@ -86,6 +106,8 @@ func (s *oshUI) submitInput(text string, queue bool) {
 	if text == "" {
 		return
 	}
+	s.inputHistory = append(s.inputHistory, text)
+	s.historyIndex, s.historyDraft = -1, ""
 	s.textarea.Clear()
 	if !s.responding {
 		s.startRequest(text, true)
@@ -97,12 +119,14 @@ func (s *oshUI) submitInput(text string, queue bool) {
 		s.markDirty()
 		return
 	}
-	if s.pendingSteer == "" {
-		s.pendingSteer = text
-	} else {
-		s.pendingSteer += "\n\n" + text
-	}
+	s.pendingSteer = append(s.pendingSteer, text)
 	s.pendingInputs = append(s.pendingInputs, pendingInput{"steer", text})
+	if s.steer != nil {
+		select {
+		case s.steer <- text:
+		default:
+		}
+	}
 	s.markDirty()
 }
 
@@ -113,16 +137,18 @@ func (s *oshUI) startRequest(text string, showUser bool) {
 	s.nextRequestID++
 	id := s.nextRequestID
 	ctx, cancel := context.WithCancel(context.Background())
-	s.responding, s.spinnerFrame, s.cancel, s.streamingText = true, 0, cancel, ""
+	steer := make(chan string, 256)
+	s.responding, s.spinnerFrame, s.cancel, s.streamingText, s.reasoningText = true, 0, cancel, "", ""
+	s.steer = steer
 	if showUser {
-		s.addMessage(message{"you", text, time.Now().Format("15:04")})
+		s.addMessage(message{role: "you", text: text})
 	}
 	s.markDirty()
 	finished := make(chan struct{})
 	go s.spin(ctx, finished, id)
 	go func() {
 		emit := func(ev toolEvent) { s.dispatch(func() { s.handleToolEvent(id, ev) }) }
-		resp := s.respond(text, emit, ctx)
+		resp := s.respond(text, steer, emit, ctx)
 		resp.id = id
 		close(finished)
 		s.dispatch(func() { s.finishResponse(resp) })
@@ -153,48 +179,141 @@ func (s *oshUI) handleToolEvent(id int, ev toolEvent) {
 	if id != s.nextRequestID || !s.responding {
 		return
 	}
-	if ev.Phase == "text_reset" {
-		s.streamingText = ""
+	switch ev.Phase {
+	case "text_reset":
+		s.finishReasoning()
+		s.finishStreamingText()
+		return
+	case "reasoning_delta":
+		s.finishStreamingText()
+		s.reasoningText += ev.Detail
 		s.markDirty()
 		return
-	}
-	if ev.Phase == "text_delta" {
+	case "reasoning_done":
+		s.finishReasoning()
+		return
+	case "steer_consumed":
+		s.finishReasoning()
+		s.finishStreamingText()
+		s.consumePendingSteer(ev.Detail)
+		s.addMessage(message{role: "you", text: ev.Detail})
+		return
+	case "text_delta":
+		s.finishReasoning()
 		s.streamingText += ev.Detail
 		s.markDirty()
 		return
 	}
-	text, role := ev.Detail, "tool"
-	if ev.Phase == "call" {
-		text = "$ " + text
-	} else if ev.Phase == "error" {
-		role = "error"
+	s.finishReasoning()
+	s.finishStreamingText()
+	s.handleToolActivity(ev)
+}
+
+func trimToolDisplayTail(output string) string {
+	if len(output) <= maxToolDisplayBytes {
+		return output
 	}
-	s.addMessage(message{role: role, text: text})
+	start := len(output) - maxToolDisplayBytes
+	for start < len(output) && output[start]&0xc0 == 0x80 {
+		start++
+	}
+	return output[start:]
+}
+
+func (s *oshUI) handleToolActivity(ev toolEvent) {
+	if ev.Phase == "call" {
+		s.addMessage(message{
+			role: "tool", toolID: ev.ID, toolName: ev.Name,
+			toolCommand: ev.Detail, toolState: "pending", toolStartedAt: time.Now(),
+		})
+		return
+	}
+	if ev.Phase != "update" && ev.Phase != "result" && ev.Phase != "error" {
+		return
+	}
+	for i := len(s.messages) - 1; i >= 0; i-- {
+		msg := &s.messages[i]
+		if msg.role != "tool" || msg.toolState != "pending" {
+			continue
+		}
+		if ev.ID != "" && msg.toolID != ev.ID {
+			continue
+		}
+		if ev.Phase == "update" {
+			msg.toolResult = trimToolDisplayTail(msg.toolResult + ev.Detail)
+		} else {
+			msg.toolResult = ev.Detail
+			msg.toolFinishedAt = time.Now()
+			if ev.Phase == "error" {
+				msg.toolState = "error"
+			} else {
+				msg.toolState = "success"
+			}
+		}
+		s.markDirty()
+		return
+	}
+	state := "success"
+	if ev.Phase == "error" {
+		state = "error"
+	} else if ev.Phase == "update" {
+		state = "pending"
+	}
+	msg := message{
+		role: "tool", toolID: ev.ID, toolName: ev.Name,
+		toolResult: ev.Detail, toolState: state,
+	}
+	if state == "pending" {
+		msg.toolStartedAt = time.Now()
+	}
+	s.addMessage(msg)
+}
+
+func (s *oshUI) finishReasoning() {
+	if s.reasoningText == "" {
+		return
+	}
+	text := s.reasoningText
+	s.reasoningText = ""
+	s.addMessage(message{role: "reasoning", text: text})
+}
+
+func (s *oshUI) finishStreamingText() {
+	if s.streamingText == "" {
+		return
+	}
+	text := s.streamingText
+	s.streamingText = ""
+	s.addMessage(message{role: "agent", text: text})
 }
 
 func (s *oshUI) finishResponse(resp response) {
 	if resp.id != s.nextRequestID {
 		return
 	}
-	s.cancel, s.responding = nil, false
+	s.cancel, s.responding, s.steer = nil, false, nil
+	hadStreamingText := s.streamingText != ""
+	s.finishReasoning()
+	s.finishStreamingText()
 	if resp.Err == nil {
 		s.contextTokens = resp.ContextTokens
 	}
 	if resp.Err != nil {
 		s.addMessage(message{role: "error", text: resp.Err.Error()})
 	}
-	if resp.Text == "" {
-		resp.Text = s.streamingText
-	}
-	s.streamingText = ""
-	if resp.Text != "" {
+	if !hadStreamingText && resp.Text != "" {
 		s.addMessage(message{role: "agent", text: resp.Text})
 	}
-	if s.pendingSteer != "" {
-		text := s.pendingSteer
-		s.pendingSteer = ""
+	if len(s.pendingSteer) > 0 {
+		pending := append([]string(nil), s.pendingSteer...)
+		s.pendingSteer = nil
 		s.removePendingInputs("steer", -1)
-		s.startRequest(text, true)
+		s.startRequest(pending[0], true)
+		for _, text := range pending[1:] {
+			s.pendingSteer = append(s.pendingSteer, text)
+			s.pendingInputs = append(s.pendingInputs, pendingInput{"steer", text})
+			s.steer <- text
+		}
 		return
 	}
 	if len(s.queued) > 0 {
@@ -212,12 +331,23 @@ func (s *oshUI) cancelRequest() {
 		return
 	}
 	s.cancel()
-	s.pendingSteer = ""
+	s.pendingSteer = nil
 	s.removePendingInputs("steer", -1)
 	s.nextRequestID++
 	s.cancel = nil
+	s.steer = nil
 	s.responding = false
-	s.streamingText = ""
+	s.finishReasoning()
+	s.finishStreamingText()
+	for i := range s.messages {
+		if s.messages[i].role == "tool" && s.messages[i].toolState == "pending" {
+			s.messages[i].toolState = "error"
+			s.messages[i].toolFinishedAt = time.Now()
+			if s.messages[i].toolResult == "" {
+				s.messages[i].toolResult = "Cancelled."
+			}
+		}
+	}
 	s.addMessage(message{role: "system", text: "Cancelled."})
 	s.markDirty()
 }
@@ -232,6 +362,21 @@ func (s *oshUI) addMessage(msg message) {
 func (s *oshUI) markDirty() {
 	if s.invalidate != nil {
 		s.invalidate()
+	}
+}
+
+func (s *oshUI) consumePendingSteer(text string) {
+	for i, pending := range s.pendingSteer {
+		if pending == text {
+			s.pendingSteer = append(s.pendingSteer[:i], s.pendingSteer[i+1:]...)
+			break
+		}
+	}
+	for i, pending := range s.pendingInputs {
+		if pending.kind == "steer" && pending.text == text {
+			s.pendingInputs = append(s.pendingInputs[:i], s.pendingInputs[i+1:]...)
+			break
+		}
 	}
 }
 
@@ -319,6 +464,36 @@ func (s *oshUI) replaceTextRange(text []rune, start, end int) {
 	s.markDirty()
 }
 
+func (s *oshUI) navigateHistory(direction int) bool {
+	if len(s.inputHistory) == 0 {
+		return false
+	}
+	if s.historyIndex < 0 {
+		if direction > 0 {
+			return false
+		}
+		text := s.textarea.Text()
+		cursor := clusterToRuneIndex(text, s.textarea.CursorPos())
+		if strings.Contains(string([]rune(text)[:cursor]), "\n") {
+			return false
+		}
+		s.historyDraft = s.textarea.Text()
+		s.historyIndex = len(s.inputHistory)
+	}
+
+	s.historyIndex = min(max(s.historyIndex+direction, 0), len(s.inputHistory))
+	text := s.historyDraft
+	if s.historyIndex < len(s.inputHistory) {
+		text = s.inputHistory[s.historyIndex]
+	} else {
+		s.historyIndex = -1
+	}
+	s.textarea.SetText(text)
+	s.textarea.SetCursorPos(runeToClusterIndex(text, len([]rune(text))))
+	s.markDirty()
+	return true
+}
+
 func (s *oshUI) handleKey(k tui.KeyEvent) bool {
 	if k.Key == tui.KeyRune && k.Rune == 'c' && k.Mod.Has(tui.ModCtrl) {
 		now := time.Now()
@@ -331,6 +506,7 @@ func (s *oshUI) handleKey(k tui.KeyEvent) bool {
 	}
 	s.lastCtrlC = time.Time{}
 	if k.Key == tui.KeyEscape {
+		s.historyIndex, s.historyDraft = -1, ""
 		s.textarea.Clear()
 		s.markDirty()
 		return true
@@ -341,6 +517,12 @@ func (s *oshUI) handleKey(k tui.KeyEvent) bool {
 	}
 	if k.Key == tui.KeyEnter && k.Mod == tui.ModNone {
 		s.submitInput(s.textarea.Text(), false)
+		return true
+	}
+	if k.Mod == tui.ModNone && k.Key == tui.KeyUp && s.navigateHistory(-1) {
+		return true
+	}
+	if k.Mod == tui.ModNone && k.Key == tui.KeyDown && s.navigateHistory(1) {
 		return true
 	}
 	if (k.Mod.Has(tui.ModAlt) || k.Mod.Has(tui.ModCtrl)) && k.Key == tui.KeyLeft || k.Mod.Has(tui.ModAlt) && k.Key == tui.KeyRune && k.Rune == 'b' {
@@ -367,6 +549,7 @@ func (s *oshUI) handleKey(k tui.KeyEvent) bool {
 		s.deleteToLineEnd()
 		return true
 	}
+	s.historyIndex, s.historyDraft = -1, ""
 	s.textarea.HandleEvent(k)
 	s.markDirty()
 	return true
@@ -380,12 +563,16 @@ func (s *oshUI) render(width int, viewportHeight ...int) ([]string, int, int) {
 		lines = append(lines, renderedMessageLines(msg, width)...)
 		lines = append(lines, "")
 	}
+	if s.reasoningText != "" {
+		lines = append(lines, renderedMessageLines(message{role: "reasoning", text: s.reasoningText}, width)...)
+		lines = append(lines, "")
+	}
 	if s.streamingText != "" {
 		lines = append(lines, renderedMessageLines(message{role: "agent", text: s.streamingText}, width)...)
 		lines = append(lines, "")
 	}
 	if s.responding {
-		lines = append(lines, "    "+ansi256FG(39, spinnerFrames[s.spinnerFrame])+ansi256FG(242, " Thinking…"))
+		lines = append(lines, ansi256FG(39, spinnerFrames[s.spinnerFrame])+ansi256FG(242, " Working…"))
 	}
 	for _, p := range s.pendingInputs {
 		lines = append(lines, renderPendingLines(p, width)...)
@@ -409,46 +596,125 @@ func renderedMessageLines(msg message, width int) []string {
 	return strings.Split(renderedMessage(msg, width), "\n")
 }
 func renderedMessage(msg message, width int) string {
-	contentWidth := max(width-6, 8)
+	width = max(width, 10)
+	contentWidth := max(width-2, 8)
 	var lines []string
 	switch msg.role {
 	case "you":
-		prefix := "[" + msg.sentAt + "] "
-		mw := max(contentWidth-lineWidth(prefix), 1)
-		for i, line := range wrapPlain(msg.text, mw) {
-			p := strings.Repeat(" ", lineWidth(prefix))
-			if i == 0 {
-				p = prefix
-			}
-			text := p + line
-			text += strings.Repeat(" ", max(contentWidth-lineWidth(text), 0))
-			lines = append(lines, ansi256FGBG(255, 236, " "+text+" "))
+		lines = append(lines, piBoxLine("", width, piText, piUserMessageBg, false))
+		for _, line := range wrapPlain(msg.text, contentWidth) {
+			lines = append(lines, piBoxLine(" "+line, width, piText, piUserMessageBg, false))
+		}
+		lines = append(lines, piBoxLine("", width, piText, piUserMessageBg, false))
+	case "reasoning":
+		for _, line := range wrapPlain(msg.text, contentWidth) {
+			lines = append(lines, " "+ansiRGBStyle(piGray, "", false, true, line))
+		}
+	case "agent":
+		for _, line := range wrapPlain(msg.text, contentWidth) {
+			lines = append(lines, " "+ansiRGBStyle(piText, "", false, false, line))
 		}
 	case "system":
 		for _, line := range wrapPlain(msg.text, contentWidth) {
-			lines = append(lines, "    "+ansi256FG(242, line))
+			lines = append(lines, " "+ansi256FG(242, line))
 		}
 	case "error":
-		for _, line := range wrapPlain(msg.text, contentWidth-2) {
-			lines = append(lines, "    "+ansi256FGBG(255, 160, " "+line+" "))
+		for _, line := range wrapPlain(msg.text, contentWidth) {
+			lines = append(lines, " "+ansiRGBStyle(piError, "", false, false, line))
 		}
 	case "tool":
-		color := 247
-		if strings.HasPrefix(msg.text, "$") {
-			color = 71
-		}
-		for _, line := range wrapPlain(msg.text, contentWidth-2) {
-			lines = append(lines, "    "+ansi256FG(color, "│ "+line))
-		}
+		return renderedToolMessage(msg, width)
 	default:
 		for _, line := range wrapPlain(msg.text, contentWidth) {
-			lines = append(lines, "    "+ansi256FG(252, line))
+			lines = append(lines, " "+ansiRGBStyle(piText, "", false, false, line))
 		}
 	}
 	return strings.Join(lines, "\n")
 }
+
+const (
+	piText          = "212;212;212"
+	piGray          = "128;128;128"
+	piError         = "204;102;102"
+	piUserMessageBg = "52;53;65"
+	piToolPendingBg = "40;40;50"
+	piToolSuccessBg = "40;50;40"
+	piToolErrorBg   = "60;40;40"
+)
+
+func formatToolDuration(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	if d < time.Second {
+		return fmt.Sprintf("%dms", d.Round(time.Millisecond).Milliseconds())
+	}
+	if d < time.Minute {
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	}
+	minutes := int(d / time.Minute)
+	seconds := int(d/time.Second) % 60
+	return fmt.Sprintf("%dm %02ds", minutes, seconds)
+}
+
+func toolDurationLabel(msg message, now time.Time) string {
+	if msg.toolStartedAt.IsZero() {
+		return ""
+	}
+	end := msg.toolFinishedAt
+	if end.IsZero() {
+		end = now
+	}
+	return " (" + formatToolDuration(end.Sub(msg.toolStartedAt)) + ")"
+}
+
+func renderedToolMessage(msg message, width int) string {
+	bg := piToolPendingBg
+	if msg.toolState == "success" {
+		bg = piToolSuccessBg
+	} else if msg.toolState == "error" {
+		bg = piToolErrorBg
+	}
+	inner := max(width-2, 1)
+	lines := []string{piBoxLine("", width, piText, bg, false)}
+	duration := toolDurationLabel(msg, time.Now())
+	if msg.toolCommand != "" {
+		for _, line := range wrapPlain("$ "+sanitizeTerminalText(msg.toolCommand)+duration, inner) {
+			lines = append(lines, piBoxLine(" "+line, width, piText, bg, true))
+		}
+	} else if msg.toolName != "" {
+		lines = append(lines, piBoxLine(" "+sanitizeTerminalText(msg.toolName)+duration, width, piText, bg, true))
+	}
+	if msg.toolResult != "" {
+		outputLines := wrapPlain(strings.TrimSuffix(sanitizeTerminalText(msg.toolResult), "\n"), inner)
+		skipped := max(len(outputLines)-toolPreviewLines, 0)
+		if skipped > 0 {
+			outputLines = outputLines[skipped:]
+		}
+		lines = append(lines, piBoxLine("", width, piGray, bg, false))
+		if skipped > 0 {
+			hint := fmt.Sprintf(" ... (%d earlier lines)", skipped)
+			lines = append(lines, piBoxLine(hint, width, piGray, bg, false))
+		}
+		for _, line := range outputLines {
+			lines = append(lines, piBoxLine(" "+line, width, piGray, bg, false))
+		}
+	}
+	lines = append(lines, piBoxLine("", width, piText, bg, false))
+	return strings.Join(lines, "\n")
+}
+
+func piBoxLine(text string, width int, fg, bg string, bold bool) string {
+	text += strings.Repeat(" ", max(width-lineWidth(text), 0))
+	return ansiRGBStyle(fg, bg, bold, false, text)
+}
+
 func renderPendingLines(p pendingInput, width int) []string {
-	prefix := "    " + p.kind + "  "
+	label := "Queued:"
+	if p.kind == "steer" {
+		label = "Steering:"
+	}
+	prefix := label + " "
 	avail := max(width-lineWidth(prefix)-2, 1)
 	wrapped := wrapPlain(strings.ReplaceAll(p.text, "\n", " "), avail)
 	out := make([]string, len(wrapped))
@@ -615,8 +881,21 @@ func truncateCells(s string, width int) string {
 func ansi256FG(c int, text string) string {
 	return fmt.Sprintf("\x1b[0m\x1b[38;5;%dm%s\x1b[0m", c, text)
 }
-func ansi256FGBG(f, b int, text string) string {
-	return fmt.Sprintf("\x1b[0m\x1b[38;5;%d;48;5;%dm%s\x1b[0m", f, b, text)
+func ansiRGBStyle(fg, bg string, bold, italic bool, text string) string {
+	var codes []string
+	if bold {
+		codes = append(codes, "1")
+	}
+	if italic {
+		codes = append(codes, "3")
+	}
+	if fg != "" {
+		codes = append(codes, "38;2;"+fg)
+	}
+	if bg != "" {
+		codes = append(codes, "48;2;"+bg)
+	}
+	return "\x1b[0m\x1b[" + strings.Join(codes, ";") + "m" + text + "\x1b[0m"
 }
 func formatTokenCount(n int64) string {
 	d := fmt.Sprintf("%d", n)
@@ -626,7 +905,7 @@ func formatTokenCount(n int64) string {
 	return d
 }
 
-func Run(modelName, reasoningEffort string, respond func(string, func(agent.ToolEvent), context.Context) agent.Response) error {
+func Run(modelName, reasoningEffort string, respond func(string, <-chan string, func(agent.ToolEvent), context.Context) agent.Response) error {
 	term, err := tui.NewANSITerminal(os.Stdout, os.Stdin)
 	if err != nil {
 		return err
@@ -644,12 +923,10 @@ func Run(modelName, reasoningEffort string, respond func(string, func(agent.Tool
 	}
 	defer io.WriteString(os.Stdout, "\x1b[>4m")
 
-	// Some multiplexers accept the Kitty keyboard push sequence but do not
-	// answer the capability query. In that case negotiation disables the mode
-	// again, so restore it with a direct push.
-	if !term.NegotiateKittyKeyboard() {
-		term.EnableKittyKeyboard()
-	}
+	// Enable Kitty keyboard mode directly instead of querying terminal
+	// capabilities. Negotiation reads stdin during startup and can consume text
+	// the user has already started typing; unsupported terminals ignore this.
+	term.EnableKittyKeyboard()
 	defer term.DisableKittyKeyboard()
 	term.HideCursor()
 	defer term.ShowCursor()
@@ -659,18 +936,14 @@ func Run(modelName, reasoningEffort string, respond func(string, func(agent.Tool
 	}
 	defer reader.Close()
 	updates := make(chan func(), 256)
-	wake := make(chan struct{}, 1)
-	root := newUI(modelName, reasoningEffort, func(input string, emit func(toolEvent), ctx context.Context) response {
-		result := respond(input, emit, ctx)
+	root := newUI(modelName, reasoningEffort, func(input string, steer <-chan string, emit func(toolEvent), ctx context.Context) response {
+		result := respond(input, steer, emit, ctx)
 		return response{Text: result.Text, ContextTokens: result.ContextTokens, Err: result.Err}
 	})
 	root.dispatch = func(fn func()) { updates <- fn }
-	root.invalidate = func() {
-		select {
-		case wake <- struct{}{}:
-		default:
-		}
-	}
+	// Run serializes every state mutation below and marks the corresponding
+	// branch dirty, so state-level invalidation does not need a second wakeup.
+	root.invalidate = func() {}
 	w, h := term.Size()
 	renderer := newMainScreenRenderer(os.Stdout, w, h)
 	resize := make(chan os.Signal, 1)
@@ -682,25 +955,67 @@ func Run(modelName, reasoningEffort string, respond func(string, func(agent.Tool
 		}
 		_ = renderer.stop()
 	}()
+	dirty, urgentRender := true, true
+	var lastRender time.Time
 	for {
-		lines, cr, cc := root.render(w, h)
-		if err := renderer.render(lines, cr, cc); err != nil {
-			return err
-		}
-		select {
-		case fn := <-updates:
-			fn()
-		case <-wake:
-		case <-resize:
-			w, h = term.Size()
-			renderer.resize(w, h)
-		default:
-			ev, ok := reader.PollEvent(50 * time.Millisecond)
-			if !ok {
-				continue
+		now := time.Now()
+		if dirty && (urgentRender || lastRender.IsZero() || now.Sub(lastRender) >= backgroundRenderInterval) {
+			lines, cr, cc := root.render(w, h)
+			if err := renderer.render(lines, cr, cc); err != nil {
+				return err
 			}
-			if k, ok := ev.(tui.KeyEvent); ok && !root.handleKey(k) {
-				return nil
+			dirty, urgentRender = false, false
+			lastRender = now
+		}
+
+		// Check stdin before draining background work so a fast stream of model
+		// or shell updates cannot prevent the editor from receiving input.
+		if ev, ok := reader.PollEvent(0); ok {
+			if k, ok := ev.(tui.KeyEvent); ok {
+				if !root.handleKey(k) {
+					return nil
+				}
+				dirty, urgentRender = true, true
+			}
+			continue
+		}
+
+		handledWork := false
+	forWork:
+		for range maxUpdatesPerIteration {
+			select {
+			case fn := <-updates:
+				fn()
+				dirty = true
+				handledWork = true
+			case <-resize:
+				w, h = term.Size()
+				renderer.resize(w, h)
+				dirty, urgentRender = true, true
+				handledWork = true
+			default:
+				break forWork
+			}
+		}
+		if handledWork {
+			continue
+		}
+
+		// Nothing is ready. Poll briefly for terminal input, but wake often
+		// enough to render a dirty frame at the capped refresh rate.
+		timeout := eventPollInterval
+		if dirty {
+			untilRender := backgroundRenderInterval - time.Since(lastRender)
+			if untilRender < timeout {
+				timeout = max(untilRender, 0)
+			}
+		}
+		if ev, ok := reader.PollEvent(timeout); ok {
+			if k, ok := ev.(tui.KeyEvent); ok {
+				if !root.handleKey(k) {
+					return nil
+				}
+				dirty, urgentRender = true, true
 			}
 		}
 	}
