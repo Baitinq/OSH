@@ -57,7 +57,7 @@ Completions API is not sufficient.
 - `Shift+Enter` — queue a message behind the active response
 - `Escape` — cancel the active response
 - `Mouse wheel` / `Page Up` / `Page Down` — scroll conversation history
-- `Shift` + mouse drag — select terminal text for copying (modifier may vary by terminal)
+- Mouse drag — select text and copy it to the clipboard on release
 - `Ctrl/Alt+←/→` or `Alt+B/F` — move through input word by word
 - `Ctrl+W`, `Alt+D`, `Ctrl+U`, `Ctrl+K` — delete words or text around the cursor
 - `Ctrl+C` — quit

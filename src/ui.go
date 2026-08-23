@@ -10,6 +10,8 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/atotto/clipboard"
+	ansi "github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 )
 
@@ -43,25 +45,34 @@ type pendingInput struct {
 	text string
 }
 
+type screenPoint struct {
+	x int
+	y int
+}
+
 type model struct {
-	width         int
-	height        int
-	composer      textarea.Model
-	messages      []message
-	bodyLines     []string
-	scrollOffset  int // rendered body lines above the newest viewport
-	started       bool
-	modelName     string
-	contextTokens int64
-	respond       func(string, func(toolEvent), context.Context) response
-	toolEvents    chan toolEvent
-	nextRequestID int
-	cancel        context.CancelFunc
-	responding    bool
-	spinnerFrame  int
-	queued        []string
-	pendingSteer  string
-	pendingInputs []pendingInput
+	width          int
+	height         int
+	composer       textarea.Model
+	messages       []message
+	bodyLines      []string
+	scrollOffset   int // rendered body lines above the newest viewport
+	started        bool
+	modelName      string
+	contextTokens  int64
+	respond        func(string, func(toolEvent), context.Context) response
+	toolEvents     chan toolEvent
+	nextRequestID  int
+	cancel         context.CancelFunc
+	responding     bool
+	spinnerFrame   int
+	queued         []string
+	pendingSteer   string
+	pendingInputs  []pendingInput
+	selectionStart *screenPoint
+	selectionEnd   *screenPoint
+	selecting      bool
+	copySelection  func(string) error
 }
 
 type spinnerTickMsg struct{}
@@ -84,6 +95,7 @@ var (
 	toolStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("71"))
 	toolOutputStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("247"))
 	pendingInputStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	selectionStyle    = lipgloss.NewStyle().Reverse(true)
 )
 
 func newModel(modelName string, respond func(string, func(toolEvent), context.Context) response) model {
@@ -108,11 +120,12 @@ func newModel(modelName string, respond func(string, func(toolEvent), context.Co
 	composer.Focus()
 
 	m := model{
-		width:     80,
-		height:    24,
-		composer:  composer,
-		modelName: modelName,
-		respond:   respond,
+		width:         80,
+		height:        24,
+		composer:      composer,
+		modelName:     modelName,
+		respond:       respond,
+		copySelection: clipboard.WriteAll,
 	}
 	m.resizeComposer()
 	return m
@@ -156,6 +169,7 @@ func listenToolEvents(ch <-chan toolEvent, requestID int) tea.Cmd {
 }
 
 func (m *model) appendMessage(msg message) {
+	m.clearSelection()
 	width := max(m.width, 20)
 	lines := renderMessageLines(msg, width)
 	lines = append(lines, "") // spacing between messages
@@ -173,6 +187,7 @@ func (m *model) appendMessage(msg message) {
 // reflowBody rebuilds the viewport from message history after a resize, so
 // messages outside the current viewport can backfill newly available rows.
 func (m *model) reflowBody() {
+	m.clearSelection()
 	width := max(m.width, 20)
 	lines := make([]string, 0, len(m.bodyLines))
 	for _, msg := range m.messages {
@@ -190,6 +205,7 @@ func (m *model) clampScrollOffset(width int) {
 }
 
 func (m *model) scrollBody(delta int) {
+	m.clearSelection()
 	width := max(m.width, 20)
 	m.scrollOffset += delta
 	m.clampScrollOffset(width)
@@ -277,6 +293,7 @@ func (m *model) submitInput(queue bool) tea.Cmd {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		m.clearSelection()
 		m.width = msg.Width
 		m.height = msg.Height
 		m.resizeComposer()
@@ -326,6 +343,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
 		return m, tickSpinner()
+	case tea.MouseClickMsg:
+		if msg.Button == tea.MouseLeft {
+			point := screenPoint{x: msg.X, y: msg.Y}
+			m.selectionStart = &point
+			m.selectionEnd = &point
+			m.selecting = true
+		}
+		return m, nil
+	case tea.MouseMotionMsg:
+		if m.selecting && msg.Button == tea.MouseLeft {
+			point := screenPoint{x: msg.X, y: msg.Y}
+			m.selectionEnd = &point
+		}
+		return m, nil
+	case tea.MouseReleaseMsg:
+		if !m.selecting {
+			return m, nil
+		}
+		point := screenPoint{x: msg.X, y: msg.Y}
+		m.selectionEnd = &point
+		m.selecting = false
+		text := selectedText(m.renderContent(), m.selectionStart, m.selectionEnd)
+		if text == "" || m.copySelection == nil {
+			return m, nil
+		}
+		copySelection := m.copySelection
+		return m, func() tea.Msg {
+			_ = copySelection(text)
+			return nil
+		}
 	case tea.MouseWheelMsg:
 		switch msg.Button {
 		case tea.MouseWheelUp:
@@ -335,6 +382,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyPressMsg:
+		m.clearSelection()
 		switch msg.Keystroke() {
 		case "ctrl+c":
 			return m, tea.Quit
@@ -372,7 +420,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m model) View() tea.View {
+func (m model) renderContent() string {
 	width := max(m.width, 20)
 	composer := m.renderComposer(width)
 	pending := m.renderPendingMessages(width)
@@ -410,10 +458,80 @@ func (m model) View() tea.View {
 	lines := make([]string, filler)
 	lines = append(lines, body...)
 	lines = append(lines, bottom...)
-	view := tea.NewView(strings.Join(lines, "\n"))
+	return strings.Join(lines, "\n")
+}
+
+func (m model) View() tea.View {
+	content := renderTextSelection(m.renderContent(), m.selectionStart, m.selectionEnd)
+	view := tea.NewView(content)
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
 	return view
+}
+
+func (m *model) clearSelection() {
+	m.selectionStart = nil
+	m.selectionEnd = nil
+	m.selecting = false
+}
+
+func selectionBounds(start, end *screenPoint) (screenPoint, screenPoint, bool) {
+	if start == nil || end == nil || *start == *end {
+		return screenPoint{}, screenPoint{}, false
+	}
+	if start.y < end.y || (start.y == end.y && start.x < end.x) {
+		return *start, *end, true
+	}
+	return *end, *start, true
+}
+
+func selectionColumns(row, lineWidth int, start, end screenPoint) (int, int) {
+	left, right := 0, lineWidth
+	if row == start.y {
+		left = min(max(start.x, 0), lineWidth)
+	}
+	if row == end.y {
+		right = min(max(end.x+1, 0), lineWidth)
+	}
+	return left, max(right, left)
+}
+
+func renderTextSelection(content string, start, end *screenPoint) string {
+	selectionStart, selectionEnd, ok := selectionBounds(start, end)
+	if !ok {
+		return content
+	}
+	lines := strings.Split(content, "\n")
+	selectionStart.y = min(max(selectionStart.y, 0), len(lines)-1)
+	selectionEnd.y = min(max(selectionEnd.y, 0), len(lines)-1)
+	for row := selectionStart.y; row <= selectionEnd.y; row++ {
+		line := lines[row]
+		lineWidth := ansi.StringWidth(line)
+		left, right := selectionColumns(row, lineWidth, selectionStart, selectionEnd)
+		if right <= left {
+			continue
+		}
+		lines[row] = ansi.Cut(line, 0, left) + selectionStyle.Render(ansi.Cut(line, left, right)) + ansi.Cut(line, right, lineWidth)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func selectedText(content string, start, end *screenPoint) string {
+	selectionStart, selectionEnd, ok := selectionBounds(start, end)
+	if !ok {
+		return ""
+	}
+	lines := strings.Split(content, "\n")
+	selectionStart.y = min(max(selectionStart.y, 0), len(lines)-1)
+	selectionEnd.y = min(max(selectionEnd.y, 0), len(lines)-1)
+	selected := make([]string, 0, selectionEnd.y-selectionStart.y+1)
+	for row := selectionStart.y; row <= selectionEnd.y; row++ {
+		line := ansi.Strip(lines[row])
+		lineWidth := runewidth.StringWidth(line)
+		left, right := selectionColumns(row, lineWidth, selectionStart, selectionEnd)
+		selected = append(selected, strings.TrimRight(ansi.Cut(line, left, right), " "))
+	}
+	return strings.TrimRight(strings.Join(selected, "\n"), "\n")
 }
 
 func formatTokenCount(tokens int64) string {

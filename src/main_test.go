@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	ansi "github.com/charmbracelet/x/ansi"
 )
 
 const testAgentResponse = "test response"
@@ -472,6 +473,60 @@ func TestPendingMessagesCannotPushComposerOffscreen(t *testing.T) {
 	}
 	if !strings.Contains(view, m.renderComposer(m.width)) {
 		t.Fatal("pending messages pushed the composer out of the viewport")
+	}
+}
+
+func TestSelectedTextAcrossLines(t *testing.T) {
+	content := "alpha\nbeta"
+	start := screenPoint{x: 1, y: 0}
+	end := screenPoint{x: 2, y: 1}
+	if got, want := selectedText(content, &start, &end), "lpha\nbet"; got != want {
+		t.Fatalf("selected text = %q, want %q", got, want)
+	}
+	if highlighted := renderTextSelection(content, &start, &end); highlighted == content {
+		t.Fatal("selection was not highlighted")
+	}
+}
+
+func TestMouseDragCopiesSelection(t *testing.T) {
+	m := newTestModel()
+	m.height = 8
+	m.appendMessage(message{role: "agent", text: "copy this text"})
+
+	var row, column int
+	found := false
+	for y, line := range strings.Split(m.renderContent(), "\n") {
+		plain := ansi.Strip(line)
+		if x := strings.Index(plain, "copy this text"); x >= 0 {
+			row, column, found = y, x, true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("test message is not visible")
+	}
+
+	var copied string
+	m.copySelection = func(text string) error {
+		copied = text
+		return nil
+	}
+	m = updateModel(t, m, tea.MouseClickMsg{X: column, Y: row, Button: tea.MouseLeft})
+	var cmd tea.Cmd
+	m, cmd = updateModelWithCmd(t, m, tea.MouseReleaseMsg{
+		X:      column + len("copy this text") - 1,
+		Y:      row,
+		Button: tea.MouseLeft,
+	})
+	if cmd == nil {
+		t.Fatal("mouse selection did not schedule a clipboard copy")
+	}
+	cmd()
+	if copied != "copy this text" {
+		t.Fatalf("copied text = %q, want %q", copied, "copy this text")
+	}
+	if m.selectionStart == nil || m.selectionEnd == nil {
+		t.Fatal("selection was not retained for highlighting")
 	}
 }
 
