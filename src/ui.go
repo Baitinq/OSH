@@ -112,12 +112,7 @@ func (m *model) appendMessage(msg message) (evicted string) {
 	m.bodyLines = append(m.bodyLines, renderMessageLines(msg, width)...)
 	m.bodyLines = append(m.bodyLines, "") // spacing between messages
 
-	composerH := lipgloss.Height(m.renderComposer(width))
-	statusH := 0
-	if m.responding {
-		statusH = 1
-	}
-	bodyHeight := max(max(m.height, 8)-statusH-1-composerH, 1)
+	bodyHeight := m.availableBodyHeight(width)
 
 	if len(m.bodyLines) > bodyHeight {
 		evictedCount := len(m.bodyLines) - bodyHeight
@@ -125,6 +120,32 @@ func (m *model) appendMessage(msg message) (evicted string) {
 		m.bodyLines = m.bodyLines[evictedCount:]
 	}
 	return evicted
+}
+
+// reflowBody rebuilds the viewport from message history after a resize. Lines
+// previously moved into terminal scrollback can then fill newly available rows
+// instead of leaving a gap above the retained viewport contents.
+func (m *model) reflowBody() {
+	width := max(m.width, 20)
+	lines := make([]string, 0, len(m.bodyLines))
+	for _, msg := range m.messages {
+		lines = append(lines, renderMessageLines(msg, width)...)
+		lines = append(lines, "")
+	}
+
+	bodyHeight := m.availableBodyHeight(width)
+	if len(lines) > bodyHeight {
+		lines = lines[len(lines)-bodyHeight:]
+	}
+	m.bodyLines = lines
+}
+
+func (m model) availableBodyHeight(width int) int {
+	statusH := 0
+	if m.responding {
+		statusH = 1
+	}
+	return max(max(m.height, 8)-statusH-1-lipgloss.Height(m.renderComposer(width)), 1)
 }
 
 func tickSpinner() tea.Cmd {
@@ -138,6 +159,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.reflowBody()
 		return m, nil
 	case responseMsg:
 		if msg.id != m.nextRequestID || msg.text == "" {

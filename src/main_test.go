@@ -198,3 +198,24 @@ func TestResizeRedrawsFrame(t *testing.T) {
 		t.Fatalf("composer not resized to new width: %q", first)
 	}
 }
+
+func TestGrowingViewportBackfillsMessagesFromHistory(t *testing.T) {
+	m := newTestModel()
+	m.width = 40
+	m.height = 8
+
+	for _, text := range []string{"first message", "second message", "third message"} {
+		m.appendMessage(message{role: "agent", text: text})
+	}
+	if strings.Contains(strings.Join(m.bodyLines, "\n"), "first message") {
+		t.Fatal("first message should have scrolled out of the small viewport")
+	}
+
+	m = updateModel(t, m, tea.WindowSizeMsg{Width: 40, Height: 14})
+	body := strings.Join(m.bodyLines, "\n")
+	if !strings.Contains(body, "first message") ||
+		!strings.Contains(body, "second message") ||
+		!strings.Contains(body, "third message") {
+		t.Fatalf("growing viewport did not backfill message history: %q", body)
+	}
+}
