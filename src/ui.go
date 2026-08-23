@@ -7,8 +7,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/mattn/go-runewidth"
 )
 
@@ -30,7 +30,11 @@ type toolEvent struct {
 	detail string
 }
 
-type toolEventMsg toolEvent
+type toolEventMsg struct {
+	toolEvent
+	requestID int
+	ch        <-chan toolEvent
+}
 type responseMsg response
 
 type model struct {
@@ -49,6 +53,8 @@ type model struct {
 	cancel        context.CancelFunc
 	responding    bool
 	spinnerFrame  int
+	queued        []string
+	pendingSteer  string
 }
 
 type spinnerTickMsg struct{}
@@ -86,21 +92,28 @@ func (model) Init() tea.Cmd {
 	return nil
 }
 
-func waitForResponse(respond func(string, func(toolEvent), context.Context) response, input string, emit func(toolEvent), ctx context.Context, id int) tea.Cmd {
+func waitForResponse(respond func(string, func(toolEvent), context.Context) response, input string, ch chan toolEvent, ctx context.Context, id int) tea.Cmd {
 	return func() tea.Msg {
+		defer close(ch)
+		emit := func(ev toolEvent) {
+			select {
+			case ch <- ev:
+			case <-ctx.Done():
+			}
+		}
 		resp := respond(input, emit, ctx)
 		resp.id = id
 		return responseMsg(resp)
 	}
 }
 
-func listenToolEvents(ch <-chan toolEvent) tea.Cmd {
+func listenToolEvents(ch <-chan toolEvent, requestID int) tea.Cmd {
 	return func() tea.Msg {
 		ev, ok := <-ch
 		if !ok {
 			return nil
 		}
-		return toolEventMsg(ev)
+		return toolEventMsg{toolEvent: ev, requestID: requestID, ch: ch}
 	}
 }
 
@@ -154,6 +167,65 @@ func tickSpinner() tea.Cmd {
 	})
 }
 
+func (m *model) startRequest(text string, showUser bool) tea.Cmd {
+	m.started = true
+	m.responding = true
+	m.spinnerFrame = 0
+	m.toolEvents = make(chan toolEvent, 16)
+	m.nextRequestID++
+	ctx, cancel := context.WithCancel(context.Background())
+	m.cancel = cancel
+
+	var cmds []tea.Cmd
+	if showUser {
+		if evicted := m.appendMessage(message{role: "you", text: text, sentAt: time.Now().Format("15:04")}); evicted != "" {
+			cmds = append(cmds, tea.Println(evicted))
+		}
+	}
+	cmds = append(cmds,
+		waitForResponse(m.respond, text, m.toolEvents, ctx, m.nextRequestID),
+		listenToolEvents(m.toolEvents, m.nextRequestID),
+		tickSpinner(),
+	)
+	return tea.Batch(cmds...)
+}
+
+func (m *model) submitInput(queue bool) tea.Cmd {
+	text := strings.TrimSpace(string(m.input))
+	if text == "" {
+		return nil
+	}
+	m.input = nil
+	m.cursor = 0
+
+	if !m.responding {
+		return m.startRequest(text, true)
+	}
+	if queue {
+		m.queued = append(m.queued, text)
+		if evicted := m.appendMessage(message{role: "system", text: "Queued: " + text}); evicted != "" {
+			return tea.Println(evicted)
+		}
+		return nil
+	}
+
+	// A steer interrupts the current response. Wait for its goroutine to finish
+	// before starting the next request so the agent's local history is only ever
+	// mutated by one response loop at a time.
+	if m.pendingSteer == "" {
+		m.pendingSteer = text
+	} else {
+		m.pendingSteer += "\n\n" + text
+	}
+	if m.cancel != nil {
+		m.cancel()
+	}
+	if evicted := m.appendMessage(message{role: "you", text: text, sentAt: time.Now().Format("15:04")}); evicted != "" {
+		return tea.Println(evicted)
+	}
+	return nil
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -162,96 +234,103 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.reflowBody()
 		return m, nil
 	case responseMsg:
-		if msg.id != m.nextRequestID || msg.text == "" {
+		if msg.id != m.nextRequestID {
 			return m, nil
 		}
-		m.responding = false
-		if evicted := m.appendMessage(message{role: "agent", text: msg.text}); evicted != "" {
-			m.contextTokens = msg.contextTokens
-			return m, tea.Println(evicted)
-		}
+		m.cancel = nil
 		m.contextTokens = msg.contextTokens
+
+		if m.pendingSteer != "" {
+			text := m.pendingSteer
+			m.pendingSteer = ""
+			m.responding = false
+			return m, m.startRequest(text, false)
+		}
+
+		m.responding = false
+		var cmds []tea.Cmd
+		if msg.text != "" {
+			if evicted := m.appendMessage(message{role: "agent", text: msg.text}); evicted != "" {
+				cmds = append(cmds, tea.Println(evicted))
+			}
+		}
+		if len(m.queued) > 0 {
+			text := m.queued[0]
+			m.queued = m.queued[1:]
+			cmds = append(cmds, m.startRequest(text, true))
+		}
+		return m, tea.Batch(cmds...)
 	case toolEventMsg:
+		if msg.requestID != m.nextRequestID {
+			return m, nil
+		}
 		text := msg.detail
 		if msg.phase == "call" {
 			text = "$ " + text
 		}
 		if evicted := m.appendMessage(message{role: "tool", text: text}); evicted != "" {
-			return m, tea.Batch(tea.Println(evicted), listenToolEvents(m.toolEvents))
+			return m, tea.Batch(tea.Println(evicted), listenToolEvents(msg.ch, msg.requestID))
 		}
-		return m, listenToolEvents(m.toolEvents)
+		return m, listenToolEvents(msg.ch, msg.requestID)
 	case spinnerTickMsg:
 		if !m.responding {
 			return m, nil
 		}
 		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
 		return m, tickSpinner()
-	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyCtrlC:
+	case tea.KeyPressMsg:
+		switch msg.Keystroke() {
+		case "ctrl+c":
 			return m, tea.Quit
-		case tea.KeyEnter:
-			text := strings.TrimSpace(string(m.input))
-			if text != "" && !m.responding {
-				m.started = true
-				m.input = nil
-				m.cursor = 0
-				m.responding = true
-				m.spinnerFrame = 0
-				m.toolEvents = make(chan toolEvent)
-				m.nextRequestID++
-				ctx, cancel := context.WithCancel(context.Background())
-				m.cancel = cancel
-				emit := func(ev toolEvent) { m.toolEvents <- ev }
-				var cmds []tea.Cmd
-				if evicted := m.appendMessage(message{role: "you", text: text, sentAt: time.Now().Format("15:04")}); evicted != "" {
-					cmds = append(cmds, tea.Println(evicted))
-				}
-				cmds = append(cmds, waitForResponse(m.respond, text, emit, ctx, m.nextRequestID), listenToolEvents(m.toolEvents), tickSpinner())
-				return m, tea.Batch(cmds...)
-			}
-		case tea.KeyEsc:
+		case "shift+enter":
+			return m, m.submitInput(true)
+		case "enter":
+			return m, m.submitInput(false)
+		case "esc", "escape":
 			if m.responding && m.cancel != nil {
 				m.cancel()
+				m.pendingSteer = ""
 				m.nextRequestID++
 				m.cancel = nil
 				m.responding = false
 				if evicted := m.appendMessage(message{role: "system", text: "Cancelled."}); evicted != "" {
 					return m, tea.Println(evicted)
 				}
-				return m, nil
 			}
 			return m, nil
-		case tea.KeyCtrlU:
+		case "ctrl+u":
 			m.input = nil
 			m.cursor = 0
-		case tea.KeyLeft:
+		case "left":
 			if m.cursor > 0 {
 				m.cursor--
 			}
-		case tea.KeyRight:
+		case "right":
 			if m.cursor < len(m.input) {
 				m.cursor++
 			}
-		case tea.KeyHome, tea.KeyCtrlA:
+		case "home", "ctrl+a":
 			m.cursor = 0
-		case tea.KeyEnd, tea.KeyCtrlE:
+		case "end", "ctrl+e":
 			m.cursor = len(m.input)
-		case tea.KeyBackspace, tea.KeyCtrlH:
+		case "backspace", "ctrl+h":
 			if m.cursor > 0 {
 				m.input = append(m.input[:m.cursor-1], m.input[m.cursor:]...)
 				m.cursor--
 			}
-		case tea.KeyDelete:
+		case "space":
+			m.input = insertRunes(m.input, m.cursor, []rune{' '})
+			m.cursor++
+		case "delete":
 			if m.cursor < len(m.input) {
 				m.input = append(m.input[:m.cursor], m.input[m.cursor+1:]...)
 			}
-		case tea.KeySpace:
-			m.input = insertRunes(m.input, m.cursor, []rune{' '})
-			m.cursor++
-		case tea.KeyRunes:
-			m.input = insertRunes(m.input, m.cursor, msg.Runes)
-			m.cursor += len(msg.Runes)
+		default:
+			if msg.Text != "" {
+				added := []rune(msg.Text)
+				m.input = insertRunes(m.input, m.cursor, added)
+				m.cursor += len(added)
+			}
 		}
 	}
 
@@ -266,14 +345,22 @@ func insertRunes(input []rune, at int, added []rune) []rune {
 	return result
 }
 
-func (m model) View() string {
+func (m model) View() tea.View {
 	width := max(m.width, 20)
 	composer := m.renderComposer(width)
 	info := dimStyle.Render("model " + m.modelName + "  \u00b7  context " + formatTokenCount(m.contextTokens) + " tokens")
 
 	status := ""
 	if m.responding {
-		status = "    " + titleStyle.Render(spinnerFrames[m.spinnerFrame]) + dimStyle.Render(" Thinking\u2026 (esc to cancel)")
+		activity := " Thinking…"
+		if m.pendingSteer != "" {
+			activity = " Steering…"
+		}
+		queueInfo := ""
+		if len(m.queued) > 0 {
+			queueInfo = " · " + strconv.Itoa(len(m.queued)) + " queued"
+		}
+		status = "    " + titleStyle.Render(spinnerFrames[m.spinnerFrame]) + dimStyle.Render(activity+queueInfo+" · enter steer · shift+enter queue · esc cancel")
 	}
 
 	bottom := []string{composer, info}
@@ -298,7 +385,7 @@ func (m model) View() string {
 	lines := make([]string, filler)
 	lines = append(lines, body...)
 	lines = append(lines, bottom...)
-	return strings.Join(lines, "\n")
+	return tea.NewView(strings.Join(lines, "\n"))
 }
 
 func formatTokenCount(tokens int64) string {

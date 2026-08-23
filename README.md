@@ -26,6 +26,15 @@ cd src
 OPENAI_API_KEY=your-api-key go run .
 ```
 
+## Controls
+
+- `Enter` sends a message while idle. While the agent is working, it steers by interrupting the current response and injecting the message into the ongoing conversation.
+- `Shift+Enter` queues a message while the agent is working. Queued messages run in FIFO order after the current response finishes.
+- `Esc` cancels the current response.
+- `Ctrl+C` exits.
+
+Distinguishing `Shift+Enter` requires terminal keyboard-enhancement support. On legacy terminals that report it as plain Enter, it behaves as a steer.
+
 ## Test
 
 ```sh

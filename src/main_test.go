@@ -5,11 +5,19 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 const testAgentResponse = "test response"
 const testModelName = "test-model"
+
+func keyPress(code rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg{Code: code}
+}
+
+func keyText(text string) tea.KeyPressMsg {
+	return tea.KeyPressMsg{Code: []rune(text)[0], Text: text}
+}
 
 func newTestModel() model {
 	return newModel(testModelName, func(string, func(toolEvent), context.Context) response {
@@ -43,9 +51,9 @@ func TestRequireOpenAIAPIKey(t *testing.T) {
 
 func TestResponseRunsAsynchronously(t *testing.T) {
 	m := newTestModel()
-	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello agent")})
+	m = updateModel(t, m, keyText("hello agent"))
 	var cmd tea.Cmd
-	m, cmd = updateModelWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, cmd = updateModelWithCmd(t, m, keyPress(tea.KeyEnter))
 
 	if !m.responding {
 		t.Fatal("model should be waiting for a response")
@@ -59,7 +67,7 @@ func TestResponseRunsAsynchronously(t *testing.T) {
 	if len(m.input) != 0 || m.cursor != 0 {
 		t.Fatalf("input was not reset: %q at %d", string(m.input), m.cursor)
 	}
-	if !strings.Contains(m.View(), "Thinking…") {
+	if !strings.Contains(m.View().Content, "Thinking…") {
 		t.Fatal("view does not show the loading spinner")
 	}
 
@@ -84,23 +92,62 @@ func TestResponseRunsAsynchronously(t *testing.T) {
 	}
 }
 
-func TestEnterDoesNotStartAnotherResponseWhileWaiting(t *testing.T) {
+func TestEnterSteersInProgressResponse(t *testing.T) {
 	m := newTestModel()
 	m.responding = true
-	m.input = []rune("another message")
+	m.nextRequestID = 1
+	cancelled := false
+	m.cancel = func() { cancelled = true }
+	m.input = []rune("change direction")
 	m.cursor = len(m.input)
 
-	m, cmd := updateModelWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, cmd := updateModelWithCmd(t, m, keyPress(tea.KeyEnter))
 	if cmd != nil {
-		t.Fatal("enter started another response while waiting")
+		t.Fatal("steer started before the cancelled response finished")
+	}
+	if !cancelled || m.pendingSteer != "change direction" {
+		t.Fatalf("response was not steered: cancelled=%v pending=%q", cancelled, m.pendingSteer)
+	}
+	if len(m.input) != 0 || len(m.messages) != 1 || m.messages[0].role != "you" {
+		t.Fatalf("steer was not shown and cleared from input: %#v", m)
+	}
+
+	m, cmd = updateModelWithCmd(t, m, responseMsg{id: 1})
+	if cmd == nil || !m.responding || m.nextRequestID != 2 || m.pendingSteer != "" {
+		t.Fatalf("steer did not start after cancellation completed: %#v", m)
+	}
+}
+
+func TestShiftEnterQueuesUntilCurrentResponseFinishes(t *testing.T) {
+	m := newTestModel()
+	m.responding = true
+	m.nextRequestID = 1
+	m.input = []rune("do this next")
+	m.cursor = len(m.input)
+
+	shiftEnter := tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}
+	m, cmd := updateModelWithCmd(t, m, shiftEnter)
+	if cmd != nil || len(m.queued) != 1 || m.queued[0] != "do this next" {
+		t.Fatalf("message was not queued: %#v", m)
+	}
+	if len(m.messages) != 1 || m.messages[0].text != "Queued: do this next" {
+		t.Fatalf("queue acknowledgement missing: %#v", m.messages)
+	}
+
+	m, cmd = updateModelWithCmd(t, m, responseMsg{id: 1, text: "first response"})
+	if cmd == nil || !m.responding || m.nextRequestID != 2 || len(m.queued) != 0 {
+		t.Fatalf("queued message did not start after response: %#v", m)
+	}
+	if got := m.messages[len(m.messages)-1]; got.role != "you" || got.text != "do this next" {
+		t.Fatalf("queued message was not injected after the response: %#v", m.messages)
 	}
 }
 
 func TestSpaceKeyAddsSpaceToInput(t *testing.T) {
 	m := newTestModel()
-	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("hello")})
-	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeySpace})
-	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("world")})
+	m = updateModel(t, m, keyText("hello"))
+	m = updateModel(t, m, keyPress(tea.KeySpace))
+	m = updateModel(t, m, keyText("world"))
 
 	if got := string(m.input); got != "hello world" {
 		t.Fatalf("input = %q, want %q", got, "hello world")
@@ -109,8 +156,8 @@ func TestSpaceKeyAddsSpaceToInput(t *testing.T) {
 
 func TestEmptyInputDoesNotAddMessages(t *testing.T) {
 	m := newTestModel()
-	m = updateModel(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("   ")})
-	m, cmd := updateModelWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	m = updateModel(t, m, keyText("   "))
+	m, cmd := updateModelWithCmd(t, m, keyPress(tea.KeyEnter))
 
 	if cmd != nil {
 		t.Fatalf("empty input started a command: %#v", cmd)
@@ -137,7 +184,7 @@ func TestRenderedMessagesIncludeTimestampAndToolOutput(t *testing.T) {
 func TestViewShowsModelAndContextTokensBelowComposer(t *testing.T) {
 	m := newTestModel()
 	m.contextTokens = 1234567
-	view := m.View()
+	view := m.View().Content
 
 	composer := m.renderComposer(m.width)
 	want := composer + "\n" + dimStyle.Render("model test-model  ·  context 1,234,567 tokens")
@@ -148,11 +195,11 @@ func TestViewShowsModelAndContextTokensBelowComposer(t *testing.T) {
 
 func TestViewShowsSpinnerWhileResponding(t *testing.T) {
 	m := newTestModel()
-	if strings.Contains(m.View(), "Thinking…") {
+	if strings.Contains(m.View().Content, "Thinking…") {
 		t.Fatal("spinner shown while idle")
 	}
 	m.responding = true
-	if !strings.Contains(m.View(), "Thinking… (esc to cancel)") {
+	if !strings.Contains(m.View().Content, "Thinking… · enter steer · shift+enter queue · esc cancel") {
 		t.Fatal("spinner not shown while responding")
 	}
 }
@@ -163,7 +210,7 @@ func TestEscCancelsInProgressResponse(t *testing.T) {
 	m.cancel = func() { cancelled = true }
 	m.nextRequestID = 1
 
-	m, _ = updateModelWithCmd(t, m, tea.KeyMsg{Type: tea.KeyEsc})
+	m, _ = updateModelWithCmd(t, m, keyPress(tea.KeyEsc))
 
 	if !cancelled {
 		t.Fatal("esc did not cancel the in-flight request")
@@ -189,7 +236,7 @@ func TestResizeRedrawsFrame(t *testing.T) {
 	if m.width != 100 || m.height != 30 {
 		t.Fatalf("size not updated: %dx%d", m.width, m.height)
 	}
-	view := m.View()
+	view := m.View().Content
 	if height := strings.Count(strings.TrimSuffix(view, "\n"), "\n") + 1; height != 30 {
 		t.Fatalf("view height = %d, want 30 after resize", height)
 	}
