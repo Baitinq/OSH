@@ -55,15 +55,20 @@ Completions API is not sufficient.
 
 - `Enter` — send a message; while responding, steer after the active turn finishes
 - `Shift+Enter` — queue a message behind the active response
+- `Ctrl+J` — insert a newline in the input editor
 - `Escape` — cancel the active response
-- `Mouse wheel` / `Page Up` / `Page Down` — scroll conversation history
-- Mouse drag — select text and copy it to the clipboard on release
+- Primary-screen rendering keeps terminal scrollback, selection, search, and copying native
 - `Ctrl/Alt+←/→` or `Alt+B/F` — move through input word by word
 - `Ctrl+W`, `Alt+D`, `Ctrl+U`, `Ctrl+K` — delete words or text around the cursor
 - `Ctrl+C` — quit
 
 Distinguishing `Shift+Enter` requires terminal keyboard-enhancement support. On
 legacy terminals that report it as plain Enter, it behaves as a steer.
+
+OSH uses a Pi-style main-screen renderer: the transcript and live controls form one
+logical document, appended lines naturally enter terminal history, and only changed
+lines still in the visible viewport are rewritten. Terminal resize or a required edit
+above that viewport triggers a full transcript replay.
 
 ## Test
 
@@ -72,6 +77,7 @@ cd src
 go test ./...
 go test -race ./...
 go vet ./...
+./testdata/tmux-e2e.sh
 ```
 
 ## Safety

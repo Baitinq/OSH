@@ -99,12 +99,28 @@ func (a *agent) respond(msg string, emit func(toolEvent), ctx context.Context) r
 			Tools:        []responses.ToolUnionParam{shellTool},
 			Store:        openai.Bool(false),
 		}
-		resp, err := a.client.Responses.New(ctx, params)
-		if err != nil {
+		emit(toolEvent{phase: "text_reset"})
+		stream := a.client.Responses.NewStreaming(ctx, params)
+		var resp responses.Response
+		for stream.Next() {
+			event := stream.Current()
+			switch event.Type {
+			case "response.output_text.delta":
+				emit(toolEvent{phase: "text_delta", detail: event.AsResponseOutputTextDelta().Delta})
+			case "response.completed":
+				resp = event.AsResponseCompleted().Response
+			}
+		}
+		streamErr := stream.Err()
+		_ = stream.Close()
+		if streamErr != nil {
 			if ctx.Err() != nil {
 				return response{}
 			}
-			return response{err: fmt.Errorf("request failed: %w", err)}
+			return response{err: fmt.Errorf("request failed: %w", streamErr)}
+		}
+		if resp.ID == "" {
+			return response{err: fmt.Errorf("request failed: stream ended without a completed response")}
 		}
 		contextTokens = resp.Usage.TotalTokens
 

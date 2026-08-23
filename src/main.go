@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-
-	tea "charm.land/bubbletea/v2"
 )
 
 func requireOpenAIAPIKey() error {
@@ -20,7 +18,7 @@ func main() {
 		os.Exit(1)
 	}
 	agent := newAgent()
-	if _, err := tea.NewProgram(newModel(agent.modelName, agent.respond)).Run(); err != nil {
+	if err := runUI(agent.modelName, agent.respond); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

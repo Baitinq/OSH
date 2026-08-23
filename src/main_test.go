@@ -5,44 +5,33 @@ import (
 	"errors"
 	"strings"
 	"testing"
-
-	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
-	ansi "github.com/charmbracelet/x/ansi"
+	"time"
 )
 
-const testAgentResponse = "test response"
 const testModelName = "test-model"
 
-func keyPress(code rune) tea.KeyPressMsg {
-	return tea.KeyPressMsg{Code: code}
-}
+type testRuntime struct{ calls chan func() }
 
-func keyText(text string) tea.KeyPressMsg {
-	return tea.KeyPressMsg{Code: []rune(text)[0], Text: text}
-}
+func newTestRuntime() *testRuntime        { return &testRuntime{calls: make(chan func(), 32)} }
+func (r *testRuntime) Dispatch(fn func()) { r.calls <- fn }
 
-func newTestModel() model {
-	return newModel(testModelName, func(string, func(toolEvent), context.Context) response {
-		return response{text: testAgentResponse, contextTokens: 1234}
-	})
-}
-
-func setTestInput(m *model, text string, cursor int) {
-	m.composer.SetValue(text)
-	m.composer.SetCursorColumn(cursor)
-}
-
-func updateModel(t *testing.T, m model, msg tea.Msg) model {
+func (r *testRuntime) runNext(t *testing.T) {
 	t.Helper()
-	updated, _ := m.Update(msg)
-	return updated.(model)
+	select {
+	case fn := <-r.calls:
+		fn()
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for UI dispatch")
+	}
 }
 
-func updateModelWithCmd(t *testing.T, m model, msg tea.Msg) (model, tea.Cmd) {
-	t.Helper()
-	updated, cmd := m.Update(msg)
-	return updated.(model), cmd
+func newState(respond func(string, func(toolEvent), context.Context) response) (*oshUI, *testRuntime) {
+	runtime := newTestRuntime()
+	s := newUI(testModelName, respond)
+	s.ensureTextarea()
+	s.dispatch = runtime.Dispatch
+	s.emit = func(message) {}
+	return s, runtime
 }
 
 func TestBuildSystemPrompt(t *testing.T) {
@@ -64,673 +53,362 @@ func TestRequireOpenAIAPIKey(t *testing.T) {
 	if err := requireOpenAIAPIKey(); err == nil {
 		t.Fatal("expected an error when OPENAI_API_KEY is empty")
 	}
-
 	t.Setenv("OPENAI_API_KEY", "test-key")
 	if err := requireOpenAIAPIKey(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestResponseRunsAsynchronously(t *testing.T) {
-	m := newTestModel()
-	m = updateModel(t, m, keyText("hello agent"))
-	var cmd tea.Cmd
-	m, cmd = updateModelWithCmd(t, m, keyPress(tea.KeyEnter))
-
-	if !m.responding {
-		t.Fatal("model should be waiting for a response")
+func TestRunShellReturnsCombinedOutputAndError(t *testing.T) {
+	out, err := runShell(t.Context(), "printf stdout; printf stderr >&2; exit 7")
+	if err == nil {
+		t.Fatal("expected shell error")
 	}
-	if cmd == nil {
-		t.Fatal("enter did not return an asynchronous command")
-	}
-	if m.composer.Value() != "" || m.composer.Column() != 0 {
-		t.Fatalf("input was not reset: %q at %d", m.composer.Value(), m.composer.Column())
-	}
-	if !strings.Contains(m.View().Content, "Thinking…") {
-		t.Fatal("view does not show the loading spinner")
-	}
-
-	batch, ok := cmd().(tea.BatchMsg)
-	if !ok {
-		t.Fatalf("command returned %#v, want a batch", cmd())
-	}
-	if len(batch) != 3 {
-		t.Fatalf("command returned %#v, want response, tool-events and spinner commands", batch)
-	}
-	result := batch[0]()
-	m = updateModel(t, m, result)
-	if m.responding {
-		t.Fatal("model still waiting after response")
-	}
-	respPrint, ok := result.(responseMsg)
-	if !ok || respPrint.text != testAgentResponse {
-		t.Fatalf("unexpected response message: %#v", result)
-	}
-	if m.contextTokens != 1234 {
-		t.Fatalf("context tokens = %d, want 1234", m.contextTokens)
+	if out != "stdoutstderr" {
+		t.Fatalf("combined output = %q", out)
 	}
 }
 
-func TestResponseErrorIsAddedToConversation(t *testing.T) {
-	m := newTestModel()
-	m.responding = true
-	m.nextRequestID = 1
-	m.contextTokens = 42
+func TestTextareaEditingAndWordAliases(t *testing.T) {
+	s, _ := newState(nil)
+	s.textarea.SetText("hello world")
+	s.moveWord(-1)
+	s.textarea.InsertText("X")
+	if got := s.textarea.Text(); got != "hello Xworld" {
+		t.Fatalf("word movement produced %q", got)
+	}
+	s.deleteWord(-1)
+	if got := s.textarea.Text(); got != "hello world" {
+		t.Fatalf("word deletion produced %q", got)
+	}
 
-	m = updateModel(t, m, responseMsg{id: 1, err: errors.New("request failed")})
-
-	if m.responding {
-		t.Fatal("model still waiting after response error")
-	}
-	if m.contextTokens != 42 {
-		t.Fatalf("response error reset context tokens to %d", m.contextTokens)
-	}
-	if len(m.messages) != 1 || m.messages[0].role != "error" || m.messages[0].text != "request failed" {
-		t.Fatalf("response error was not added to conversation: %#v", m.messages)
-	}
-	if !strings.Contains(m.View().Content, errorStyle.Render(" request failed ")) {
-		t.Fatalf("response error does not use the error style: %q", m.View().Content)
+	s.textarea.SetText("alpha beta")
+	s.textarea.SetCursorPos(5)
+	s.deleteToLineStart()
+	if got := s.textarea.Text(); got != " beta" {
+		t.Fatalf("line deletion produced %q", got)
 	}
 }
 
-func TestToolErrorIsAddedToConversation(t *testing.T) {
-	m := newTestModel()
-	m.responding = true
-	m.nextRequestID = 1
-	ch := make(chan toolEvent)
+func TestPendingInputsAreRecordedInOrder(t *testing.T) {
+	s, _ := newState(nil)
+	s.responding = true
+	s.submitInput("queued follow-up", true)
+	s.submitInput("priority correction", false)
 
-	m = updateModel(t, m, toolEventMsg{
-		toolEvent: toolEvent{phase: "error", name: "shell", detail: "exit status 1"},
-		requestID: 1,
-		ch:        ch,
+	if len(s.pendingInputs) != 2 || s.pendingInputs[0].kind != "queued" || s.pendingInputs[1].kind != "steer" {
+		t.Fatalf("pending inputs = %#v", s.pendingInputs)
+	}
+}
+
+func TestSubmitRunsAsynchronously(t *testing.T) {
+	release := make(chan struct{})
+	s, runtime := newState(func(input string, _ func(toolEvent), _ context.Context) response {
+		if input != "hello" {
+			t.Errorf("input = %q", input)
+		}
+		<-release
+		return response{text: "answer", contextTokens: 1234}
 	})
+	s.textarea.SetText("hello")
+	s.submitInput(s.textarea.Text(), false)
 
-	if len(m.messages) != 1 || m.messages[0].role != "error" || m.messages[0].text != "exit status 1" {
-		t.Fatalf("tool error was not added to conversation: %#v", m.messages)
+	if !s.responding || s.textarea.Text() != "" {
+		t.Fatalf("request did not start: responding=%v input=%q", s.responding, s.textarea.Text())
+	}
+	if len(s.messages) != 1 || s.messages[0].role != "you" {
+		t.Fatalf("user message missing: %#v", s.messages)
+	}
+
+	close(release)
+	runtime.runNext(t)
+	if s.responding || s.contextTokens != 1234 {
+		t.Fatalf("response did not finish: %#v", s)
+	}
+	if got := s.messages[len(s.messages)-1]; got.role != "agent" || got.text != "answer" {
+		t.Fatalf("agent response missing: %#v", s.messages)
 	}
 }
 
-func TestEnterDefersSteerUntilInProgressResponseFinishes(t *testing.T) {
-	m := newTestModel()
-	m.responding = true
-	m.nextRequestID = 1
-	cancelled := false
-	m.cancel = func() { cancelled = true }
-	setTestInput(&m, "change direction", len([]rune("change direction")))
+func TestToolEventsAreAddedToTranscript(t *testing.T) {
+	s, runtime := newState(func(_ string, emit func(toolEvent), _ context.Context) response {
+		emit(toolEvent{phase: "call", name: "shell", detail: "pwd"})
+		emit(toolEvent{phase: "result", name: "shell", detail: "/tmp"})
+		return response{text: "done"}
+	})
+	s.textarea.SetText("inspect")
+	s.submitInput(s.textarea.Text(), false)
 
-	m, cmd := updateModelWithCmd(t, m, keyPress(tea.KeyEnter))
-	if cmd != nil {
-		t.Fatal("steer started before the active response finished")
+	for s.responding {
+		runtime.runNext(t)
 	}
-	if cancelled {
-		t.Fatal("steer should not cancel the active response")
+	if len(s.messages) != 4 {
+		t.Fatalf("messages = %#v", s.messages)
 	}
-	if !m.responding || m.pendingSteer != "change direction" {
-		t.Fatalf("steer was not deferred: responding=%v pending=%q", m.responding, m.pendingSteer)
-	}
-	if m.composer.Value() != "" || len(m.messages) != 0 {
-		t.Fatalf("steer should remain above the input until injected: %#v", m)
-	}
-	view := m.View().Content
-	if !strings.Contains(view, pendingInputStyle.Render("    steer  change direction")) ||
-		strings.Index(view, "steer") > strings.Index(view, m.renderComposer(m.width)) {
-		t.Fatalf("steer is not shown above the composer: %q", view)
-	}
-	if !strings.Contains(view, "Thinking…") || strings.Contains(view, "Steering…") {
-		t.Fatalf("pending steer changed the thinking status: %q", view)
-	}
-
-	m, cmd = updateModelWithCmd(t, m, responseMsg{id: 1, text: "completed response", contextTokens: 42})
-	if cmd == nil || !m.responding || m.nextRequestID != 2 || m.pendingSteer != "" {
-		t.Fatalf("steer did not start after the response completed: %#v", m)
-	}
-	if len(m.messages) != 2 {
-		t.Fatalf("completed response and steer were not both retained: %#v", m.messages)
-	}
-	if got := m.messages[0]; got.role != "agent" || got.text != "completed response" {
-		t.Fatalf("completed response was not retained before steer: %#v", m.messages)
-	}
-	if got := m.messages[1]; got.role != "you" || got.text != "change direction" {
-		t.Fatalf("steer was not injected after the response: %#v", m.messages)
+	if s.messages[1].text != "$ pwd" || s.messages[2].text != "/tmp" {
+		t.Fatalf("tool events out of order: %#v", s.messages)
 	}
 }
 
-func TestSteerRunsBeforeQueuedMessages(t *testing.T) {
-	m := newTestModel()
-	m.responding = true
-	m.nextRequestID = 1
-	m.queued = []string{"ordinary follow-up"}
-	m.pendingInputs = []pendingInput{{kind: "queued", text: "ordinary follow-up"}}
-	setTestInput(&m, "priority correction", len([]rune("priority correction")))
-
-	m = updateModel(t, m, keyPress(tea.KeyEnter))
-	m, cmd := updateModelWithCmd(t, m, responseMsg{id: 1, text: "active answer"})
-
-	if cmd == nil || !m.responding {
-		t.Fatal("steer did not start after the active response")
+func TestResponseErrorIsRetained(t *testing.T) {
+	s, runtime := newState(func(string, func(toolEvent), context.Context) response {
+		return response{err: errors.New("request failed")}
+	})
+	s.textarea.SetText("hello")
+	s.submitInput(s.textarea.Text(), false)
+	for s.responding {
+		runtime.runNext(t)
 	}
-	if len(m.queued) != 1 || m.queued[0] != "ordinary follow-up" {
-		t.Fatalf("ordinary queue ran before steer: %#v", m.queued)
-	}
-	if got := m.messages[len(m.messages)-1]; got.role != "you" || got.text != "priority correction" {
-		t.Fatalf("steer was not given priority: %#v", m.messages)
+	if got := s.messages[len(s.messages)-1]; got.role != "error" || got.text != "request failed" {
+		t.Fatalf("error missing: %#v", s.messages)
 	}
 }
 
-func TestShiftEnterQueuesUntilCurrentResponseFinishes(t *testing.T) {
-	m := newTestModel()
-	m.responding = true
-	m.nextRequestID = 1
-	setTestInput(&m, "do this next", len([]rune("do this next")))
+func TestEnterSteersAndShiftEnterQueues(t *testing.T) {
+	s, _ := newState(func(string, func(toolEvent), context.Context) response { return response{} })
+	s.responding = true
 
-	shiftEnter := tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}
-	m, cmd := updateModelWithCmd(t, m, shiftEnter)
-	if cmd != nil || len(m.queued) != 1 || m.queued[0] != "do this next" {
-		t.Fatalf("message was not queued: %#v", m)
-	}
-	if len(m.messages) != 0 {
-		t.Fatalf("queued message should not appear in conversation history yet: %#v", m.messages)
-	}
-	view := m.View().Content
-	if !strings.Contains(view, pendingInputStyle.Render("    queued  do this next")) ||
-		strings.Index(view, "queued") > strings.Index(view, m.renderComposer(m.width)) {
-		t.Fatalf("queued message is not shown above the composer: %q", view)
-	}
+	s.submitInput("queued follow-up", true)
+	s.submitInput("priority correction", false)
 
-	m, cmd = updateModelWithCmd(t, m, responseMsg{id: 1, text: "first response"})
-	if cmd == nil || !m.responding || m.nextRequestID != 2 || len(m.queued) != 0 {
-		t.Fatalf("queued message did not start after response: %#v", m)
+	if len(s.queued) != 1 || s.queued[0] != "queued follow-up" {
+		t.Fatalf("queue = %#v", s.queued)
 	}
-	if got := m.messages[len(m.messages)-1]; got.role != "you" || got.text != "do this next" {
-		t.Fatalf("queued message was not injected after the response: %#v", m.messages)
+	if s.pendingSteer != "priority correction" {
+		t.Fatalf("steer = %q", s.pendingSteer)
+	}
+	if len(s.pendingInputs) != 2 || s.pendingInputs[0].kind != "queued" || s.pendingInputs[1].kind != "steer" {
+		t.Fatalf("pending inputs = %#v", s.pendingInputs)
 	}
 }
 
-func TestPendingMessagesGrowDownwardInSubmissionOrder(t *testing.T) {
-	m := newTestModel()
-	m.responding = true
-	m.nextRequestID = 1
-	setTestInput(&m, "first queued", len([]rune("first queued")))
-	m = updateModel(t, m, tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift})
-	setTestInput(&m, "then steer", len([]rune("then steer")))
-	m = updateModel(t, m, keyPress(tea.KeyEnter))
+func TestSteerRunsBeforeQueuedMessage(t *testing.T) {
+	started := make(chan string, 2)
+	s, _ := newState(func(input string, _ func(toolEvent), ctx context.Context) response {
+		started <- input
+		<-ctx.Done()
+		return response{}
+	})
+	s.responding = true
+	s.nextRequestID = 1
+	s.queued = []string{"queued"}
+	s.pendingSteer = "steer"
+	s.pendingInputs = []pendingInput{{kind: "queued", text: "queued"}, {kind: "steer", text: "steer"}}
 
-	view := m.View().Content
-	queued := pendingInputStyle.Render("    queued  first queued")
-	steer := pendingInputStyle.Render("    steer  then steer")
-	queuedAt := strings.Index(view, queued)
-	steerAt := strings.Index(view, steer)
-	composerAt := strings.Index(view, m.renderComposer(m.width))
-	if queuedAt < 0 || steerAt <= queuedAt || composerAt <= steerAt {
-		t.Fatalf("pending messages are not growing downward above the composer: %q", view)
+	s.finishResponse(response{id: 1, text: "first"})
+	select {
+	case got := <-started:
+		if got != "steer" {
+			t.Fatalf("started %q, want steer", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("steer did not start")
 	}
-	if queued == steer {
-		t.Fatal("queued and steer messages should use different colors")
+	if len(s.queued) != 1 {
+		t.Fatal("queued message ran before steer")
+	}
+	s.cancelRequest()
+}
+
+func TestEscapeCancelsAndIgnoresStaleResponse(t *testing.T) {
+	s, _ := newState(func(string, func(toolEvent), context.Context) response { return response{} })
+	ctx, cancel := context.WithCancel(context.Background())
+	s.responding = true
+	s.cancel = cancel
+	s.nextRequestID = 3
+
+	s.cancelRequest()
+	if ctx.Err() == nil || s.responding || s.cancel != nil {
+		t.Fatalf("request was not cancelled: %#v", s)
+	}
+	if len(s.messages) != 1 || s.messages[0].text != "Cancelled." {
+		t.Fatalf("cancellation message missing: %#v", s.messages)
+	}
+	s.finishResponse(response{id: 3, text: "stale"})
+	if len(s.messages) != 1 {
+		t.Fatalf("stale response changed transcript: %#v", s.messages)
 	}
 }
 
-func TestSpaceKeyAddsSpaceToInput(t *testing.T) {
-	m := newTestModel()
-	m = updateModel(t, m, keyText("hello"))
-	m = updateModel(t, m, tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
-	m = updateModel(t, m, keyText("world"))
-
-	if got := m.composer.Value(); got != "hello world" {
-		t.Fatalf("input = %q, want %q", got, "hello world")
+func TestFormatTokenCount(t *testing.T) {
+	for input, want := range map[int64]string{0: "0", 999: "999", 1000: "1,000", 1234567: "1,234,567"} {
+		if got := formatTokenCount(input); got != want {
+			t.Fatalf("formatTokenCount(%d) = %q, want %q", input, got, want)
+		}
 	}
 }
 
-func TestModifiedArrowsMoveByWord(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		msg  tea.KeyPressMsg
+func TestRenderedMultilineMessageRestoresStylePerLine(t *testing.T) {
+	got := renderedMessage(message{role: "error", text: "first\nsecond"}, 80)
+	if strings.Count(got, ";48;5;160m") != 2 {
+		t.Fatalf("multiline error did not style each line independently: %q", got)
+	}
+	if !strings.Contains(got, " first ") || !strings.Contains(got, " second ") {
+		t.Fatalf("multiline error lost indentation: %q", got)
+	}
+}
+
+func TestRenderedMessagesUseOriginalANSIPalette(t *testing.T) {
+	tests := []struct {
+		message message
+		code    string
 	}{
-		{name: "control", msg: tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModCtrl}},
-		{name: "alt", msg: tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModAlt}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			m := newTestModel()
-			setTestInput(&m, "one two_three four", len([]rune("one two_three four")))
-
-			m = updateModel(t, m, tc.msg)
-			if m.composer.Column() != len([]rune("one two_three ")) {
-				t.Fatalf("word-left cursor = %d", m.composer.Column())
-			}
-			m = updateModel(t, m, tea.KeyPressMsg{Code: tea.KeyRight, Mod: tc.msg.Mod})
-			if m.composer.Column() != len([]rune("one two_three four")) {
-				t.Fatalf("word-right cursor = %d", m.composer.Column())
-			}
-		})
+		{message{role: "you", text: "hello", sentAt: "12:34"}, "38;5;255;48;5;236"},
+		{message{role: "agent", text: "hello"}, "38;5;252"},
+		{message{role: "tool", text: "$ pwd"}, "38;5;71"},
+		{message{role: "tool", text: "/tmp"}, "38;5;247"},
+		{message{role: "error", text: "failed"}, "38;5;255;48;5;160"},
+		{message{role: "system", text: "cancelled"}, "38;5;242"},
 	}
-}
-
-func TestReadlineWordAliasesMoveCursor(t *testing.T) {
-	m := newTestModel()
-	setTestInput(&m, "one two", len([]rune("one two")))
-
-	m = updateModel(t, m, tea.KeyPressMsg{Code: 'b', Mod: tea.ModAlt})
-	if m.composer.Column() != 4 {
-		t.Fatalf("alt+b cursor = %d, want 4", m.composer.Column())
-	}
-	m = updateModel(t, m, tea.KeyPressMsg{Code: 'f', Mod: tea.ModAlt})
-	if m.composer.Column() != len([]rune("one two")) {
-		t.Fatalf("alt+f cursor = %d", m.composer.Column())
-	}
-}
-
-func TestTextareaEditingShortcuts(t *testing.T) {
-	t.Run("ctrl+w deletes previous word", func(t *testing.T) {
-		m := newTestModel()
-		setTestInput(&m, "one two three", len([]rune("one two three")))
-		m = updateModel(t, m, tea.KeyPressMsg{Code: 'w', Mod: tea.ModCtrl})
-		if got := m.composer.Value(); got != "one two " {
-			t.Fatalf("input = %q at %d", got, m.composer.Column())
-		}
-	})
-
-	t.Run("alt+d deletes next word", func(t *testing.T) {
-		m := newTestModel()
-		setTestInput(&m, "one two three", len([]rune("one ")))
-		m = updateModel(t, m, tea.KeyPressMsg{Code: 'd', Mod: tea.ModAlt})
-		if got := m.composer.Value(); got != "one  three" {
-			t.Fatalf("input = %q at %d", got, m.composer.Column())
-		}
-	})
-
-	t.Run("ctrl+u and ctrl+k delete around cursor", func(t *testing.T) {
-		m := newTestModel()
-		setTestInput(&m, "before after", len([]rune("before")))
-		m = updateModel(t, m, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
-		if got := m.composer.Value(); got != " after" || m.composer.Column() != 0 {
-			t.Fatalf("ctrl+u input = %q at %d", got, m.composer.Column())
-		}
-
-		setTestInput(&m, "before after", len([]rune("before")))
-		m = updateModel(t, m, tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
-		if got := m.composer.Value(); got != "before" {
-			t.Fatalf("ctrl+k input = %q at %d", got, m.composer.Column())
-		}
-	})
-}
-
-func TestEmptyInputDoesNotAddMessages(t *testing.T) {
-	m := newTestModel()
-	m = updateModel(t, m, keyText("   "))
-	m, cmd := updateModelWithCmd(t, m, keyPress(tea.KeyEnter))
-
-	if cmd != nil {
-		t.Fatalf("empty input started a command: %#v", cmd)
-	}
-}
-
-func TestRenderedMessagesIncludeTimestampAndToolOutput(t *testing.T) {
-	user := renderMessageLines(message{role: "you", text: "hello", sentAt: "18:37"}, 80)
-	if len(user) == 0 || !strings.Contains(user[0], "[18:37] hello") {
-		t.Fatalf("user message is missing its timestamp: %q", user)
-	}
-
-	call := strings.Join(renderMessageLines(message{role: "tool", text: "$ echo hi"}, 80), "\n")
-	if !strings.Contains(call, "$ echo hi") {
-		t.Fatalf("tool call line missing: %q", call)
-	}
-
-	output := strings.Join(renderMessageLines(message{role: "tool", text: "hi\n"}, 80), "\n")
-	if !strings.Contains(output, "hi") {
-		t.Fatalf("tool output line missing: %q", output)
-	}
-}
-
-func TestViewShowsModelAndContextTokensBelowComposer(t *testing.T) {
-	m := newTestModel()
-	m.contextTokens = 1234567
-	view := m.View().Content
-
-	composer := m.renderComposer(m.width)
-	want := composer + "\n" + dimStyle.Render("model test-model  ·  context 1,234,567 tokens")
-	if !strings.Contains(view, want) {
-		t.Fatalf("model and context info is not below composer: %q", view)
-	}
-}
-
-func TestViewShowsSpinnerWhileResponding(t *testing.T) {
-	m := newTestModel()
-	if strings.Contains(m.View().Content, "Thinking…") {
-		t.Fatal("spinner shown while idle")
-	}
-	m.responding = true
-	m.queued = []string{"next"}
-	view := m.View().Content
-	if !strings.Contains(view, "Thinking…") {
-		t.Fatal("spinner not shown while responding")
-	}
-	statusLine := ""
-	for _, line := range strings.Split(view, "\n") {
-		if strings.Contains(line, "Thinking…") {
-			statusLine = line
-			break
-		}
-	}
-	if strings.Contains(statusLine, "queued") || strings.Contains(statusLine, "steer") {
-		t.Fatalf("thinking status includes pending input details: %q", statusLine)
-	}
-	for _, helper := range []string{"enter steer", "shift+enter queue", "esc cancel"} {
-		if strings.Contains(view, helper) {
-			t.Fatalf("view contains helper message %q", helper)
+	for _, test := range tests {
+		if got := renderedMessage(test.message, 80); !strings.Contains(got, test.code) {
+			t.Errorf("rendered %s message missing ANSI palette %q: %q", test.message.role, test.code, got)
 		}
 	}
 }
-func TestEscCancelsInProgressResponse(t *testing.T) {
-	m := newTestModel()
-	m.responding = true
-	cancelled := false
-	m.cancel = func() { cancelled = true }
-	m.nextRequestID = 1
 
-	m, _ = updateModelWithCmd(t, m, keyPress(tea.KeyEsc))
-
-	if !cancelled {
-		t.Fatal("esc did not cancel the in-flight request")
+func TestMainScreenRendererAppendsWithoutAlternateScreen(t *testing.T) {
+	var out strings.Builder
+	r := newMainScreenRenderer(&out, 20, 4)
+	if err := r.render([]string{"one", "input"}, 1, 2); err != nil {
+		t.Fatal(err)
 	}
-	if m.responding || m.cancel != nil {
-		t.Fatal("model should not be responding after esc")
+	out.Reset()
+	if err := r.render([]string{"one", "two", "input"}, 2, 2); err != nil {
+		t.Fatal(err)
 	}
-	if len(m.messages) != 1 || m.messages[0].text != "Cancelled." {
-		t.Fatalf("unexpected messages after cancel: %#v", m.messages)
+	got := out.String()
+	if strings.Contains(got, "\x1b[?1049") {
+		t.Fatalf("entered alternate screen: %q", got)
 	}
-	m = updateModel(t, m, responseMsg{id: 1, text: testAgentResponse, contextTokens: 1234})
-	if len(m.messages) != 1 {
-		t.Fatalf("stale response was appended after cancellation: %#v", m.messages)
+	if strings.Contains(got, "\x1b[3J") {
+		t.Fatalf("append cleared scrollback: %q", got)
+	}
+	if !strings.Contains(got, "two") {
+		t.Fatalf("append missing new line: %q", got)
 	}
 }
 
-func TestComposerFitsNarrowTerminal(t *testing.T) {
-	m := newTestModel()
-	m.width = 20
-
-	composer := m.renderComposer(m.width)
-	if got, want := lipgloss.Width(composer), m.width-2; got != want {
-		t.Fatalf("composer width = %d, want %d", got, want)
+func TestMainScreenRendererReplaysWhenChangedLineIsAboveViewport(t *testing.T) {
+	var out strings.Builder
+	r := newMainScreenRenderer(&out, 20, 3)
+	lines := []string{"zero", "one", "two", "input"}
+	if err := r.render(lines, 3, 0); err != nil {
+		t.Fatal(err)
 	}
-	if got := lipgloss.Height(composer); got != 3 {
-		t.Fatalf("composer height = %d, want 3", got)
+	out.Reset()
+	changed := append([]string(nil), lines...)
+	changed[0] = "ZERO"
+	if err := r.render(changed, 3, 0); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestComposerGrowsAndWrapsLongInput(t *testing.T) {
-	m := newTestModel()
-	m.width = 30
-	text := strings.Repeat("wrapped message ", 5)
-	setTestInput(&m, text, len([]rune(text)))
-
-	composer := m.renderComposer(m.width)
-	if got := lipgloss.Height(composer); got <= 3 {
-		t.Fatalf("composer height = %d, want a multiline composer", got)
-	}
-	if got, want := lipgloss.Width(composer), m.width-2; got != want {
-		t.Fatalf("composer width = %d, want %d", got, want)
-	}
-
-	if got := m.composer.Value(); got != text {
-		t.Fatal("textarea wrapping changed the input value")
+	if !strings.Contains(out.String(), "\x1b[3J") {
+		t.Fatalf("unaddressable edit did not replay: %q", out.String())
 	}
 }
 
-func TestComposerDoesNotReachRightEdgeWhileTypingDuringResponse(t *testing.T) {
-	m := newTestModel()
-	m.width = 40
-	m.responding = true
-	text := "a long input typed while the model is responding"
-	setTestInput(&m, text, len([]rune(text)))
-
-	composer := m.renderComposer(m.width)
-	if got, want := lipgloss.Width(composer), m.width-2; got != want {
-		t.Fatalf("composer expanded to width %d while typing, want %d", got, want)
+func TestMainScreenRendererResizeUsesPiStyleReplay(t *testing.T) {
+	var out strings.Builder
+	r := newMainScreenRenderer(&out, 20, 4)
+	if err := r.render([]string{"history", "input"}, 1, 0); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(m.View().Content, composer) {
-		t.Fatal("composer disappeared from the view while responding")
+	out.Reset()
+	r.resize(10, 4)
+	if err := r.render([]string{"history", "input"}, 1, 0); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestPendingMessagesCannotPushComposerOffscreen(t *testing.T) {
-	m := newTestModel()
-	m.width = 40
-	m.height = 8
-	m.started = true
-	m.responding = true
-	for i := 0; i < 10; i++ {
-		m.pendingInputs = append(m.pendingInputs, pendingInput{
-			kind: "queued",
-			text: "a long queued message that wraps onto several lines",
-		})
-	}
-
-	view := m.View().Content
-	if got := lipgloss.Height(view); got != m.height {
-		t.Fatalf("view height = %d, want %d", got, m.height)
-	}
-	if got := lipgloss.Width(view); got > m.width {
-		t.Fatalf("view width = %d, terminal width = %d", got, m.width)
-	}
-	if !strings.Contains(view, m.renderComposer(m.width)) {
-		t.Fatal("pending messages pushed the composer out of the viewport")
+	if !strings.Contains(out.String(), "\x1b[2J\x1b[H\x1b[3J") {
+		t.Fatalf("resize did not fully replay: %q", out.String())
 	}
 }
 
-func TestSelectedTextAcrossLines(t *testing.T) {
-	content := "alpha\nbeta"
-	start := screenPoint{x: 1, y: 0}
-	end := screenPoint{x: 2, y: 1}
-	if got, want := selectedText(content, &start, &end), "lpha\nbet"; got != want {
-		t.Fatalf("selected text = %q, want %q", got, want)
+func TestStreamingDeltaLivesInRenderedModel(t *testing.T) {
+	s, _ := newState(nil)
+	s.responding = true
+	s.nextRequestID = 1
+	s.handleToolEvent(1, toolEvent{phase: "text_delta", detail: "hello "})
+	s.handleToolEvent(1, toolEvent{phase: "text_delta", detail: "world"})
+	lines, _, _ := s.render(40)
+	if !strings.Contains(strings.Join(lines, "\n"), "hello world") {
+		t.Fatalf("stream missing from render: %q", lines)
 	}
-	if highlighted := renderTextSelection(content, &start, &end); highlighted == content {
-		t.Fatal("selection was not highlighted")
-	}
-}
-
-func TestMouseDragCopiesSelection(t *testing.T) {
-	m := newTestModel()
-	m.height = 8
-	m.appendMessage(message{role: "agent", text: "copy this text"})
-
-	var row, column int
-	found := false
-	for y, line := range strings.Split(m.renderContent(), "\n") {
-		plain := ansi.Strip(line)
-		if x := strings.Index(plain, "copy this text"); x >= 0 {
-			row, column, found = y, x, true
-			break
-		}
-	}
-	if !found {
-		t.Fatal("test message is not visible")
-	}
-
-	var copied string
-	m.copySelection = func(text string) error {
-		copied = text
-		return nil
-	}
-	m = updateModel(t, m, tea.MouseClickMsg{X: column, Y: row, Button: tea.MouseLeft})
-	var cmd tea.Cmd
-	m, cmd = updateModelWithCmd(t, m, tea.MouseReleaseMsg{
-		X:      column + len("copy this text") - 1,
-		Y:      row,
-		Button: tea.MouseLeft,
-	})
-	if cmd == nil {
-		t.Fatal("mouse selection did not schedule a clipboard copy")
-	}
-	cmd()
-	if copied != "copy this text" {
-		t.Fatalf("copied text = %q, want %q", copied, "copy this text")
-	}
-	if m.selectionStart == nil || m.selectionEnd == nil {
-		t.Fatal("selection was not retained for highlighting")
+	if len(s.messages) != 0 {
+		t.Fatalf("stream was finalized early: %#v", s.messages)
 	}
 }
 
-func TestClipboardErrorIsAddedToConversation(t *testing.T) {
-	m := newTestModel()
-	m = updateModel(t, m, uiErrorMsg{err: errors.New("clipboard unavailable")})
-
-	if len(m.messages) != 1 || m.messages[0].role != "error" || m.messages[0].text != "clipboard unavailable" {
-		t.Fatalf("clipboard error was not added to conversation: %#v", m.messages)
+func TestLongEditorKeepsCursorInLogicalOutput(t *testing.T) {
+	s, _ := newState(nil)
+	s.textarea.SetText(strings.Repeat("abcdefghij", 20))
+	lines, row, col := s.render(20)
+	if row < 1 || row >= len(lines)-1 {
+		t.Fatalf("cursor row %d outside editor in %d lines", row, len(lines))
+	}
+	if col < 2 || col >= 20 {
+		t.Fatalf("cursor column = %d", col)
 	}
 }
 
-func TestMouseWheelScrollsConversationHistory(t *testing.T) {
-	m := newTestModel()
-	m.width = 40
-	m.height = 8
-	for _, text := range []string{"first message", "second message", "third message"} {
-		m.appendMessage(message{role: "agent", text: text})
+func TestEditorCursorUsesGraphemeClusters(t *testing.T) {
+	text := "a👩‍💻b"
+	_, row, col := renderEditor(text, 2, 20) // after a + one ZWJ cluster
+	if row != 1 || col != 5 {                // border+padding (2), a (1), emoji (2)
+		t.Fatalf("cursor = (%d,%d), want (1,5)", row, col)
 	}
-
-	if strings.Contains(m.View().Content, "first message") {
-		t.Fatal("oldest message should initially be above the viewport")
-	}
-	m = updateModel(t, m, tea.MouseWheelMsg{Button: tea.MouseWheelUp})
-	if !strings.Contains(m.View().Content, "first message") {
-		t.Fatal("mouse wheel did not reveal retained conversation history")
-	}
-	m = updateModel(t, m, tea.MouseWheelMsg{Button: tea.MouseWheelDown})
-	if m.scrollOffset != 0 || strings.Contains(m.View().Content, "first message") {
-		t.Fatal("mouse wheel did not return to the latest messages")
+	if got := clusterToRuneIndex(text, 2); got != 4 {
+		t.Fatalf("clusterToRuneIndex = %d, want 4", got)
 	}
 }
 
-func TestPageKeysScrollConversationHistory(t *testing.T) {
-	m := newTestModel()
-	m.width = 40
-	m.height = 8
-	for _, text := range []string{"first message", "second message", "third message"} {
-		m.appendMessage(message{role: "agent", text: text})
-	}
-
-	m = updateModel(t, m, keyPress(tea.KeyPgUp))
-	if m.scrollOffset == 0 || !strings.Contains(m.View().Content, "first message") {
-		t.Fatal("page up did not scroll conversation history")
-	}
-	m = updateModel(t, m, keyPress(tea.KeyPgDown))
-	if m.scrollOffset != 0 {
-		t.Fatalf("page down left scroll offset at %d", m.scrollOffset)
+func TestLineWidthIgnoresANSI(t *testing.T) {
+	if got := lineWidth("\x1b[38;5;39mhello\x1b[0m"); got != 5 {
+		t.Fatalf("lineWidth = %d, want 5", got)
 	}
 }
 
-func TestViewCapturesMouseForScrolling(t *testing.T) {
-	view := newTestModel().View()
-	if !view.AltScreen {
-		t.Fatal("view should use the alternate screen")
+func TestMainScreenRendererStopDoesNotOverwriteCursorCell(t *testing.T) {
+	var out strings.Builder
+	r := newMainScreenRenderer(&out, 20, 4)
+	if err := r.render([]string{"input", "footer"}, 0, 0); err != nil {
+		t.Fatal(err)
 	}
-	if view.MouseMode != tea.MouseModeCellMotion {
-		t.Fatalf("mouse mode = %v, want cell motion", view.MouseMode)
+	out.Reset()
+	if err := r.stop(); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestNewOutputDoesNotMoveScrolledViewport(t *testing.T) {
-	m := newTestModel()
-	m.width = 40
-	m.height = 8
-	for _, text := range []string{"first message", "second message", "third message"} {
-		m.appendMessage(message{role: "agent", text: text})
-	}
-	m.scrollBody(2)
-	before := m.View().Content
-
-	m.appendMessage(message{role: "agent", text: "new output"})
-	if got := m.View().Content; got != before {
-		t.Fatalf("new output moved the scrolled viewport\nbefore: %q\nafter:  %q", before, got)
+	if strings.HasPrefix(out.String(), " ") {
+		t.Fatalf("stop overwrote the cell under the hardware cursor: %q", out.String())
 	}
 }
 
-func TestResizeRedrawsFrame(t *testing.T) {
-	m := newTestModel()
-	m.width = 60
-	m.height = 18
-	m = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
-
-	if m.width != 100 || m.height != 30 {
-		t.Fatalf("size not updated: %dx%d", m.width, m.height)
+func TestShortDocumentFillsAndBottomAlignsViewport(t *testing.T) {
+	s, _ := newState(nil)
+	lines, row, _ := s.render(40, 12)
+	if len(lines) != 12 {
+		t.Fatalf("rendered height = %d, want 12", len(lines))
 	}
-	view := m.View().Content
-	if height := strings.Count(strings.TrimSuffix(view, "\n"), "\n") + 1; height != 30 {
-		t.Fatalf("view height = %d, want 30 after resize", height)
+	if row != 9 { // blank padding, top border, then editor content row
+		t.Fatalf("cursor row = %d, want 9", row)
 	}
-	composer := m.renderComposer(100)
-	if first := strings.Split(composer, "\n")[0]; len(first) < 96 {
-		t.Fatalf("composer not resized to new width: %q", first)
+	if lines[0] != "" {
+		t.Fatalf("first row = %q, want viewport filler", lines[0])
+	}
+	if !strings.Contains(stripANSI(lines[len(lines)-1]), "model test-model") {
+		t.Fatalf("footer is not bottom-aligned: %q", lines[len(lines)-1])
 	}
 }
 
-func TestGrowingViewportBackfillsMessagesFromHistory(t *testing.T) {
-	m := newTestModel()
-	m.width = 40
-	m.height = 8
-
-	for _, text := range []string{"first message", "second message", "third message"} {
-		m.appendMessage(message{role: "agent", text: text})
+func TestLongDocumentIsNotViewportPadded(t *testing.T) {
+	s, _ := newState(nil)
+	for i := 0; i < 20; i++ {
+		s.messages = append(s.messages, message{role: "agent", text: "line"})
 	}
-	if strings.Contains(m.View().Content, "first message") {
-		t.Fatal("first message should be outside the small viewport")
+	lines, _, _ := s.render(40, 12)
+	if len(lines) <= 12 {
+		t.Fatalf("long document height = %d, want > 12", len(lines))
 	}
-	if !strings.Contains(strings.Join(m.bodyLines, "\n"), "first message") {
-		t.Fatal("first message was discarded instead of retained for scrollback")
-	}
-
-	m = updateModel(t, m, tea.WindowSizeMsg{Width: 40, Height: 14})
-	body := strings.Join(m.bodyLines, "\n")
-	if !strings.Contains(body, "first message") ||
-		!strings.Contains(body, "second message") ||
-		!strings.Contains(body, "third message") {
-		t.Fatalf("growing viewport did not backfill message history: %q", body)
-	}
-}
-
-func TestToolOutputStaysInsideManagedView(t *testing.T) {
-	m := newTestModel()
-	m.width = 30
-	m.height = 8
-	m.responding = true
-	m.nextRequestID = 1
-
-	ch := make(chan toolEvent, 1)
-	ch <- toolEvent{phase: "result", detail: "next event"}
-	event := toolEventMsg{
-		toolEvent: toolEvent{phase: "result", detail: strings.Repeat("long output ", 20)},
-		requestID: 1,
-		ch:        ch,
-	}
-
-	m, cmd := updateModelWithCmd(t, m, event)
-	if cmd == nil {
-		t.Fatal("tool listener was not continued")
-	}
-	if _, ok := cmd().(toolEventMsg); !ok {
-		t.Fatal("overflowing tool output created unmanaged terminal output")
-	}
-	if !strings.Contains(m.View().Content, "long output") {
-		t.Fatal("tool output was not retained in the managed viewport")
-	}
-}
-
-func TestViewLeavesRightEdgeClearWhileResponding(t *testing.T) {
-	for _, width := range []int{20, 30, 40} {
-		m := newTestModel()
-		m.width = width
-		m.height = 12
-		m.responding = true
-		m.contextTokens = 1234567
-		m.queued = []string{"next"}
-		m.pendingInputs = []pendingInput{{
-			kind: "queued",
-			text: "a pending message long enough to wrap near the right edge",
-		}}
-
-		for lineNumber, line := range strings.Split(m.View().Content, "\n") {
-			if got := lipgloss.Width(line); got > width-2 {
-				t.Fatalf("width %d, line %d reaches terminal edge: visual width %d: %q", width, lineNumber, got, line)
-			}
-		}
+	if lines[0] == "" {
+		t.Fatal("long document was incorrectly prefixed with viewport filler")
 	}
 }

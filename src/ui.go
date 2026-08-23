@@ -3,706 +3,675 @@ package main
 import (
 	"context"
 	"fmt"
-	"strconv"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
-	"unicode/utf8"
+	"unicode"
 
-	"charm.land/bubbles/v2/textarea"
-	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
-	"github.com/atotto/clipboard"
-	ansi "github.com/charmbracelet/x/ansi"
-	"github.com/mattn/go-runewidth"
+	tui "github.com/grindlemire/go-tui"
 )
 
-type message struct {
-	role   string
-	text   string
-	sentAt string
-}
-
+type message struct{ role, text, sentAt string }
 type response struct {
 	id            int
 	text          string
 	contextTokens int64
 	err           error
 }
+type toolEvent struct{ phase, name, detail string }
+type pendingInput struct{ kind, text string }
 
-type toolEvent struct {
-	phase  string // "call", "result", or "error"
-	name   string
-	detail string
+type oshUI struct {
+	modelName     string
+	contextTokens int64
+	respond       func(string, func(toolEvent), context.Context) response
+	textarea      *tui.TextArea
+	textareaWidth int
+	messages      []message
+	streamingText string
+	responding    bool
+	spinnerFrame  int
+	queued        []string
+	pendingSteer  string
+	pendingInputs []pendingInput
+	nextRequestID int
+	cancel        context.CancelFunc
+	dispatch      func(func())
+	invalidate    func()
+	emit          func(message)
 }
-
-type toolEventMsg struct {
-	toolEvent
-	requestID int
-	ch        <-chan toolEvent
-}
-type responseMsg response
-
-type uiErrorMsg struct{ err error }
-
-type pendingInput struct {
-	kind string
-	text string
-}
-
-type screenPoint struct {
-	x int
-	y int
-}
-
-type model struct {
-	width          int
-	height         int
-	composer       textarea.Model
-	messages       []message
-	bodyLines      []string
-	scrollOffset   int // rendered body lines above the newest viewport
-	started        bool
-	modelName      string
-	contextTokens  int64
-	respond        func(string, func(toolEvent), context.Context) response
-	toolEvents     chan toolEvent
-	nextRequestID  int
-	cancel         context.CancelFunc
-	responding     bool
-	spinnerFrame   int
-	queued         []string
-	pendingSteer   string
-	pendingInputs  []pendingInput
-	selectionStart *screenPoint
-	selectionEnd   *screenPoint
-	selecting      bool
-	copySelection  func(string) error
-}
-
-type spinnerTickMsg struct{}
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 const spinnerInterval = 80 * time.Millisecond
 
-var (
-	titleStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
-	dimStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
-	userMessageStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("255")).
-				Background(lipgloss.Color("236"))
-	bodyStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	inputStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("39")).
-			Padding(0, 1)
-	toolStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("71"))
-	toolOutputStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("247"))
-	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("160"))
-	pendingInputStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	selectionStyle    = lipgloss.NewStyle().Reverse(true)
-)
+func newUI(modelName string, respond func(string, func(toolEvent), context.Context) response) *oshUI {
+	s := &oshUI{modelName: modelName, respond: respond}
+	s.ensureTextarea()
+	s.emit = func(message) {}
+	return s
+}
 
-func newModel(modelName string, respond func(string, func(toolEvent), context.Context) response) model {
-	composer := textarea.New()
-	composer.Prompt = ""
-	composer.Placeholder = "Type a message…"
-	composer.ShowLineNumbers = false
-	composer.DynamicHeight = true
-	composer.MinHeight = 1
-	composer.MaxHeight = 20
-	composer.SetVirtualCursor(true)
-	styles := composer.Styles()
-	styles.Focused.Base = lipgloss.NewStyle()
-	styles.Focused.Text = bodyStyle
-	styles.Focused.CursorLine = lipgloss.NewStyle()
-	styles.Focused.EndOfBuffer = lipgloss.NewStyle()
-	styles.Focused.Placeholder = dimStyle
-	styles.Blurred = styles.Focused
-	styles.Cursor.Blink = false
-	styles.Cursor.Color = lipgloss.Color("255")
-	composer.SetStyles(styles)
-	composer.Focus()
+func (s *oshUI) ensureTextarea() {
+	s.setTextareaWidth(76)
+}
 
-	m := model{
-		width:         80,
-		height:        24,
-		composer:      composer,
-		modelName:     modelName,
-		respond:       respond,
-		copySelection: clipboard.WriteAll,
+func (s *oshUI) setTextareaWidth(width int) {
+	width = max(width, 1)
+	if s.textarea != nil && s.textareaWidth == width {
+		return
 	}
-	m.resizeComposer()
-	return m
-}
-
-func (m *model) resizeComposer() {
-	width := max(m.width, 20)
-	outerWidth := max(width-2, 1)
-	innerWidth := max(outerWidth-4, 1) // border and horizontal padding
-	m.composer.MaxHeight = max(max(m.height, 8)-5, 1)
-	m.composer.SetWidth(innerWidth)
-}
-
-func (model) Init() tea.Cmd {
-	return nil
-}
-
-func waitForResponse(respond func(string, func(toolEvent), context.Context) response, input string, ch chan toolEvent, ctx context.Context, id int) tea.Cmd {
-	return func() tea.Msg {
-		defer close(ch)
-		emit := func(ev toolEvent) {
-			select {
-			case ch <- ev:
-			case <-ctx.Done():
-			}
-		}
-		resp := respond(input, emit, ctx)
-		resp.id = id
-		return responseMsg(resp)
+	text, cursor := "", 0
+	if s.textarea != nil {
+		text, cursor = s.textarea.Text(), s.textarea.CursorPos()
 	}
+	s.textarea = tui.NewTextArea(tui.WithTextAreaWidth(width), tui.WithTextAreaAutoFocus(true))
+	s.textarea.SetText(text)
+	s.textarea.SetCursorPos(cursor)
+	s.textareaWidth = width
 }
 
-func listenToolEvents(ch <-chan toolEvent, requestID int) tea.Cmd {
-	return func() tea.Msg {
-		ev, ok := <-ch
-		if !ok {
-			return nil
-		}
-		return toolEventMsg{toolEvent: ev, requestID: requestID, ch: ch}
-	}
-}
-
-func (m *model) appendMessage(msg message) {
-	m.clearSelection()
-	width := max(m.width, 20)
-	lines := renderMessageLines(msg, width)
-	lines = append(lines, "") // spacing between messages
-	m.messages = append(m.messages, msg)
-	m.bodyLines = append(m.bodyLines, lines...)
-
-	// Keep the same content under the viewport when new output arrives while
-	// the user is reading history. At the bottom, continue following output.
-	if m.scrollOffset > 0 {
-		m.scrollOffset += len(lines)
-	}
-	m.clampScrollOffset(width)
-}
-
-// reflowBody rebuilds the viewport from message history after a resize, so
-// messages outside the current viewport can backfill newly available rows.
-func (m *model) reflowBody() {
-	m.clearSelection()
-	width := max(m.width, 20)
-	lines := make([]string, 0, len(m.bodyLines))
-	for _, msg := range m.messages {
-		lines = append(lines, renderMessageLines(msg, width)...)
-		lines = append(lines, "")
-	}
-
-	m.bodyLines = lines
-	m.clampScrollOffset(width)
-}
-
-func (m *model) clampScrollOffset(width int) {
-	maxOffset := max(len(m.bodyLines)-m.availableBodyHeight(width), 0)
-	m.scrollOffset = min(max(m.scrollOffset, 0), maxOffset)
-}
-
-func (m *model) scrollBody(delta int) {
-	m.clearSelection()
-	width := max(m.width, 20)
-	m.scrollOffset += delta
-	m.clampScrollOffset(width)
-}
-
-func (m model) availableBodyHeight(width int) int {
-	reservedHeight := 1 + lipgloss.Height(m.renderComposer(width))
-	if m.responding {
-		reservedHeight++
-	}
-	if pending := m.renderPendingMessages(width); pending != "" {
-		reservedHeight += lipgloss.Height(pending)
-	}
-	return max(max(m.height, 8)-reservedHeight, 1)
-}
-
-// availablePendingHeight limits queued and steering previews so they can never
-// push the composer below the bottom of the terminal. The most recently
-// submitted preview lines are retained when there is not enough room.
-func (m model) availablePendingHeight(width int) int {
-	reservedHeight := 1 + lipgloss.Height(m.renderComposer(width)) // info + composer
-	if m.responding {
-		reservedHeight++
-	}
-	return max(max(m.height, 8)-reservedHeight-1, 0) // retain one body row
-}
-
-func tickSpinner() tea.Cmd {
-	return tea.Tick(spinnerInterval, func(time.Time) tea.Msg {
-		return spinnerTickMsg{}
-	})
-}
-
-func (m *model) startRequest(text string, showUser bool) tea.Cmd {
-	m.started = true
-	m.responding = true
-	m.spinnerFrame = 0
-	m.toolEvents = make(chan toolEvent, 16)
-	m.nextRequestID++
-	ctx, cancel := context.WithCancel(context.Background())
-	m.cancel = cancel
-	m.reflowBody()
-
-	if showUser {
-		m.appendMessage(message{role: "you", text: text, sentAt: time.Now().Format("15:04")})
-	}
-	return tea.Batch(
-		waitForResponse(m.respond, text, m.toolEvents, ctx, m.nextRequestID),
-		listenToolEvents(m.toolEvents, m.nextRequestID),
-		tickSpinner(),
-	)
-}
-
-func (m *model) submitInput(queue bool) tea.Cmd {
-	text := strings.TrimSpace(m.composer.Value())
+func (s *oshUI) submitInput(text string, queue bool) {
+	text = strings.TrimSpace(text)
 	if text == "" {
-		return nil
+		return
 	}
-	m.composer.Reset()
-
-	if !m.responding {
-		return m.startRequest(text, true)
+	s.textarea.Clear()
+	if !s.responding {
+		s.startRequest(text, true)
+		return
 	}
 	if queue {
-		m.queued = append(m.queued, text)
-		m.pendingInputs = append(m.pendingInputs, pendingInput{kind: "queued", text: text})
-		m.reflowBody()
-		return nil
+		s.queued = append(s.queued, text)
+		s.pendingInputs = append(s.pendingInputs, pendingInput{"queued", text})
+		s.markDirty()
+		return
 	}
-
-	// A steer is a high-priority follow-up, not a hard cancellation. Let the
-	// active response finish so its history (including any tool calls) remains
-	// complete, then submit the steer before ordinary queued messages. Escape is
-	// the explicit hard-cancel control.
-	if m.pendingSteer == "" {
-		m.pendingSteer = text
+	if s.pendingSteer == "" {
+		s.pendingSteer = text
 	} else {
-		m.pendingSteer += "\n\n" + text
+		s.pendingSteer += "\n\n" + text
 	}
-	m.pendingInputs = append(m.pendingInputs, pendingInput{kind: "steer", text: text})
-	m.reflowBody()
-	return nil
+	s.pendingInputs = append(s.pendingInputs, pendingInput{"steer", text})
+	s.markDirty()
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.clearSelection()
-		m.width = msg.Width
-		m.height = msg.Height
-		m.resizeComposer()
-		m.reflowBody()
-		return m, nil
-	case responseMsg:
-		if msg.id != m.nextRequestID {
-			return m, nil
-		}
-		m.cancel = nil
-		if msg.err == nil {
-			m.contextTokens = msg.contextTokens
-		}
-		m.responding = false
-
-		if msg.err != nil {
-			m.appendMessage(message{role: "error", text: msg.err.Error()})
-		}
-
-		// Preserve the completed response before injecting a steer. This keeps the
-		// visible transcript aligned with the agent's internal history.
-		if msg.text != "" {
-			m.appendMessage(message{role: "agent", text: msg.text})
-		}
-		if m.pendingSteer != "" {
-			text := m.pendingSteer
-			m.pendingSteer = ""
-			m.removePendingInputs("steer", -1)
-			return m, m.startRequest(text, true)
-		}
-
-		var cmds []tea.Cmd
-		if len(m.queued) > 0 {
-			text := m.queued[0]
-			m.queued = m.queued[1:]
-			m.removePendingInputs("queued", 1)
-			cmds = append(cmds, m.startRequest(text, true))
-		}
-		return m, tea.Batch(cmds...)
-	case uiErrorMsg:
-		if msg.err != nil {
-			m.appendMessage(message{role: "error", text: msg.err.Error()})
-		}
-		return m, nil
-	case toolEventMsg:
-		if msg.requestID != m.nextRequestID {
-			return m, nil
-		}
-		text := msg.detail
-		role := "tool"
-		if msg.phase == "call" {
-			text = "$ " + text
-		} else if msg.phase == "error" {
-			role = "error"
-		}
-		m.appendMessage(message{role: role, text: text})
-		return m, listenToolEvents(msg.ch, msg.requestID)
-	case spinnerTickMsg:
-		if !m.responding {
-			return m, nil
-		}
-		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
-		return m, tickSpinner()
-	case tea.MouseClickMsg:
-		if msg.Button == tea.MouseLeft {
-			point := screenPoint{x: msg.X, y: msg.Y}
-			m.selectionStart = &point
-			m.selectionEnd = &point
-			m.selecting = true
-		}
-		return m, nil
-	case tea.MouseMotionMsg:
-		if m.selecting && msg.Button == tea.MouseLeft {
-			point := screenPoint{x: msg.X, y: msg.Y}
-			m.selectionEnd = &point
-		}
-		return m, nil
-	case tea.MouseReleaseMsg:
-		if !m.selecting {
-			return m, nil
-		}
-		point := screenPoint{x: msg.X, y: msg.Y}
-		m.selectionEnd = &point
-		m.selecting = false
-		text := selectedText(m.renderContent(), m.selectionStart, m.selectionEnd)
-		if text == "" || m.copySelection == nil {
-			return m, nil
-		}
-		copySelection := m.copySelection
-		return m, func() tea.Msg {
-			if err := copySelection(text); err != nil {
-				return uiErrorMsg{err: fmt.Errorf("clipboard: %w", err)}
-			}
-			return nil
-		}
-	case tea.MouseWheelMsg:
-		switch msg.Button {
-		case tea.MouseWheelUp:
-			m.scrollBody(3)
-		case tea.MouseWheelDown:
-			m.scrollBody(-3)
-		}
-		return m, nil
-	case tea.KeyPressMsg:
-		m.clearSelection()
-		switch msg.Keystroke() {
-		case "ctrl+c":
-			return m, tea.Quit
-		case "pgup":
-			m.scrollBody(max(m.availableBodyHeight(max(m.width, 20))-1, 1))
-			return m, nil
-		case "pgdown":
-			m.scrollBody(-max(m.availableBodyHeight(max(m.width, 20))-1, 1))
-			return m, nil
-		case "shift+enter":
-			return m, m.submitInput(true)
-		case "enter":
-			return m, m.submitInput(false)
-		case "esc", "escape":
-			if m.responding && m.cancel != nil {
-				m.cancel()
-				m.pendingSteer = ""
-				m.removePendingInputs("steer", -1)
-				m.nextRequestID++
-				m.cancel = nil
-				m.responding = false
-				m.reflowBody()
-				m.appendMessage(message{role: "system", text: "Cancelled."})
-			}
-			return m, nil
-		default:
-			var cmd tea.Cmd
-			m.composer, cmd = m.composer.Update(msg)
-			return m, cmd
-		}
+func (s *oshUI) startRequest(text string, showUser bool) {
+	if s.respond == nil || s.dispatch == nil {
+		return
 	}
-
-	var cmd tea.Cmd
-	m.composer, cmd = m.composer.Update(msg)
-	return m, cmd
+	s.nextRequestID++
+	id := s.nextRequestID
+	ctx, cancel := context.WithCancel(context.Background())
+	s.responding, s.spinnerFrame, s.cancel, s.streamingText = true, 0, cancel, ""
+	if showUser {
+		s.addMessage(message{"you", text, time.Now().Format("15:04")})
+	}
+	s.markDirty()
+	finished := make(chan struct{})
+	go s.spin(ctx, finished, id)
+	go func() {
+		emit := func(ev toolEvent) { s.dispatch(func() { s.handleToolEvent(id, ev) }) }
+		resp := s.respond(text, emit, ctx)
+		resp.id = id
+		close(finished)
+		s.dispatch(func() { s.finishResponse(resp) })
+	}()
 }
 
-func (m model) renderContent() string {
-	width := max(m.width, 20)
-	composer := m.renderComposer(width)
-	pending := m.renderPendingMessages(width)
-	infoText := "model " + m.modelName + "  ·  context " + formatTokenCount(m.contextTokens) + " tokens"
-	// Never occupy the terminal's final column. Terminals may autowrap a
-	// full-width line without reporting the extra row to Bubble Tea, which
-	// shifts subsequent rows over the composer while the spinner redraws.
-	info := dimStyle.Render(truncatePlainRunes([]rune(infoText), max(width-2, 0)))
-
-	status := ""
-	if m.responding {
-		activity := " Thinking…"
-		prefix := "    " + titleStyle.Render(spinnerFrames[m.spinnerFrame])
-		statusText := activity
-		status = prefix + dimStyle.Render(truncatePlainRunes(
-			[]rune(statusText), max(width-runesWidth([]rune("    "+spinnerFrames[m.spinnerFrame]))-2, 0),
-		))
-	}
-
-	bottom := []string{composer, info}
-	if pending != "" {
-		bottom = append([]string{pending}, bottom...)
-	}
-	if status != "" {
-		bottom = append([]string{status}, bottom...)
-	}
-	availBody := m.availableBodyHeight(width)
-	maxOffset := max(len(m.bodyLines)-availBody, 0)
-	offset := min(max(m.scrollOffset, 0), maxOffset)
-	end := len(m.bodyLines) - offset
-	start := max(end-availBody, 0)
-	body := m.bodyLines[start:end]
-
-	filler := availBody - len(body)
-	lines := make([]string, filler)
-	lines = append(lines, body...)
-	lines = append(lines, bottom...)
-	return strings.Join(lines, "\n")
-}
-
-func (m model) View() tea.View {
-	content := renderTextSelection(m.renderContent(), m.selectionStart, m.selectionEnd)
-	view := tea.NewView(content)
-	view.AltScreen = true
-	view.MouseMode = tea.MouseModeCellMotion
-	return view
-}
-
-func (m *model) clearSelection() {
-	m.selectionStart = nil
-	m.selectionEnd = nil
-	m.selecting = false
-}
-
-func selectionBounds(start, end *screenPoint) (screenPoint, screenPoint, bool) {
-	if start == nil || end == nil || *start == *end {
-		return screenPoint{}, screenPoint{}, false
-	}
-	if start.y < end.y || (start.y == end.y && start.x < end.x) {
-		return *start, *end, true
-	}
-	return *end, *start, true
-}
-
-func selectionColumns(row, lineWidth int, start, end screenPoint) (int, int) {
-	left, right := 0, lineWidth
-	if row == start.y {
-		left = min(max(start.x, 0), lineWidth)
-	}
-	if row == end.y {
-		right = min(max(end.x+1, 0), lineWidth)
-	}
-	return left, max(right, left)
-}
-
-func renderTextSelection(content string, start, end *screenPoint) string {
-	selectionStart, selectionEnd, ok := selectionBounds(start, end)
-	if !ok {
-		return content
-	}
-	lines := strings.Split(content, "\n")
-	selectionStart.y = min(max(selectionStart.y, 0), len(lines)-1)
-	selectionEnd.y = min(max(selectionEnd.y, 0), len(lines)-1)
-	for row := selectionStart.y; row <= selectionEnd.y; row++ {
-		line := lines[row]
-		lineWidth := ansi.StringWidth(line)
-		left, right := selectionColumns(row, lineWidth, selectionStart, selectionEnd)
-		if right <= left {
-			continue
+func (s *oshUI) spin(ctx context.Context, finished <-chan struct{}, id int) {
+	t := time.NewTicker(spinnerInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-finished:
+			return
+		case <-t.C:
+			s.dispatch(func() {
+				if s.responding && s.nextRequestID == id {
+					s.spinnerFrame = (s.spinnerFrame + 1) % len(spinnerFrames)
+					s.markDirty()
+				}
+			})
 		}
-		lines[row] = ansi.Cut(line, 0, left) + selectionStyle.Render(ansi.Cut(line, left, right)) + ansi.Cut(line, right, lineWidth)
-	}
-	return strings.Join(lines, "\n")
-}
-
-func selectedText(content string, start, end *screenPoint) string {
-	selectionStart, selectionEnd, ok := selectionBounds(start, end)
-	if !ok {
-		return ""
-	}
-	lines := strings.Split(content, "\n")
-	selectionStart.y = min(max(selectionStart.y, 0), len(lines)-1)
-	selectionEnd.y = min(max(selectionEnd.y, 0), len(lines)-1)
-	selected := make([]string, 0, selectionEnd.y-selectionStart.y+1)
-	for row := selectionStart.y; row <= selectionEnd.y; row++ {
-		line := ansi.Strip(lines[row])
-		lineWidth := runewidth.StringWidth(line)
-		left, right := selectionColumns(row, lineWidth, selectionStart, selectionEnd)
-		selected = append(selected, strings.TrimRight(ansi.Cut(line, left, right), " "))
-	}
-	return strings.TrimRight(strings.Join(selected, "\n"), "\n")
-}
-
-func formatTokenCount(tokens int64) string {
-	digits := strconv.FormatInt(tokens, 10)
-	for i := len(digits) - 3; i > 0; i -= 3 {
-		digits = digits[:i] + "," + digits[i:]
-	}
-	return digits
-}
-
-func renderMessageLines(msg message, width int) []string {
-	contentWidth := max(width-6, 8)
-	switch msg.role {
-	case "you":
-		prefix := "[" + msg.sentAt + "] "
-		messageWidth := max(contentWidth-runesWidth([]rune(prefix)), 1)
-		var lines []string
-		for lineIndex, line := range wrapText(msg.text, messageWidth) {
-			linePrefix := strings.Repeat(" ", runesWidth([]rune(prefix)))
-			if lineIndex == 0 {
-				linePrefix = prefix
-			}
-			text := linePrefix + line
-			bubble := " " + text + strings.Repeat(" ", max(contentWidth-runesWidth([]rune(text)), 0)) + " "
-			lines = append(lines, userMessageStyle.Render(bubble))
-		}
-		return lines
-	case "system":
-		return []string{"    " + dimStyle.Render(msg.text)}
-	case "error":
-		var lines []string
-		for _, line := range wrapText(msg.text, contentWidth-2) {
-			lines = append(lines, "    "+errorStyle.Render(" "+line+" "))
-		}
-		return lines
-	case "tool":
-		style := toolStyle
-		if !strings.HasPrefix(msg.text, "$") {
-			style = toolOutputStyle
-		}
-		var lines []string
-		for _, line := range wrapText(msg.text, contentWidth-2) {
-			lines = append(lines, "    "+style.Render("│ "+line))
-		}
-		return lines
-	default:
-		var lines []string
-		for _, line := range wrapText(msg.text, contentWidth) {
-			lines = append(lines, "    "+bodyStyle.Render(line))
-		}
-		return lines
 	}
 }
 
-func (m *model) removePendingInputs(kind string, limit int) {
-	kept := m.pendingInputs[:0]
+func (s *oshUI) handleToolEvent(id int, ev toolEvent) {
+	if id != s.nextRequestID || !s.responding {
+		return
+	}
+	if ev.phase == "text_reset" {
+		s.streamingText = ""
+		s.markDirty()
+		return
+	}
+	if ev.phase == "text_delta" {
+		s.streamingText += ev.detail
+		s.markDirty()
+		return
+	}
+	text, role := ev.detail, "tool"
+	if ev.phase == "call" {
+		text = "$ " + text
+	} else if ev.phase == "error" {
+		role = "error"
+	}
+	s.addMessage(message{role: role, text: text})
+}
+
+func (s *oshUI) finishResponse(resp response) {
+	if resp.id != s.nextRequestID {
+		return
+	}
+	s.cancel, s.responding = nil, false
+	if resp.err == nil {
+		s.contextTokens = resp.contextTokens
+	}
+	if resp.err != nil {
+		s.addMessage(message{role: "error", text: resp.err.Error()})
+	}
+	if resp.text == "" {
+		resp.text = s.streamingText
+	}
+	s.streamingText = ""
+	if resp.text != "" {
+		s.addMessage(message{role: "agent", text: resp.text})
+	}
+	if s.pendingSteer != "" {
+		text := s.pendingSteer
+		s.pendingSteer = ""
+		s.removePendingInputs("steer", -1)
+		s.startRequest(text, true)
+		return
+	}
+	if len(s.queued) > 0 {
+		text := s.queued[0]
+		s.queued = s.queued[1:]
+		s.removePendingInputs("queued", 1)
+		s.startRequest(text, true)
+		return
+	}
+	s.markDirty()
+}
+
+func (s *oshUI) cancelRequest() {
+	if !s.responding || s.cancel == nil {
+		return
+	}
+	s.cancel()
+	s.pendingSteer = ""
+	s.removePendingInputs("steer", -1)
+	s.nextRequestID++
+	s.cancel = nil
+	s.responding = false
+	s.streamingText = ""
+	s.addMessage(message{role: "system", text: "Cancelled."})
+	s.markDirty()
+}
+
+func (s *oshUI) addMessage(msg message) {
+	s.messages = append(s.messages, msg)
+	if s.emit != nil {
+		s.emit(msg)
+	}
+	s.markDirty()
+}
+func (s *oshUI) markDirty() {
+	if s.invalidate != nil {
+		s.invalidate()
+	}
+}
+
+func (s *oshUI) removePendingInputs(kind string, limit int) {
+	kept := s.pendingInputs[:0]
 	removed := 0
-	for _, item := range m.pendingInputs {
+	for _, item := range s.pendingInputs {
 		if item.kind == kind && (limit < 0 || removed < limit) {
 			removed++
 			continue
 		}
 		kept = append(kept, item)
 	}
-	m.pendingInputs = kept
+	s.pendingInputs = kept
 }
 
-func (m model) renderPendingMessages(width int) string {
-	var lines []string
-	for _, item := range m.pendingInputs {
-		lines = append(lines, renderPendingMessage(item.kind, item.text, pendingInputStyle, width)...)
+func (s *oshUI) moveWord(direction int) {
+	raw := s.textarea.Text()
+	text := []rune(raw)
+	pos := clusterToRuneIndex(raw, s.textarea.CursorPos())
+	if direction < 0 {
+		for pos > 0 && unicode.IsSpace(text[pos-1]) {
+			pos--
+		}
+		for pos > 0 && !unicode.IsSpace(text[pos-1]) {
+			pos--
+		}
+	} else {
+		for pos < len(text) && !unicode.IsSpace(text[pos]) {
+			pos++
+		}
+		for pos < len(text) && unicode.IsSpace(text[pos]) {
+			pos++
+		}
 	}
-	if limit := m.availablePendingHeight(width); len(lines) > limit {
-		lines = lines[len(lines)-limit:]
+	s.textarea.SetCursorPos(pos)
+	s.markDirty()
+}
+func (s *oshUI) deleteWord(direction int) {
+	raw := s.textarea.Text()
+	text := []rune(raw)
+	start := clusterToRuneIndex(raw, s.textarea.CursorPos())
+	end := start
+	if direction < 0 {
+		for start > 0 && unicode.IsSpace(text[start-1]) {
+			start--
+		}
+		for start > 0 && !unicode.IsSpace(text[start-1]) {
+			start--
+		}
+	} else {
+		for end < len(text) && unicode.IsSpace(text[end]) {
+			end++
+		}
+		for end < len(text) && !unicode.IsSpace(text[end]) {
+			end++
+		}
+	}
+	s.replaceTextRange(text, start, end)
+}
+func (s *oshUI) deleteToLineStart() {
+	raw := s.textarea.Text()
+	text := []rune(raw)
+	end := clusterToRuneIndex(raw, s.textarea.CursorPos())
+	start := end
+	for start > 0 && text[start-1] != '\n' {
+		start--
+	}
+	s.replaceTextRange(text, start, end)
+}
+func (s *oshUI) deleteToLineEnd() {
+	raw := s.textarea.Text()
+	text := []rune(raw)
+	start := clusterToRuneIndex(raw, s.textarea.CursorPos())
+	end := start
+	for end < len(text) && text[end] != '\n' {
+		end++
+	}
+	s.replaceTextRange(text, start, end)
+}
+func (s *oshUI) replaceTextRange(text []rune, start, end int) {
+	next := string(append(append([]rune{}, text[:start]...), text[end:]...))
+	s.textarea.SetText(next)
+	s.textarea.SetCursorPos(runeToClusterIndex(next, start))
+	s.markDirty()
+}
+
+func (s *oshUI) handleKey(k tui.KeyEvent) bool {
+	if k.Key == tui.KeyRune && k.Rune == 'c' && k.Mod.Has(tui.ModCtrl) {
+		if s.cancel != nil {
+			s.cancel()
+		}
+		return false
+	}
+	if k.Key == tui.KeyEscape {
+		s.cancelRequest()
+		return true
+	}
+	if k.Key == tui.KeyEnter && k.Mod.Has(tui.ModShift) {
+		s.submitInput(s.textarea.Text(), true)
+		return true
+	}
+	if k.Key == tui.KeyEnter && k.Mod == tui.ModNone {
+		s.submitInput(s.textarea.Text(), false)
+		return true
+	}
+	if (k.Mod.Has(tui.ModAlt) || k.Mod.Has(tui.ModCtrl)) && k.Key == tui.KeyLeft || k.Mod.Has(tui.ModAlt) && k.Key == tui.KeyRune && k.Rune == 'b' {
+		s.moveWord(-1)
+		return true
+	}
+	if (k.Mod.Has(tui.ModAlt) || k.Mod.Has(tui.ModCtrl)) && k.Key == tui.KeyRight || k.Mod.Has(tui.ModAlt) && k.Key == tui.KeyRune && k.Rune == 'f' {
+		s.moveWord(1)
+		return true
+	}
+	if k.Key == tui.KeyRune && k.Rune == 'w' && k.Mod.Has(tui.ModCtrl) {
+		s.deleteWord(-1)
+		return true
+	}
+	if k.Key == tui.KeyRune && k.Rune == 'd' && k.Mod.Has(tui.ModAlt) {
+		s.deleteWord(1)
+		return true
+	}
+	if k.Key == tui.KeyRune && k.Rune == 'u' && k.Mod.Has(tui.ModCtrl) {
+		s.deleteToLineStart()
+		return true
+	}
+	if k.Key == tui.KeyRune && k.Rune == 'k' && k.Mod.Has(tui.ModCtrl) {
+		s.deleteToLineEnd()
+		return true
+	}
+	s.textarea.HandleEvent(k)
+	s.markDirty()
+	return true
+}
+
+func (s *oshUI) render(width int, viewportHeight ...int) ([]string, int, int) {
+	width = max(width, 10)
+	s.setTextareaWidth(max(width-4, 1))
+	var lines []string
+	for _, msg := range s.messages {
+		lines = append(lines, renderedMessageLines(msg, width)...)
+		lines = append(lines, "")
+	}
+	if s.streamingText != "" {
+		lines = append(lines, renderedMessageLines(message{role: "agent", text: s.streamingText}, width)...)
+		lines = append(lines, "")
+	}
+	if s.responding {
+		lines = append(lines, "    "+ansi256FG(39, spinnerFrames[s.spinnerFrame])+ansi256FG(242, " Thinking…"))
+	}
+	for _, p := range s.pendingInputs {
+		lines = append(lines, renderPendingLines(p, width)...)
+	}
+	editor, crow, ccol := renderEditor(s.textarea.Text(), s.textarea.CursorPos(), width)
+	cursorRow := len(lines) + crow
+	lines = append(lines, editor...)
+	info := fmt.Sprintf("model %s  ·  context %s tokens", s.modelName, formatTokenCount(s.contextTokens))
+	lines = append(lines, ansi256FG(242, truncateCells(info, max(width-2, 0))))
+	if len(viewportHeight) > 0 {
+		filler := max(viewportHeight[0]-len(lines), 0)
+		if filler > 0 {
+			lines = append(make([]string, filler), lines...)
+			cursorRow += filler
+		}
+	}
+	return lines, cursorRow, ccol
+}
+
+func renderedMessageLines(msg message, width int) []string {
+	return strings.Split(renderedMessage(msg, width), "\n")
+}
+func renderedMessage(msg message, width int) string {
+	contentWidth := max(width-6, 8)
+	var lines []string
+	switch msg.role {
+	case "you":
+		prefix := "[" + msg.sentAt + "] "
+		mw := max(contentWidth-lineWidth(prefix), 1)
+		for i, line := range wrapPlain(msg.text, mw) {
+			p := strings.Repeat(" ", lineWidth(prefix))
+			if i == 0 {
+				p = prefix
+			}
+			text := p + line
+			text += strings.Repeat(" ", max(contentWidth-lineWidth(text), 0))
+			lines = append(lines, ansi256FGBG(255, 236, " "+text+" "))
+		}
+	case "system":
+		for _, line := range wrapPlain(msg.text, contentWidth) {
+			lines = append(lines, "    "+ansi256FG(242, line))
+		}
+	case "error":
+		for _, line := range wrapPlain(msg.text, contentWidth-2) {
+			lines = append(lines, "    "+ansi256FGBG(255, 160, " "+line+" "))
+		}
+	case "tool":
+		color := 247
+		if strings.HasPrefix(msg.text, "$") {
+			color = 71
+		}
+		for _, line := range wrapPlain(msg.text, contentWidth-2) {
+			lines = append(lines, "    "+ansi256FG(color, "│ "+line))
+		}
+	default:
+		for _, line := range wrapPlain(msg.text, contentWidth) {
+			lines = append(lines, "    "+ansi256FG(252, line))
+		}
 	}
 	return strings.Join(lines, "\n")
 }
-
-func renderPendingMessage(label, text string, style lipgloss.Style, width int) []string {
-	prefix := "    " + label + "  "
-	continuation := strings.Repeat(" ", runesWidth([]rune(prefix)))
-	contentWidth := max(width-runesWidth([]rune(prefix))-2, 1)
-	wrapped := wrapText(text, contentWidth)
-	lines := make([]string, 0, len(wrapped))
-	for i, line := range wrapped {
-		linePrefix := continuation
+func renderPendingLines(p pendingInput, width int) []string {
+	prefix := "    " + p.kind + "  "
+	avail := max(width-lineWidth(prefix)-2, 1)
+	wrapped := wrapPlain(strings.ReplaceAll(p.text, "\n", " "), avail)
+	out := make([]string, len(wrapped))
+	for i, l := range wrapped {
+		q := strings.Repeat(" ", lineWidth(prefix))
 		if i == 0 {
-			linePrefix = prefix
+			q = prefix
 		}
-		lines = append(lines, style.Render(linePrefix+line))
+		out[i] = ansi256FG(245, q+l)
 	}
-	return lines
+	return out
 }
 
-func (m model) renderComposer(width int) string {
-	// Keep the composer clear of the terminal's right edge. Some terminals
-	// autowrap a line that occupies the final column; frequent spinner redraws
-	// can then scroll or overwrite the composer while a response is active.
-	outerWidth := max(width-2, 1)
-	innerWidth := max(outerWidth-4, 1) // border and horizontal padding
-	composer := m.composer
-	composer.SetWidth(innerWidth)
-	content := composer.View()
-	return inputStyle.Width(outerWidth).Render(content)
+func renderEditor(text string, cursor, width int) ([]string, int, int) {
+	inner := max(width-4, 1)
+	rs := []rune(text)
+	cursor = clusterToRuneIndex(text, cursor)
+	var rows []string
+	var curRow, curCol int
+	start := 0
+	paragraphs := strings.Split(text, "\n")
+	runeBase := 0
+	for pi, p := range paragraphs {
+		pr := []rune(p)
+		if len(pr) == 0 {
+			rows = append(rows, "")
+			if cursor == runeBase {
+				curRow = len(rows) - 1
+				curCol = 0
+			}
+		} else {
+			for len(pr) > 0 {
+				n := fittingRunes(pr, inner)
+				chunk := string(pr[:n])
+				rowStart := runeBase + start
+				rowEnd := rowStart + n
+				if cursor >= rowStart && cursor <= rowEnd {
+					curRow = len(rows)
+					curCol = lineWidth(string(rs[rowStart:cursor]))
+				}
+				rows = append(rows, chunk)
+				pr = pr[n:]
+				start += n
+			}
+		}
+		runeBase += len([]rune(p))
+		start = 0
+		if pi < len(paragraphs)-1 {
+			runeBase++
+		}
+	}
+	if len(rows) == 0 {
+		rows = []string{""}
+	}
+	top := "╭" + strings.Repeat("─", max(width-2, 1)) + "╮"
+	bottom := "╰" + strings.Repeat("─", max(width-2, 1)) + "╯"
+	out := []string{ansi256FG(39, top)}
+	for _, row := range rows {
+		shown, color := row, 252
+		if text == "" && row == "" {
+			shown, color = truncateCells("Type a message…", inner), 242
+		}
+		out = append(out, ansi256FG(39, "│")+" "+ansi256FG(color, shown)+strings.Repeat(" ", max(inner-lineWidth(shown), 0))+" "+ansi256FG(39, "│"))
+	}
+	out = append(out, ansi256FG(39, bottom))
+	return out, curRow + 1, curCol + 2
 }
 
-func wrapText(text string, width int) []string {
-	var lines []string
-	for _, paragraph := range strings.Split(text, "\n") {
-		if paragraph == "" {
-			lines = append(lines, "")
+func wrapPlain(text string, width int) []string {
+	width = max(width, 1)
+	var out []string
+	for _, p := range strings.Split(text, "\n") {
+		if p == "" {
+			out = append(out, "")
 			continue
 		}
-		remaining := []rune(paragraph)
-		for len(remaining) > 0 {
-			end := fittingRunes(remaining, width)
-			if end < len(remaining) {
-				if breakAt := strings.LastIndex(string(remaining[:end]), " "); breakAt > 0 {
-					end = utf8.RuneCountInString(string(remaining[:end])[:breakAt])
+		r := []rune(p)
+		for len(r) > 0 {
+			n := fittingRunes(r, width)
+			if n < len(r) {
+				for i := n; i > 0; i-- {
+					if unicode.IsSpace(r[i-1]) {
+						n = i - 1
+						break
+					}
+				}
+				if n == 0 {
+					n = fittingRunes(r, width)
 				}
 			}
-			lines = append(lines, strings.TrimSpace(string(remaining[:end])))
-			remaining = remaining[end:]
-			for len(remaining) > 0 && remaining[0] == ' ' {
-				remaining = remaining[1:]
+			out = append(out, strings.TrimSpace(string(r[:n])))
+			r = r[n:]
+			for len(r) > 0 && unicode.IsSpace(r[0]) {
+				r = r[1:]
 			}
 		}
 	}
-	return lines
+	return out
 }
-
-func fittingRunes(input []rune, width int) int {
-	used := 0
-	for i, r := range input {
-		next := max(runewidth.RuneWidth(r), 1)
-		if used+next > width {
-			return max(i, 1)
-		}
-		used += next
+func fittingRunes(r []rune, width int) int {
+	if len(r) == 0 {
+		return 0
 	}
-	return len(input)
+	text, used, consumed := string(r), 0, 0
+	for len(text) > 0 {
+		_, w, size, runes := tui.NextClusterRunes(text)
+		if size == 0 {
+			break
+		}
+		if used+w > width {
+			if consumed == 0 {
+				return runes
+			}
+			return consumed
+		}
+		used += w
+		consumed += runes
+		text = text[size:]
+	}
+	return consumed
 }
 
-func runesWidth(input []rune) int {
-	return runewidth.StringWidth(string(input))
+func clusterToRuneIndex(text string, clusterPos int) int {
+	if clusterPos <= 0 {
+		return 0
+	}
+	clusters, runes := 0, 0
+	for len(text) > 0 && clusters < clusterPos {
+		_, _, size, n := tui.NextClusterRunes(text)
+		if size == 0 {
+			break
+		}
+		text = text[size:]
+		runes += n
+		clusters++
+	}
+	return runes
 }
 
-func truncatePlainRunes(input []rune, width int) string {
+func runeToClusterIndex(text string, runePos int) int {
+	if runePos <= 0 {
+		return 0
+	}
+	clusters, runes := 0, 0
+	for len(text) > 0 && runes < runePos {
+		_, _, size, n := tui.NextClusterRunes(text)
+		if size == 0 {
+			break
+		}
+		text = text[size:]
+		runes += n
+		clusters++
+	}
+	return clusters
+}
+
+func truncateCells(s string, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	return string(input[:fittingRunes(input, width)])
+	r := []rune(s)
+	return string(r[:fittingRunes(r, width)])
+}
+func ansi256FG(c int, text string) string {
+	return fmt.Sprintf("\x1b[0m\x1b[38;5;%dm%s\x1b[0m", c, text)
+}
+func ansi256FGBG(f, b int, text string) string {
+	return fmt.Sprintf("\x1b[0m\x1b[38;5;%d;48;5;%dm%s\x1b[0m", f, b, text)
+}
+func formatTokenCount(n int64) string {
+	d := fmt.Sprintf("%d", n)
+	for i := len(d) - 3; i > 0; i -= 3 {
+		d = d[:i] + "," + d[i:]
+	}
+	return d
+}
+
+func runUI(modelName string, respond func(string, func(toolEvent), context.Context) response) error {
+	term, err := tui.NewANSITerminal(os.Stdout, os.Stdin)
+	if err != nil {
+		return err
+	}
+	if err = term.EnterRawMode(); err != nil {
+		return err
+	}
+	defer term.ExitRawMode()
+	term.NegotiateKittyKeyboard()
+	defer term.DisableKittyKeyboard()
+	term.HideCursor()
+	defer term.ShowCursor()
+	reader, err := tui.NewEventReader(os.Stdin)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	updates := make(chan func(), 256)
+	wake := make(chan struct{}, 1)
+	root := newUI(modelName, respond)
+	root.dispatch = func(fn func()) { updates <- fn }
+	root.invalidate = func() {
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+	}
+	w, h := term.Size()
+	renderer := newMainScreenRenderer(os.Stdout, w, h)
+	resize := make(chan os.Signal, 1)
+	signal.Notify(resize, syscall.SIGWINCH)
+	defer signal.Stop(resize)
+	defer func() {
+		if root.cancel != nil {
+			root.cancel()
+		}
+		_ = renderer.stop()
+	}()
+	for {
+		lines, cr, cc := root.render(w, h)
+		if err := renderer.render(lines, cr, cc); err != nil {
+			return err
+		}
+		select {
+		case fn := <-updates:
+			fn()
+		case <-wake:
+		case <-resize:
+			w, h = term.Size()
+			renderer.resize(w, h)
+		default:
+			ev, ok := reader.PollEvent(50 * time.Millisecond)
+			if !ok {
+				continue
+			}
+			if k, ok := ev.(tui.KeyEvent); ok && !root.handleKey(k) {
+				return nil
+			}
+		}
+	}
 }
