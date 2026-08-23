@@ -37,6 +37,11 @@ type toolEventMsg struct {
 }
 type responseMsg response
 
+type pendingInput struct {
+	kind string
+	text string
+}
+
 type model struct {
 	width         int
 	height        int
@@ -55,6 +60,7 @@ type model struct {
 	spinnerFrame  int
 	queued        []string
 	pendingSteer  string
+	pendingInputs []pendingInput
 }
 
 type spinnerTickMsg struct{}
@@ -74,9 +80,11 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("39")).
 			Padding(0, 1)
-	toolStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("71"))
-	toolOutputStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("247"))
-	cursorStyle     = lipgloss.NewStyle().Reverse(true)
+	toolStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("71"))
+	toolOutputStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("247"))
+	queuedMessageStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	steerMessageStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
+	cursorStyle        = lipgloss.NewStyle().Reverse(true)
 )
 
 func newModel(modelName string, respond func(string, func(toolEvent), context.Context) response) model {
@@ -154,11 +162,14 @@ func (m *model) reflowBody() {
 }
 
 func (m model) availableBodyHeight(width int) int {
-	statusH := 0
+	reservedHeight := 1 + lipgloss.Height(m.renderComposer(width))
 	if m.responding {
-		statusH = 1
+		reservedHeight++
 	}
-	return max(max(m.height, 8)-statusH-1-lipgloss.Height(m.renderComposer(width)), 1)
+	if pending := m.renderPendingMessages(width); pending != "" {
+		reservedHeight += lipgloss.Height(pending)
+	}
+	return max(max(m.height, 8)-reservedHeight, 1)
 }
 
 func tickSpinner() tea.Cmd {
@@ -175,6 +186,7 @@ func (m *model) startRequest(text string, showUser bool) tea.Cmd {
 	m.nextRequestID++
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
+	m.reflowBody()
 
 	var cmds []tea.Cmd
 	if showUser {
@@ -203,9 +215,8 @@ func (m *model) submitInput(queue bool) tea.Cmd {
 	}
 	if queue {
 		m.queued = append(m.queued, text)
-		if evicted := m.appendMessage(message{role: "system", text: "Queued: " + text}); evicted != "" {
-			return tea.Println(evicted)
-		}
+		m.pendingInputs = append(m.pendingInputs, pendingInput{kind: "queued", text: text})
+		m.reflowBody()
 		return nil
 	}
 
@@ -217,12 +228,11 @@ func (m *model) submitInput(queue bool) tea.Cmd {
 	} else {
 		m.pendingSteer += "\n\n" + text
 	}
+	m.pendingInputs = append(m.pendingInputs, pendingInput{kind: "steer", text: text})
 	if m.cancel != nil {
 		m.cancel()
 	}
-	if evicted := m.appendMessage(message{role: "you", text: text, sentAt: time.Now().Format("15:04")}); evicted != "" {
-		return tea.Println(evicted)
-	}
+	m.reflowBody()
 	return nil
 }
 
@@ -243,8 +253,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.pendingSteer != "" {
 			text := m.pendingSteer
 			m.pendingSteer = ""
+			m.removePendingInputs("steer", -1)
 			m.responding = false
-			return m, m.startRequest(text, false)
+			return m, m.startRequest(text, true)
 		}
 
 		m.responding = false
@@ -257,6 +268,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.queued) > 0 {
 			text := m.queued[0]
 			m.queued = m.queued[1:]
+			m.removePendingInputs("queued", 1)
 			cmds = append(cmds, m.startRequest(text, true))
 		}
 		return m, tea.Batch(cmds...)
@@ -290,9 +302,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.responding && m.cancel != nil {
 				m.cancel()
 				m.pendingSteer = ""
+				m.removePendingInputs("steer", -1)
 				m.nextRequestID++
 				m.cancel = nil
 				m.responding = false
+				m.reflowBody()
 				if evicted := m.appendMessage(message{role: "system", text: "Cancelled."}); evicted != "" {
 					return m, tea.Println(evicted)
 				}
@@ -348,6 +362,7 @@ func insertRunes(input []rune, at int, added []rune) []rune {
 func (m model) View() tea.View {
 	width := max(m.width, 20)
 	composer := m.renderComposer(width)
+	pending := m.renderPendingMessages(width)
 	info := dimStyle.Render("model " + m.modelName + "  \u00b7  context " + formatTokenCount(m.contextTokens) + " tokens")
 
 	status := ""
@@ -364,19 +379,17 @@ func (m model) View() tea.View {
 	}
 
 	bottom := []string{composer, info}
+	if pending != "" {
+		bottom = append([]string{pending}, bottom...)
+	}
 	if status != "" {
 		bottom = append([]string{status}, bottom...)
-	}
-	height := max(m.height, 8)
-	statusH := 0
-	if m.responding {
-		statusH = 1
 	}
 	body := m.bodyLines
 	if !m.started {
 		body = []string{"", "    " + dimStyle.Render("No messages yet. Type below to start the conversation.")}
 	}
-	availBody := max(height-statusH-1-lipgloss.Height(composer), 1)
+	availBody := m.availableBodyHeight(width)
 	if len(body) > availBody {
 		body = body[len(body)-availBody:]
 	}
@@ -432,6 +445,47 @@ func renderMessageLines(msg message, width int) []string {
 		}
 		return lines
 	}
+}
+
+func (m *model) removePendingInputs(kind string, limit int) {
+	kept := m.pendingInputs[:0]
+	removed := 0
+	for _, item := range m.pendingInputs {
+		if item.kind == kind && (limit < 0 || removed < limit) {
+			removed++
+			continue
+		}
+		kept = append(kept, item)
+	}
+	m.pendingInputs = kept
+}
+
+func (m model) renderPendingMessages(width int) string {
+	var lines []string
+	for _, item := range m.pendingInputs {
+		style := queuedMessageStyle
+		if item.kind == "steer" {
+			style = steerMessageStyle
+		}
+		lines = append(lines, renderPendingMessage(item.kind, item.text, style, width)...)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func renderPendingMessage(label, text string, style lipgloss.Style, width int) []string {
+	prefix := "    " + label + "  "
+	continuation := strings.Repeat(" ", runesWidth([]rune(prefix)))
+	contentWidth := max(width-runesWidth([]rune(prefix))-2, 1)
+	wrapped := wrapText(text, contentWidth)
+	lines := make([]string, 0, len(wrapped))
+	for i, line := range wrapped {
+		linePrefix := continuation
+		if i == 0 {
+			linePrefix = prefix
+		}
+		lines = append(lines, style.Render(linePrefix+line))
+	}
+	return lines
 }
 
 func (m model) renderComposer(width int) string {

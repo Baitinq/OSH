@@ -108,13 +108,21 @@ func TestEnterSteersInProgressResponse(t *testing.T) {
 	if !cancelled || m.pendingSteer != "change direction" {
 		t.Fatalf("response was not steered: cancelled=%v pending=%q", cancelled, m.pendingSteer)
 	}
-	if len(m.input) != 0 || len(m.messages) != 1 || m.messages[0].role != "you" {
-		t.Fatalf("steer was not shown and cleared from input: %#v", m)
+	if len(m.input) != 0 || len(m.messages) != 0 {
+		t.Fatalf("steer should remain above the input until injected: %#v", m)
+	}
+	view := m.View().Content
+	if !strings.Contains(view, steerMessageStyle.Render("    steer  change direction")) ||
+		strings.Index(view, "steer") > strings.Index(view, m.renderComposer(m.width)) {
+		t.Fatalf("steer is not shown above the composer: %q", view)
 	}
 
 	m, cmd = updateModelWithCmd(t, m, responseMsg{id: 1})
 	if cmd == nil || !m.responding || m.nextRequestID != 2 || m.pendingSteer != "" {
 		t.Fatalf("steer did not start after cancellation completed: %#v", m)
+	}
+	if got := m.messages[len(m.messages)-1]; got.role != "you" || got.text != "change direction" {
+		t.Fatalf("steer was not added to the conversation when injected: %#v", m.messages)
 	}
 }
 
@@ -130,8 +138,13 @@ func TestShiftEnterQueuesUntilCurrentResponseFinishes(t *testing.T) {
 	if cmd != nil || len(m.queued) != 1 || m.queued[0] != "do this next" {
 		t.Fatalf("message was not queued: %#v", m)
 	}
-	if len(m.messages) != 1 || m.messages[0].text != "Queued: do this next" {
-		t.Fatalf("queue acknowledgement missing: %#v", m.messages)
+	if len(m.messages) != 0 {
+		t.Fatalf("queued message should not appear in conversation history yet: %#v", m.messages)
+	}
+	view := m.View().Content
+	if !strings.Contains(view, queuedMessageStyle.Render("    queued  do this next")) ||
+		strings.Index(view, "queued") > strings.Index(view, m.renderComposer(m.width)) {
+		t.Fatalf("queued message is not shown above the composer: %q", view)
 	}
 
 	m, cmd = updateModelWithCmd(t, m, responseMsg{id: 1, text: "first response"})
@@ -140,6 +153,31 @@ func TestShiftEnterQueuesUntilCurrentResponseFinishes(t *testing.T) {
 	}
 	if got := m.messages[len(m.messages)-1]; got.role != "you" || got.text != "do this next" {
 		t.Fatalf("queued message was not injected after the response: %#v", m.messages)
+	}
+}
+
+func TestPendingMessagesGrowDownwardInSubmissionOrder(t *testing.T) {
+	m := newTestModel()
+	m.responding = true
+	m.nextRequestID = 1
+	m.input = []rune("first queued")
+	m.cursor = len(m.input)
+	m = updateModel(t, m, tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift})
+	m.input = []rune("then steer")
+	m.cursor = len(m.input)
+	m = updateModel(t, m, keyPress(tea.KeyEnter))
+
+	view := m.View().Content
+	queued := queuedMessageStyle.Render("    queued  first queued")
+	steer := steerMessageStyle.Render("    steer  then steer")
+	queuedAt := strings.Index(view, queued)
+	steerAt := strings.Index(view, steer)
+	composerAt := strings.Index(view, m.renderComposer(m.width))
+	if queuedAt < 0 || steerAt <= queuedAt || composerAt <= steerAt {
+		t.Fatalf("pending messages are not growing downward above the composer: %q", view)
+	}
+	if queued == steer {
+		t.Fatal("queued and steer messages should use different colors")
 	}
 }
 
