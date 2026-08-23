@@ -476,8 +476,9 @@ func TestToolDurationFormatsAndPersists(t *testing.T) {
 		role: "tool", toolCommand: "sleep 1", toolState: "success",
 		toolStartedAt: started, toolFinishedAt: finished,
 	}
-	if got := stripANSI(renderedMessage(msg, 40)); !strings.Contains(got, "$ sleep 1 (1.2s)") {
-		t.Fatalf("completed tool duration missing from card: %q", got)
+	rendered := strings.Split(stripANSI(renderedMessage(msg, 40)), "\n")
+	if len(rendered) < 3 || strings.TrimSpace(rendered[1]) != "(1.2s)" || strings.TrimSpace(rendered[2]) != "$ sleep 1" {
+		t.Fatalf("completed tool duration is not on its own line above command: %q", rendered)
 	}
 	if got := toolDurationLabel(msg, finished.Add(time.Hour)); got != " (1.2s)" {
 		t.Fatalf("completed duration changed after completion: %q", got)

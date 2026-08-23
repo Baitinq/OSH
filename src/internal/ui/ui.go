@@ -679,7 +679,13 @@ func renderedToolMessage(msg message, width int) string {
 	lines := []string{piBoxLine("", width, piText, bg, false)}
 	duration := toolDurationLabel(msg, time.Now())
 	if msg.toolCommand != "" {
-		for _, line := range wrapPlain("$ "+sanitizeTerminalText(msg.toolCommand)+duration, inner) {
+		if duration != "" {
+			// Keep timing metadata on its own line above the command so it cannot
+			// be mistaken for part of a long or wrapped invocation.
+			lines = append(lines, piBoxLine(" "+strings.TrimSpace(duration), width, piText, bg, true))
+		}
+		command := "$ " + sanitizeTerminalText(msg.toolCommand)
+		for _, line := range wrapPlain(command, inner) {
 			lines = append(lines, piBoxLine(" "+line, width, piText, bg, true))
 		}
 	} else if msg.toolName != "" {
