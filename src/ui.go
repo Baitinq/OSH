@@ -326,14 +326,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
 		return m, tickSpinner()
-	case tea.MouseWheelMsg:
-		switch msg.Button {
-		case tea.MouseWheelUp:
-			m.scrollBody(3)
-		case tea.MouseWheelDown:
-			m.scrollBody(-3)
-		}
-		return m, nil
 	case tea.KeyPressMsg:
 		switch msg.Keystroke() {
 		case "ctrl+c":
@@ -385,12 +377,8 @@ func (m model) View() tea.View {
 	status := ""
 	if m.responding {
 		activity := " Thinking…"
-		queueInfo := ""
-		if len(m.queued) > 0 {
-			queueInfo = " · " + strconv.Itoa(len(m.queued)) + " queued"
-		}
 		prefix := "    " + titleStyle.Render(spinnerFrames[m.spinnerFrame])
-		statusText := activity + queueInfo
+		statusText := activity
 		status = prefix + dimStyle.Render(truncatePlainRunes(
 			[]rune(statusText), max(width-runesWidth([]rune("    "+spinnerFrames[m.spinnerFrame]))-2, 0),
 		))
@@ -416,7 +404,8 @@ func (m model) View() tea.View {
 	lines = append(lines, bottom...)
 	view := tea.NewView(strings.Join(lines, "\n"))
 	view.AltScreen = true
-	view.MouseMode = tea.MouseModeCellMotion
+	// Leave mouse reporting disabled so the terminal can select and copy text.
+	view.MouseMode = tea.MouseModeNone
 	return view
 }
 

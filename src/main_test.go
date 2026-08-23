@@ -343,9 +343,20 @@ func TestViewShowsSpinnerWhileResponding(t *testing.T) {
 		t.Fatal("spinner shown while idle")
 	}
 	m.responding = true
+	m.queued = []string{"next"}
 	view := m.View().Content
 	if !strings.Contains(view, "Thinking…") {
 		t.Fatal("spinner not shown while responding")
+	}
+	statusLine := ""
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, "Thinking…") {
+			statusLine = line
+			break
+		}
+	}
+	if strings.Contains(statusLine, "queued") || strings.Contains(statusLine, "steer") {
+		t.Fatalf("thinking status includes pending input details: %q", statusLine)
 	}
 	for _, helper := range []string{"enter steer", "shift+enter queue", "esc cancel"} {
 		if strings.Contains(view, helper) {
@@ -450,27 +461,6 @@ func TestPendingMessagesCannotPushComposerOffscreen(t *testing.T) {
 	}
 }
 
-func TestMouseWheelScrollsConversationHistory(t *testing.T) {
-	m := newTestModel()
-	m.width = 40
-	m.height = 8
-	for _, text := range []string{"first message", "second message", "third message"} {
-		m.appendMessage(message{role: "agent", text: text})
-	}
-
-	if strings.Contains(m.View().Content, "first message") {
-		t.Fatal("oldest message should initially be above the viewport")
-	}
-	m = updateModel(t, m, tea.MouseWheelMsg{Button: tea.MouseWheelUp})
-	if !strings.Contains(m.View().Content, "first message") {
-		t.Fatal("mouse wheel did not reveal retained conversation history")
-	}
-	m = updateModel(t, m, tea.MouseWheelMsg{Button: tea.MouseWheelDown})
-	if m.scrollOffset != 0 || strings.Contains(m.View().Content, "first message") {
-		t.Fatal("mouse wheel did not return to the latest messages")
-	}
-}
-
 func TestPageKeysScrollConversationHistory(t *testing.T) {
 	m := newTestModel()
 	m.width = 40
@@ -489,13 +479,13 @@ func TestPageKeysScrollConversationHistory(t *testing.T) {
 	}
 }
 
-func TestViewCapturesMouseInAlternateScreen(t *testing.T) {
+func TestViewAllowsTerminalTextSelection(t *testing.T) {
 	view := newTestModel().View()
 	if !view.AltScreen {
 		t.Fatal("view should use the alternate screen")
 	}
-	if view.MouseMode != tea.MouseModeCellMotion {
-		t.Fatalf("mouse mode = %v, want cell motion", view.MouseMode)
+	if view.MouseMode != tea.MouseModeNone {
+		t.Fatalf("mouse mode = %v, want none so the terminal can select text", view.MouseMode)
 	}
 }
 

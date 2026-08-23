@@ -56,7 +56,8 @@ Completions API is not sufficient.
 - `Enter` — send a message; while responding, steer after the active turn finishes
 - `Shift+Enter` — queue a message behind the active response
 - `Escape` — cancel the active response
-- `Mouse wheel` / `Page Up` / `Page Down` — scroll conversation history
+- `Page Up` / `Page Down` — scroll conversation history
+- Mouse drag — select terminal text for copying
 - `Ctrl/Alt+←/→` or `Alt+B/F` — move through input word by word
 - `Ctrl+W`, `Alt+D`, `Ctrl+U`, `Ctrl+K` — delete words or text around the cursor
 - `Ctrl+C` — quit
