@@ -22,6 +22,9 @@ func TestBuildSystemPrompt(t *testing.T) {
 		"Available tools:",
 		"npx -y mcporter@latest list",
 		"npx -y mcporter@latest call <server>.<tool>",
+		"Prioritize fast, verifiable iteration",
+		"exercise changes end to end in the local environment",
+		"Use the fastest relevant feedback loop while developing",
 		"Do not run destructive or difficult-to-reverse commands",
 		"Current working directory: /work/project",
 	} {
