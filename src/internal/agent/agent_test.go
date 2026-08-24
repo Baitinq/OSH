@@ -42,7 +42,7 @@ func TestPrefixUserMessageIncludesCurrentDateAndTime(t *testing.T) {
 
 func TestRunShellStreamingEmitsOutputBeforeCompletion(t *testing.T) {
 	var chunks []string
-	out, err := runShellStreaming(t.Context(), "printf first; sleep 0.05; printf second >&2", func(chunk string) {
+	out, err := runShellStreaming(t.Context(), "printf first; sleep 0.05; printf second >&2", nil, func(chunk string) {
 		chunks = append(chunks, chunk)
 	})
 	if err != nil {
@@ -53,6 +53,25 @@ func TestRunShellStreamingEmitsOutputBeforeCompletion(t *testing.T) {
 	}
 	if len(chunks) < 2 {
 		t.Fatalf("output was not emitted while command was running: %#v", chunks)
+	}
+}
+
+func TestRunShellTimeout(t *testing.T) {
+	timeout := 0.05
+	started := time.Now()
+	_, err := runShellStreaming(t.Context(), "sleep 10 | cat", &timeout, nil)
+	if err == nil || err.Error() != "timeout:0.05" {
+		t.Fatalf("timeout error = %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("timed command took %s", elapsed)
+	}
+}
+
+func TestRunShellHasNoDefaultTimeout(t *testing.T) {
+	out, err := runShellStreaming(t.Context(), "sleep 0.05; printf done", nil, nil)
+	if err != nil || out != "done" {
+		t.Fatalf("untimed command returned output %q, error %v", out, err)
 	}
 }
 

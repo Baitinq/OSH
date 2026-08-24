@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/openai/openai-go/v3"
@@ -109,8 +111,9 @@ const modelName = "gpt-5.6-sol"
 const reasoningEffort = shared.ReasoningEffortMedium
 
 const (
-	maxLLMRetries  = 10
-	retryBaseDelay = 2 * time.Second
+	maxLLMRetries       = 10
+	retryBaseDelay      = 2 * time.Second
+	maxShellTimeoutSecs = 2_147_483_647 / 1000.0
 )
 
 var shellTool = responses.ToolUnionParam{
@@ -121,6 +124,10 @@ var shellTool = responses.ToolUnionParam{
 			"type": "object",
 			"properties": map[string]any{
 				"command": map[string]any{"type": "string"},
+				"timeout": map[string]any{
+					"type":        "number",
+					"description": "Timeout in seconds (optional, no default timeout)",
+				},
 			},
 			"required":             []string{"command"},
 			"additionalProperties": false,
@@ -245,11 +252,25 @@ func limitToolOutput(output string) string {
 }
 
 func runShell(ctx context.Context, command string) (string, error) {
-	return runShellStreaming(ctx, command, nil)
+	return runShellStreaming(ctx, command, nil, nil)
 }
 
-func runShellStreaming(ctx context.Context, command string, emit func(string)) (string, error) {
+func runShellStreaming(ctx context.Context, command string, timeoutSeconds *float64, emit func(string)) (string, error) {
+	if timeoutSeconds != nil {
+		if math.IsNaN(*timeoutSeconds) || math.IsInf(*timeoutSeconds, 0) || *timeoutSeconds <= 0 {
+			return "", errors.New("invalid timeout: must be a finite number of seconds")
+		}
+		if *timeoutSeconds > maxShellTimeoutSecs {
+			return "", fmt.Errorf("invalid timeout: maximum is %g seconds", maxShellTimeoutSecs)
+		}
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(*timeoutSeconds*float64(time.Second)))
+		defer cancel()
+	}
+
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	reader, writer, err := os.Pipe()
 	if err != nil {
 		return "", err
@@ -281,7 +302,11 @@ func runShellStreaming(ctx context.Context, command string, emit func(string)) (
 			break
 		}
 	}
-	return output.String(), cmd.Wait()
+	err = cmd.Wait()
+	if timeoutSeconds != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		err = fmt.Errorf("timeout:%g", *timeoutSeconds)
+	}
+	return output.String(), err
 }
 
 func (a *Agent) appendUserMessage(msg string) {
@@ -502,7 +527,8 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 				emit(ToolEvent{Phase: "error", Name: call.Name, ID: call.CallID, Detail: output})
 			} else {
 				var args struct {
-					Command string `json:"command"`
+					Command string   `json:"command"`
+					Timeout *float64 `json:"timeout"`
 				}
 				if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
 					output = "tool error: invalid shell arguments: " + err.Error()
@@ -510,7 +536,7 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 				} else {
 					emit(ToolEvent{Phase: "call", Name: call.Name, ID: call.CallID, Detail: args.Command})
 					var err error
-					output, err = runShellStreaming(ctx, args.Command, func(chunk string) {
+					output, err = runShellStreaming(ctx, args.Command, args.Timeout, func(chunk string) {
 						emit(ToolEvent{Phase: "update", Name: call.Name, ID: call.CallID, Detail: chunk})
 					})
 					if err != nil {
