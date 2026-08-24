@@ -683,9 +683,7 @@ func renderedMessage(msg message, width int) string {
 			lines = append(lines, " "+ansiRGBStyle(piGray, "", false, true, line))
 		}
 	case "agent":
-		for _, line := range wrapPlain(msg.text, contentWidth) {
-			lines = append(lines, " "+ansiRGBStyle(piText, "", false, false, line))
-		}
+		lines = append(lines, renderedMarkdownLines(msg.text, contentWidth)...)
 	case "system":
 		for _, line := range wrapPlain(msg.text, contentWidth) {
 			lines = append(lines, " "+ansi256FG(242, line))
@@ -707,6 +705,16 @@ func renderedMessage(msg message, width int) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+var markdownTheme = func() tui.MarkdownTheme {
+	theme := tui.DefaultMarkdownTheme()
+	textColor := tui.RGBColor(212, 212, 212)
+	theme.Paragraph = tui.NewStyle().Foreground(textColor)
+	for i, style := range theme.Heading {
+		theme.Heading[i] = style.Foreground(textColor)
+	}
+	return theme
+}()
 
 const (
 	piText          = "212;212;212"
@@ -761,6 +769,23 @@ func toolDurationLabel(msg message, now time.Time) string {
 		end = now
 	}
 	return " (" + formatToolDuration(end.Sub(msg.toolStartedAt)) + ")"
+}
+
+func renderedMarkdownLines(text string, width int) []string {
+	markdown := tui.NewMarkdown(
+		tui.WithMarkdownSource(text),
+		tui.WithMarkdownWidth(width),
+		tui.WithMarkdownTheme(markdownTheme),
+	)
+	rendered := tui.Sprint(markdown.Render(nil), tui.WithPrintWidth(width))
+	if rendered == "" {
+		return nil
+	}
+	lines := strings.Split(rendered, "\n")
+	for i := range lines {
+		lines[i] = " " + lines[i]
+	}
+	return lines
 }
 
 func renderedToolMessage(msg message, width int) string {

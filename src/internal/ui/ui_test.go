@@ -735,11 +735,21 @@ func TestStreamedContentPreservesReasoningTextAndToolOrder(t *testing.T) {
 	}
 }
 
-func TestAssistantAndReasoningRenderPlainText(t *testing.T) {
-	assistant := renderedMessage(message{role: "agent", text: "Use **bold** and `code`"}, 50)
-	if plain := stripANSI(assistant); !strings.Contains(plain, "Use **bold** and `code`") {
-		t.Fatalf("assistant text was changed: %q", plain)
+func TestAssistantRendersMarkdownAndReasoningRemainsPlain(t *testing.T) {
+	assistant := renderedMessage(message{role: "agent", text: "## Result\n\nUse **bold** and `code`.\n\n- one\n- two\n\n```go\nfmt.Println(1)\n```"}, 50)
+	plain := stripANSI(assistant)
+	for _, want := range []string{"Result", "Use bold and code.", "• one", "• two", "fmt.Println(1)"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("rendered markdown missing %q: %q", want, plain)
+		}
 	}
+	if strings.Contains(plain, "**bold**") || strings.Contains(plain, "```") {
+		t.Fatalf("markdown syntax remained visible: %q", plain)
+	}
+	if !strings.Contains(assistant, "\x1b[0;1;") || !strings.Contains(assistant, "\x1b[0;95m") {
+		t.Fatalf("bold or inline code styling missing: %q", assistant)
+	}
+
 	reasoning := renderedMessage(message{role: "reasoning", text: "Check **carefully**"}, 50)
 	if plain := stripANSI(reasoning); !strings.Contains(plain, "Check **carefully**") {
 		t.Fatalf("reasoning text was changed: %q", plain)
