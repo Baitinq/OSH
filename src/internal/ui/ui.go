@@ -46,6 +46,7 @@ type oshUI struct {
 	retryAttempt        int
 	retryMaxAttempts    int
 	retryDeadline       time.Time
+	retryMessageIndex   int
 	attemptMessageStart int
 	queued              []string
 	pendingSteer        []string
@@ -80,7 +81,10 @@ const (
 )
 
 func newUI(modelName, reasoningEffort string, respond func(string, <-chan string, func(toolEvent), context.Context) response) *oshUI {
-	s := &oshUI{modelName: modelName, reasoningEffort: reasoningEffort, respond: respond, historyIndex: -1}
+	s := &oshUI{
+		modelName: modelName, reasoningEffort: reasoningEffort, respond: respond,
+		historyIndex: -1, retryMessageIndex: -1,
+	}
 	s.ensureTextarea()
 	s.emit = func(message) {}
 	return s
@@ -144,6 +148,7 @@ func (s *oshUI) startRequest(text string, showUser bool) {
 	steer := make(chan string, 256)
 	s.responding, s.spinnerFrame, s.cancel, s.streamingText, s.reasoningText = true, 0, cancel, "", ""
 	s.retryAttempt, s.retryMaxAttempts, s.retryDeadline = 0, 0, time.Time{}
+	s.retryMessageIndex = -1
 	s.steer = steer
 	if showUser {
 		s.addMessage(message{role: "you", text: text})
@@ -193,11 +198,24 @@ func (s *oshUI) handleToolEvent(id int, ev toolEvent) {
 		s.markDirty()
 		return
 	case "retry":
-		// A failed stream may have emitted partial reasoning or text. Pi drops
-		// that failed attempt and replaces Working with an abortable countdown.
+		// A failed stream may have emitted partial reasoning, text, or tool
+		// calls. Drop that partial attempt, but keep one persistent error card
+		// and update it with the latest failure on every retry.
 		s.reasoningText, s.streamingText = "", ""
 		if s.attemptMessageStart <= len(s.messages) {
 			s.messages = s.messages[:s.attemptMessageStart]
+		}
+		title := fmt.Sprintf("LLM error · retry %d/%d", ev.Attempt, ev.MaxAttempts)
+		if s.retryMessageIndex >= 0 && s.retryMessageIndex < len(s.messages) {
+			msg := &s.messages[s.retryMessageIndex]
+			msg.toolName, msg.toolResult = title, ev.Detail
+			msg.toolFinishedAt = time.Now()
+		} else {
+			s.retryMessageIndex = len(s.messages)
+			s.addMessage(message{
+				role: "tool", toolID: "llm-retry", toolName: title,
+				toolResult: ev.Detail, toolState: "error", toolFinishedAt: time.Now(),
+			})
 		}
 		s.retryAttempt, s.retryMaxAttempts = ev.Attempt, ev.MaxAttempts
 		s.retryDeadline = time.Now().Add(ev.Delay)

@@ -817,14 +817,26 @@ func TestRetryShowsPiStyleCountdownAndEscapeCancels(t *testing.T) {
 	s.handleToolEvent(1, toolEvent{Phase: "reasoning_delta", Detail: "partial reasoning"})
 	s.handleToolEvent(1, toolEvent{Phase: "text_delta", Detail: "partial failed response"})
 
-	s.handleToolEvent(1, toolEvent{Phase: "retry", Attempt: 1, MaxAttempts: 3, Delay: 2 * time.Second})
-	if s.streamingText != "" || s.reasoningText != "" || len(s.messages) != 0 {
-		t.Fatalf("failed attempt remained visible: text=%q reasoning=%q messages=%#v", s.streamingText, s.reasoningText, s.messages)
+	s.handleToolEvent(1, toolEvent{Phase: "retry", Detail: "server temporarily unavailable", Attempt: 1, MaxAttempts: 3, Delay: 2 * time.Second})
+	if s.streamingText != "" || s.reasoningText != "" || len(s.messages) != 1 {
+		t.Fatalf("failed attempt was not replaced by one error card: text=%q reasoning=%q messages=%#v", s.streamingText, s.reasoningText, s.messages)
 	}
 	lines, _, _ := s.render(80)
 	rendered := stripANSI(strings.Join(lines, "\n"))
+	if !strings.Contains(rendered, "LLM error · retry 1/3") || !strings.Contains(rendered, "server temporarily unavailable") {
+		t.Fatalf("retry error card missing:\n%s", rendered)
+	}
 	if !strings.Contains(rendered, "Retrying (1/3) in 2s... (Esc to cancel)") {
 		t.Fatalf("retry status missing:\n%s", rendered)
+	}
+
+	// A later failure updates the same card instead of appending another one.
+	s.handleToolEvent(1, toolEvent{Phase: "text_reset"})
+	s.handleToolEvent(1, toolEvent{Phase: "text_delta", Detail: "another partial response"})
+	s.handleToolEvent(1, toolEvent{Phase: "attempt_failed"})
+	s.handleToolEvent(1, toolEvent{Phase: "retry", Detail: "connection reset", Attempt: 2, MaxAttempts: 3, Delay: 4 * time.Second})
+	if len(s.messages) != 1 || s.messages[0].toolName != "LLM error · retry 2/3" || s.messages[0].toolResult != "connection reset" {
+		t.Fatalf("retry error card was not updated in place: %#v", s.messages)
 	}
 
 	s.handleKey(tui.KeyEvent{Key: tui.KeyEscape})
