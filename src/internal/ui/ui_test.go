@@ -456,6 +456,30 @@ func TestStreamingToolOutputBufferIsBounded(t *testing.T) {
 	}
 }
 
+func TestWorkingDurationFormatsElapsedRequestTime(t *testing.T) {
+	started := time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC)
+	for _, test := range []struct {
+		duration time.Duration
+		want     string
+	}{
+		{350 * time.Millisecond, " (0s)"},
+		{12 * time.Second, " (12s)"},
+		{65 * time.Second, " (1m 05s)"},
+	} {
+		if got := workingDurationLabel(started, started.Add(test.duration)); got != test.want {
+			t.Errorf("workingDurationLabel(%s) = %q, want %q", test.duration, got, test.want)
+		}
+	}
+
+	s, _ := newState(nil)
+	s.responding = true
+	s.requestStartedAt = time.Now().Add(-12 * time.Second)
+	lines, _, _ := s.render(60)
+	if plain := stripANSI(strings.Join(lines, "\n")); !strings.Contains(plain, "Working… (12s)") {
+		t.Fatalf("working status missing elapsed time: %q", plain)
+	}
+}
+
 func TestToolDurationFormatsAndPersists(t *testing.T) {
 	for _, test := range []struct {
 		duration time.Duration

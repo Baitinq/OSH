@@ -46,6 +46,7 @@ type oshUI struct {
 	retryAttempt        int
 	retryMaxAttempts    int
 	retryDeadline       time.Time
+	requestStartedAt    time.Time
 	retryMessageIndex   int
 	attemptMessageStart int
 	queued              []string
@@ -147,6 +148,7 @@ func (s *oshUI) startRequest(text string, showUser bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	steer := make(chan string, 256)
 	s.responding, s.spinnerFrame, s.cancel, s.streamingText, s.reasoningText = true, 0, cancel, "", ""
+	s.requestStartedAt = time.Now()
 	s.retryAttempt, s.retryMaxAttempts, s.retryDeadline = 0, 0, time.Time{}
 	s.retryMessageIndex = -1
 	s.steer = steer
@@ -340,6 +342,7 @@ func (s *oshUI) finishResponse(resp response) {
 		return
 	}
 	s.cancel, s.responding, s.steer = nil, false, nil
+	s.requestStartedAt = time.Time{}
 	s.retryAttempt, s.retryMaxAttempts, s.retryDeadline = 0, 0, time.Time{}
 	hadStreamingText := s.streamingText != ""
 	s.finishReasoning()
@@ -386,6 +389,7 @@ func (s *oshUI) cancelRequest() {
 	s.cancel = nil
 	s.steer = nil
 	s.responding = false
+	s.requestStartedAt = time.Time{}
 	s.retryAttempt, s.retryMaxAttempts, s.retryDeadline = 0, 0, time.Time{}
 	s.finishReasoning()
 	s.finishStreamingText()
@@ -630,9 +634,11 @@ func (s *oshUI) render(width int, viewportHeight ...int) ([]string, int, int) {
 			remaining := max(time.Until(s.retryDeadline), 0)
 			seconds := int((remaining + time.Second - 1) / time.Second)
 			status := fmt.Sprintf(" Retrying (%d/%d) in %ds... (Esc to cancel)", s.retryAttempt, s.retryMaxAttempts, seconds)
+			status += workingDurationLabel(s.requestStartedAt, time.Now())
 			lines = append(lines, ansi256FG(214, spinnerFrames[s.spinnerFrame])+ansi256FG(242, status))
 		} else {
-			lines = append(lines, ansi256FG(39, spinnerFrames[s.spinnerFrame])+ansi256FG(242, " Working…"))
+			status := " Working…" + workingDurationLabel(s.requestStartedAt, time.Now())
+			lines = append(lines, ansi256FG(39, spinnerFrames[s.spinnerFrame])+ansi256FG(242, status))
 		}
 	}
 	for _, p := range s.pendingInputs {
@@ -702,6 +708,18 @@ const (
 	piToolSuccessBg = "40;50;40"
 	piToolErrorBg   = "60;40;40"
 )
+
+func workingDurationLabel(startedAt, now time.Time) string {
+	if startedAt.IsZero() {
+		return ""
+	}
+	elapsed := max(now.Sub(startedAt), 0)
+	seconds := int(elapsed / time.Second)
+	if seconds < 60 {
+		return fmt.Sprintf(" (%ds)", seconds)
+	}
+	return fmt.Sprintf(" (%dm %02ds)", seconds/60, seconds%60)
+}
 
 func formatToolDuration(d time.Duration) string {
 	if d < 0 {
