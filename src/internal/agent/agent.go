@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -40,11 +41,63 @@ Guidelines:
 - Do not run destructive or difficult-to-reverse commands unless the user explicitly requests them.
 - Do not modify files outside the current working directory, or commit and push changes, unless explicitly requested.`
 
-func buildSystemPrompt(cwd string) string {
+type contextFile struct {
+	path    string
+	content string
+}
+
+// loadContextFiles walks from cwd to the filesystem root and loads at most one
+// instruction file per directory. More specific files are returned later so
+// the prompt reads from broad project guidance to local guidance.
+func loadContextFiles(cwd string) []contextFile {
 	if cwd == "" {
-		return systemPrompt
+		return nil
 	}
-	return systemPrompt + "\n\nCurrent working directory: " + cwd
+	dir, err := filepath.Abs(cwd)
+	if err != nil {
+		return nil
+	}
+
+	var files []contextFile
+	for {
+		for _, name := range []string{"AGENTS.md", "CLAUDE.md"} {
+			path := filepath.Join(dir, name)
+			info, err := os.Stat(path)
+			if err != nil || !info.Mode().IsRegular() {
+				continue
+			}
+			content, err := os.ReadFile(path)
+			if err == nil {
+				files = append(files, contextFile{path: path, content: strings.TrimPrefix(string(content), "\ufeff")})
+			}
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+
+	for left, right := 0, len(files)-1; left < right; left, right = left+1, right-1 {
+		files[left], files[right] = files[right], files[left]
+	}
+	return files
+}
+
+func buildSystemPrompt(cwd string) string {
+	prompt := systemPrompt
+	files := loadContextFiles(cwd)
+	if len(files) > 0 {
+		prompt += "\n\nProject-specific instructions and guidelines:"
+		for _, file := range files {
+			prompt += fmt.Sprintf("\n\n<project_instructions path=%q>\n%s\n</project_instructions>", file.path, file.content)
+		}
+	}
+	if cwd != "" {
+		prompt += "\n\nCurrent working directory: " + cwd
+	}
+	return prompt
 }
 
 func prefixUserMessage(msg string, now time.Time) string {

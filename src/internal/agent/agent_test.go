@@ -215,3 +215,60 @@ func TestWaitForRetryCanBeCancelled(t *testing.T) {
 		t.Fatal("cancelled retry wait did not return promptly")
 	}
 }
+
+func TestLoadContextFilesWalksAncestorsInOrder(t *testing.T) {
+	root := t.TempDir()
+	project := root + "/project"
+	cwd := project + "/service"
+	if err := os.MkdirAll(cwd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(root+"/AGENTS.md", []byte("root guidance"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(project+"/AGENTS.md", []byte("project guidance"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cwd+"/CLAUDE.md", []byte("service guidance"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	files := loadContextFiles(cwd)
+	if len(files) != 3 {
+		t.Fatalf("loaded files = %#v", files)
+	}
+	for i, want := range []string{"root guidance", "project guidance", "service guidance"} {
+		if files[i].content != want {
+			t.Fatalf("file %d content = %q, want %q", i, files[i].content, want)
+		}
+	}
+
+	prompt := buildSystemPrompt(cwd)
+	rootIndex := strings.Index(prompt, "root guidance")
+	projectIndex := strings.Index(prompt, "project guidance")
+	serviceIndex := strings.Index(prompt, "service guidance")
+	if rootIndex < 0 || rootIndex >= projectIndex || projectIndex >= serviceIndex {
+		t.Fatalf("instructions are not ordered broadest to most specific: %q", prompt)
+	}
+}
+
+func TestLoadContextFilesPrefersAgents(t *testing.T) {
+	cwd := t.TempDir()
+	for name, content := range map[string]string{
+		"AGENTS.md": "agents guidance",
+		"CLAUDE.md": "claude guidance",
+	} {
+		if err := os.WriteFile(cwd+"/"+name, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	files := loadContextFiles(cwd)
+	if len(files) == 0 || files[len(files)-1].content != "agents guidance" {
+		t.Fatalf("loaded files = %#v", files)
+	}
+	prompt := buildSystemPrompt(cwd)
+	if !strings.Contains(prompt, "agents guidance") || strings.Contains(prompt, "claude guidance") {
+		t.Fatalf("AGENTS.md selection was not reflected in prompt: %q", prompt)
+	}
+}
