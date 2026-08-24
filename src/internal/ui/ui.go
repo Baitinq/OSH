@@ -32,30 +32,34 @@ type toolEvent = agent.ToolEvent
 type pendingInput struct{ kind, text string }
 
 type oshUI struct {
-	modelName       string
-	reasoningEffort string
-	contextTokens   int64
-	respond         func(string, <-chan string, func(toolEvent), context.Context) response
-	textarea        *tui.TextArea
-	textareaWidth   int
-	messages        []message
-	streamingText   string
-	reasoningText   string
-	responding      bool
-	spinnerFrame    int
-	queued          []string
-	pendingSteer    []string
-	steer           chan string
-	pendingInputs   []pendingInput
-	inputHistory    []string
-	historyIndex    int
-	historyDraft    string
-	nextRequestID   int
-	lastCtrlC       time.Time
-	cancel          context.CancelFunc
-	dispatch        func(func())
-	invalidate      func()
-	emit            func(message)
+	modelName           string
+	reasoningEffort     string
+	contextTokens       int64
+	respond             func(string, <-chan string, func(toolEvent), context.Context) response
+	textarea            *tui.TextArea
+	textareaWidth       int
+	messages            []message
+	streamingText       string
+	reasoningText       string
+	responding          bool
+	spinnerFrame        int
+	retryAttempt        int
+	retryMaxAttempts    int
+	retryDeadline       time.Time
+	attemptMessageStart int
+	queued              []string
+	pendingSteer        []string
+	steer               chan string
+	pendingInputs       []pendingInput
+	inputHistory        []string
+	historyIndex        int
+	historyDraft        string
+	nextRequestID       int
+	lastCtrlC           time.Time
+	cancel              context.CancelFunc
+	dispatch            func(func())
+	invalidate          func()
+	emit                func(message)
 }
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -139,6 +143,7 @@ func (s *oshUI) startRequest(text string, showUser bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	steer := make(chan string, 256)
 	s.responding, s.spinnerFrame, s.cancel, s.streamingText, s.reasoningText = true, 0, cancel, "", ""
+	s.retryAttempt, s.retryMaxAttempts, s.retryDeadline = 0, 0, time.Time{}
 	s.steer = steer
 	if showUser {
 		s.addMessage(message{role: "you", text: text})
@@ -180,9 +185,34 @@ func (s *oshUI) handleToolEvent(id int, ev toolEvent) {
 		return
 	}
 	switch ev.Phase {
+	case "attempt_failed":
+		s.reasoningText, s.streamingText = "", ""
+		if s.attemptMessageStart <= len(s.messages) {
+			s.messages = s.messages[:s.attemptMessageStart]
+		}
+		s.markDirty()
+		return
+	case "retry":
+		// A failed stream may have emitted partial reasoning or text. Pi drops
+		// that failed attempt and replaces Working with an abortable countdown.
+		s.reasoningText, s.streamingText = "", ""
+		if s.attemptMessageStart <= len(s.messages) {
+			s.messages = s.messages[:s.attemptMessageStart]
+		}
+		s.retryAttempt, s.retryMaxAttempts = ev.Attempt, ev.MaxAttempts
+		s.retryDeadline = time.Now().Add(ev.Delay)
+		s.markDirty()
+		return
+	case "retry_done":
+		s.retryAttempt, s.retryMaxAttempts, s.retryDeadline = 0, 0, time.Time{}
+		s.markDirty()
+		return
 	case "text_reset":
+		// The backoff has ended and a fresh request is now active.
+		s.retryAttempt, s.retryMaxAttempts, s.retryDeadline = 0, 0, time.Time{}
 		s.finishReasoning()
 		s.finishStreamingText()
+		s.attemptMessageStart = len(s.messages)
 		return
 	case "reasoning_delta":
 		s.finishStreamingText()
@@ -292,6 +322,7 @@ func (s *oshUI) finishResponse(resp response) {
 		return
 	}
 	s.cancel, s.responding, s.steer = nil, false, nil
+	s.retryAttempt, s.retryMaxAttempts, s.retryDeadline = 0, 0, time.Time{}
 	hadStreamingText := s.streamingText != ""
 	s.finishReasoning()
 	s.finishStreamingText()
@@ -337,6 +368,7 @@ func (s *oshUI) cancelRequest() {
 	s.cancel = nil
 	s.steer = nil
 	s.responding = false
+	s.retryAttempt, s.retryMaxAttempts, s.retryDeadline = 0, 0, time.Time{}
 	s.finishReasoning()
 	s.finishStreamingText()
 	for i := range s.messages {
@@ -506,6 +538,10 @@ func (s *oshUI) handleKey(k tui.KeyEvent) bool {
 	}
 	s.lastCtrlC = time.Time{}
 	if k.Key == tui.KeyEscape {
+		if s.retryAttempt > 0 {
+			s.cancelRequest()
+			return true
+		}
 		s.historyIndex, s.historyDraft = -1, ""
 		s.textarea.Clear()
 		s.markDirty()
@@ -572,7 +608,14 @@ func (s *oshUI) render(width int, viewportHeight ...int) ([]string, int, int) {
 		lines = append(lines, "")
 	}
 	if s.responding {
-		lines = append(lines, ansi256FG(39, spinnerFrames[s.spinnerFrame])+ansi256FG(242, " Working…"))
+		if s.retryAttempt > 0 {
+			remaining := max(time.Until(s.retryDeadline), 0)
+			seconds := int((remaining + time.Second - 1) / time.Second)
+			status := fmt.Sprintf(" Retrying (%d/%d) in %ds... (Esc to cancel)", s.retryAttempt, s.retryMaxAttempts, seconds)
+			lines = append(lines, ansi256FG(214, spinnerFrames[s.spinnerFrame])+ansi256FG(242, status))
+		} else {
+			lines = append(lines, ansi256FG(39, spinnerFrames[s.spinnerFrame])+ansi256FG(242, " Working…"))
+		}
 	}
 	for _, p := range s.pendingInputs {
 		lines = append(lines, renderPendingLines(p, width)...)

@@ -806,3 +806,37 @@ func TestLongDocumentIsNotViewportPadded(t *testing.T) {
 		t.Fatal("long document was incorrectly prefixed with viewport filler")
 	}
 }
+
+func TestRetryShowsPiStyleCountdownAndEscapeCancels(t *testing.T) {
+	s, _ := newState(nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	s.responding = true
+	s.nextRequestID = 1
+	s.cancel = cancel
+	s.handleToolEvent(1, toolEvent{Phase: "text_reset"})
+	s.handleToolEvent(1, toolEvent{Phase: "reasoning_delta", Detail: "partial reasoning"})
+	s.handleToolEvent(1, toolEvent{Phase: "text_delta", Detail: "partial failed response"})
+
+	s.handleToolEvent(1, toolEvent{Phase: "retry", Attempt: 1, MaxAttempts: 3, Delay: 2 * time.Second})
+	if s.streamingText != "" || s.reasoningText != "" || len(s.messages) != 0 {
+		t.Fatalf("failed attempt remained visible: text=%q reasoning=%q messages=%#v", s.streamingText, s.reasoningText, s.messages)
+	}
+	lines, _, _ := s.render(80)
+	rendered := stripANSI(strings.Join(lines, "\n"))
+	if !strings.Contains(rendered, "Retrying (1/3) in 2s... (Esc to cancel)") {
+		t.Fatalf("retry status missing:\n%s", rendered)
+	}
+
+	s.handleKey(tui.KeyEvent{Key: tui.KeyEscape})
+	if s.responding || s.retryAttempt != 0 {
+		t.Fatalf("retry was not cancelled: responding=%v attempt=%d", s.responding, s.retryAttempt)
+	}
+	select {
+	case <-ctx.Done():
+	default:
+		t.Fatal("Escape did not cancel the request context")
+	}
+	if got := s.messages[len(s.messages)-1]; got.role != "system" || got.text != "Cancelled." {
+		t.Fatalf("cancellation message = %#v", got)
+	}
+}

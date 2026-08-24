@@ -3,8 +3,10 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -48,6 +50,11 @@ const baseURL = "https://api.openai.com/v1/"
 const modelName = "gpt-5.6-sol"
 const reasoningEffort = shared.ReasoningEffortMedium
 
+const (
+	maxLLMRetries  = 10
+	retryBaseDelay = 2 * time.Second
+)
+
 var shellTool = responses.ToolUnionParam{
 	OfFunction: &responses.FunctionToolParam{
 		Name:        "shell",
@@ -63,12 +70,15 @@ var shellTool = responses.ToolUnionParam{
 	},
 }
 
-// ToolEvent describes streamed text, reasoning, and shell-tool activity during a turn.
+// ToolEvent describes streamed text, reasoning, retries, and shell-tool activity during a turn.
 type ToolEvent struct {
-	Phase  string
-	Name   string
-	ID     string
-	Detail string
+	Phase       string
+	Name        string
+	ID          string
+	Detail      string
+	Attempt     int
+	MaxAttempts int
+	Delay       time.Duration
 }
 
 // Response is the completed result of an agent turn.
@@ -85,18 +95,24 @@ func (a *Agent) ModelName() string { return a.modelName }
 func (a *Agent) ReasoningEffort() string { return string(reasoningEffort) }
 
 type Agent struct {
-	client       openai.Client
-	modelName    string
-	instructions string
-	history      []responses.ResponseInputItemUnionParam
+	client         openai.Client
+	modelName      string
+	instructions   string
+	history        []responses.ResponseInputItemUnionParam
+	maxRetries     int
+	retryBaseDelay time.Duration
 }
 
 func New() *Agent {
 	cwd, _ := os.Getwd()
 	return &Agent{
-		client:       openai.NewClient(option.WithBaseURL(baseURL)),
-		modelName:    modelName,
-		instructions: buildSystemPrompt(cwd),
+		// Keep retries at the visible agent layer. The SDK otherwise retries
+		// silently, making a disconnected network look like a hung request.
+		client:         openai.NewClient(option.WithBaseURL(baseURL), option.WithMaxRetries(0)),
+		modelName:      modelName,
+		instructions:   buildSystemPrompt(cwd),
+		maxRetries:     maxLLMRetries,
+		retryBaseDelay: retryBaseDelay,
 	}
 }
 
@@ -233,6 +249,115 @@ func (a *Agent) consumeSteering(steer <-chan string, emit func(ToolEvent)) bool 
 	}
 }
 
+type responseFailure struct {
+	code, message string
+}
+
+func (e *responseFailure) Error() string {
+	if e.message == "" {
+		return e.code
+	}
+	return e.message
+}
+
+func isRetryableLLMError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	var apiErr *openai.Error
+	if errors.As(err, &apiErr) {
+		if apiErr.StatusCode == http.StatusBadRequest && isMissingToolOutputError(apiErr.Message) {
+			return true
+		}
+		if apiErr.StatusCode == http.StatusTooManyRequests && isQuotaError(apiErr.Code+" "+apiErr.Type+" "+apiErr.Message) {
+			return false
+		}
+		return apiErr.StatusCode == http.StatusRequestTimeout ||
+			apiErr.StatusCode == http.StatusConflict ||
+			apiErr.StatusCode == http.StatusTooManyRequests ||
+			apiErr.StatusCode >= http.StatusInternalServerError
+	}
+	var failed *responseFailure
+	if errors.As(err, &failed) {
+		if isMissingToolOutputError(failed.message) {
+			return true
+		}
+		if failed.code == string(responses.ResponseErrorCodeRateLimitExceeded) && isQuotaError(failed.message) {
+			return false
+		}
+		return failed.code == string(responses.ResponseErrorCodeServerError) ||
+			failed.code == "internal_error" ||
+			failed.code == string(responses.ResponseErrorCodeRateLimitExceeded) ||
+			failed.code == string(responses.ResponseErrorCodeVectorStoreTimeout)
+	}
+	// Transport and prematurely-ended stream errors are not API errors and are
+	// generally transient (DNS failures, refused connections, socket drops, etc.).
+	return true
+}
+
+func isMissingToolOutputError(message string) bool {
+	message = strings.ToLower(message)
+	return strings.Contains(message, "no tool output found for function call")
+}
+
+func isQuotaError(message string) bool {
+	message = strings.ToLower(message)
+	for _, marker := range []string{"insufficient_quota", "out of budget", "quota exceeded", "billing"} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func waitForRetry(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func (a *Agent) streamResponse(ctx context.Context, params responses.ResponseNewParams, emit func(ToolEvent)) (responses.Response, error) {
+	stream := a.client.Responses.NewStreaming(ctx, params)
+	var resp responses.Response
+	var failed error
+	for stream.Next() {
+		event := stream.Current()
+		switch event.Type {
+		case "response.reasoning_summary_text.delta":
+			emit(ToolEvent{Phase: "reasoning_delta", Detail: event.AsResponseReasoningSummaryTextDelta().Delta})
+		case "response.reasoning_text.delta":
+			emit(ToolEvent{Phase: "reasoning_delta", Detail: event.AsResponseReasoningTextDelta().Delta})
+		case "response.output_text.delta":
+			emit(ToolEvent{Phase: "text_delta", Detail: event.AsResponseOutputTextDelta().Delta})
+		case "response.completed":
+			resp = event.AsResponseCompleted().Response
+		case "response.failed":
+			failure := event.AsResponseFailed().Response
+			failed = &responseFailure{code: string(failure.Error.Code), message: failure.Error.Message}
+		case "error":
+			failure := event.AsError()
+			failed = &responseFailure{code: failure.Code, message: failure.Message}
+		}
+	}
+	streamErr := stream.Err()
+	_ = stream.Close()
+	if streamErr != nil {
+		return responses.Response{}, streamErr
+	}
+	if failed != nil {
+		return responses.Response{}, failed
+	}
+	if resp.ID == "" {
+		return responses.Response{}, fmt.Errorf("stream ended without a completed response")
+	}
+	return resp, nil
+}
+
 func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), ctx context.Context) Response {
 	a.appendUserMessage(msg)
 
@@ -247,32 +372,33 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 			Tools:        []responses.ToolUnionParam{shellTool},
 			Store:        openai.Bool(false),
 		}
-		emit(ToolEvent{Phase: "text_reset"})
-		stream := a.client.Responses.NewStreaming(ctx, params)
 		var resp responses.Response
-		for stream.Next() {
-			event := stream.Current()
-			switch event.Type {
-			case "response.reasoning_summary_text.delta":
-				emit(ToolEvent{Phase: "reasoning_delta", Detail: event.AsResponseReasoningSummaryTextDelta().Delta})
-			case "response.reasoning_text.delta":
-				emit(ToolEvent{Phase: "reasoning_delta", Detail: event.AsResponseReasoningTextDelta().Delta})
-			case "response.output_text.delta":
-				emit(ToolEvent{Phase: "text_delta", Detail: event.AsResponseOutputTextDelta().Delta})
-			case "response.completed":
-				resp = event.AsResponseCompleted().Response
+		for attempt := 0; ; attempt++ {
+			emit(ToolEvent{Phase: "text_reset"})
+			var err error
+			resp, err = a.streamResponse(ctx, params, emit)
+			if err == nil {
+				if attempt > 0 {
+					emit(ToolEvent{Phase: "retry_done"})
+				}
+				break
 			}
-		}
-		streamErr := stream.Err()
-		_ = stream.Close()
-		if streamErr != nil {
 			if ctx.Err() != nil {
 				return Response{}
 			}
-			return Response{Err: fmt.Errorf("request failed: %w", streamErr)}
-		}
-		if resp.ID == "" {
-			return Response{Err: fmt.Errorf("request failed: stream ended without a completed response")}
+			emit(ToolEvent{Phase: "attempt_failed"})
+			if !isRetryableLLMError(err) || attempt >= a.maxRetries {
+				emit(ToolEvent{Phase: "retry_done"})
+				if attempt > 0 {
+					return Response{Err: fmt.Errorf("retry failed after %d attempts: %w", attempt, err)}
+				}
+				return Response{Err: fmt.Errorf("request failed: %w", err)}
+			}
+			delay := a.retryBaseDelay * time.Duration(1<<attempt)
+			emit(ToolEvent{Phase: "retry", Detail: err.Error(), Attempt: attempt + 1, MaxAttempts: a.maxRetries, Delay: delay})
+			if !waitForRetry(ctx, delay) {
+				return Response{}
+			}
 		}
 		contextTokens = resp.Usage.TotalTokens
 

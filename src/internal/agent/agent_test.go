@@ -1,12 +1,18 @@
 package agent
 
 import (
+	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
+
+	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
 )
 
 func TestBuildSystemPrompt(t *testing.T) {
@@ -118,5 +124,92 @@ func TestLimitToolOutputRespectsByteLimitAndUTF8(t *testing.T) {
 	if parts := strings.Split(limited, "Full output: "); len(parts) == 2 {
 		path := strings.TrimSuffix(parts[1], "]")
 		t.Cleanup(func() { _ = os.Remove(path) })
+	}
+}
+
+func TestDefaultLLMRetryBudget(t *testing.T) {
+	if got := New().maxRetries; got != 10 {
+		t.Fatalf("max retries = %d, want 10", got)
+	}
+}
+
+func TestIsRetryableLLMError(t *testing.T) {
+	for _, status := range []int{408, 409, 429, 500, 503} {
+		if !isRetryableLLMError(&openai.Error{StatusCode: status}) {
+			t.Errorf("status %d was not retryable", status)
+		}
+	}
+	for _, status := range []int{400, 401, 403, 404} {
+		if isRetryableLLMError(&openai.Error{StatusCode: status}) {
+			t.Errorf("status %d was retryable", status)
+		}
+	}
+	missingToolOutput := &openai.Error{
+		StatusCode: http.StatusBadRequest,
+		Message:    "No tool output found for function call call_test.",
+	}
+	if !isRetryableLLMError(missingToolOutput) {
+		t.Fatal("missing tool output error was not retryable")
+	}
+	if isRetryableLLMError(&openai.Error{StatusCode: 429, Code: "insufficient_quota"}) {
+		t.Fatal("quota exhaustion was retryable")
+	}
+	if !isRetryableLLMError(fmt.Errorf("dial tcp: network is unreachable")) {
+		t.Fatal("transport error was not retryable")
+	}
+	if isRetryableLLMError(context.Canceled) {
+		t.Fatal("cancellation was retryable")
+	}
+}
+
+func TestRespondRetriesTransientFailures(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests <= 2 {
+			http.Error(w, `{"error":{"message":"temporarily unavailable","type":"server_error","code":"server_error"}}`, http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\",\"item_id\":\"msg_test\",\"output_index\":0,\"content_index\":0,\"sequence_number\":1}\n\n")
+		fmt.Fprint(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":2,\"response\":{\"id\":\"resp_test\",\"object\":\"response\",\"model\":\"test\",\"status\":\"completed\",\"output\":[{\"id\":\"msg_test\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello\",\"annotations\":[]}]}]}}\n\n")
+	}))
+	defer server.Close()
+
+	a := &Agent{
+		client:         openai.NewClient(option.WithAPIKey("test"), option.WithBaseURL(server.URL+"/"), option.WithMaxRetries(0)),
+		modelName:      "test",
+		instructions:   "test",
+		maxRetries:     3,
+		retryBaseDelay: time.Millisecond,
+	}
+	var events []ToolEvent
+	resp := a.Respond("hello", make(chan string), func(ev ToolEvent) { events = append(events, ev) }, t.Context())
+	if resp.Err != nil || resp.Text != "hello" {
+		t.Fatalf("response = %#v", resp)
+	}
+	if requests != 3 {
+		t.Fatalf("requests = %d, want 3", requests)
+	}
+	var retries []ToolEvent
+	for _, ev := range events {
+		if ev.Phase == "retry" {
+			retries = append(retries, ev)
+		}
+	}
+	if len(retries) != 2 || retries[0].Attempt != 1 || retries[0].Delay != time.Millisecond || retries[1].Attempt != 2 || retries[1].Delay != 2*time.Millisecond {
+		t.Fatalf("retry events = %#v", retries)
+	}
+}
+
+func TestWaitForRetryCanBeCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	started := time.Now()
+	if waitForRetry(ctx, time.Hour) {
+		t.Fatal("cancelled wait completed")
+	}
+	if time.Since(started) > 100*time.Millisecond {
+		t.Fatal("cancelled retry wait did not return promptly")
 	}
 }
