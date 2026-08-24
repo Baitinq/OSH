@@ -58,15 +58,15 @@ agent knows it can use [MCPorter](https://mcporter.sh) through its shell tool to
 discover and invoke MCP servers:
 
 ```sh
-npx mcporter list
-npx mcporter call <server>.<tool> key=value
+npx -y mcporter@0.13.7 list
+npx -y mcporter@0.13.7 call <server>.<tool> key=value
 ```
 
 MCPorter discovers its own project and user configuration, including supported
 configurations imported from other clients. OSH does not preload MCP schemas;
 the agent discovers relevant tools only when a task needs them.
 
-`npx mcporter` requires Node.js and may download the package on first use. For
+`npx -y mcporter@0.13.7` requires Node.js and may download the package on first use. For
 frequent use, install MCPorter so the package is cached and immediately
 available; MCP configuration and credentials remain managed by MCPorter rather
 than OSH.
