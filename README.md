@@ -51,6 +51,26 @@ The configured server must implement the OpenAI **Responses API** (`POST
 /responses`), including function tool calls. Compatibility limited to the Chat
 Completions API is not sufficient.
 
+## MCP
+
+OSH keeps MCP out of its core, following the same CLI-first approach as Pi. The
+agent knows it can use [MCPorter](https://mcporter.sh) through its shell tool to
+discover and invoke MCP servers:
+
+```sh
+npx mcporter list
+npx mcporter call <server>.<tool> key=value
+```
+
+MCPorter discovers its own project and user configuration, including supported
+configurations imported from other clients. OSH does not preload MCP schemas;
+the agent discovers relevant tools only when a task needs them.
+
+`npx mcporter` requires Node.js and may download the package on first use. For
+frequent use, install MCPorter so the package is cached and immediately
+available; MCP configuration and credentials remain managed by MCPorter rather
+than OSH.
+
 ## Controls
 
 - `Enter` — send a message; while responding, steer the active agent after its current tool-call batch

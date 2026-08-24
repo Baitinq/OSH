@@ -20,6 +20,8 @@ func TestBuildSystemPrompt(t *testing.T) {
 	for _, want := range []string{
 		"expert general-purpose assistant operating inside OSH",
 		"Available tools:",
+		"npx mcporter list",
+		"npx mcporter call <server>.<tool>",
 		"Do not run destructive or difficult-to-reverse commands",
 		"Current working directory: /work/project",
 	} {
