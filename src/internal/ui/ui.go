@@ -341,6 +341,8 @@ func (s *oshUI) finishResponse(resp response) {
 	if resp.id != s.nextRequestID {
 		return
 	}
+	finishedAt := time.Now()
+	startedAt := s.requestStartedAt
 	s.cancel, s.responding, s.steer = nil, false, nil
 	s.requestStartedAt = time.Time{}
 	s.retryAttempt, s.retryMaxAttempts, s.retryDeadline = 0, 0, time.Time{}
@@ -355,6 +357,9 @@ func (s *oshUI) finishResponse(resp response) {
 	}
 	if !hadStreamingText && resp.Text != "" {
 		s.addMessage(message{role: "agent", text: resp.Text})
+	}
+	if status := completedRequestMessage(startedAt, finishedAt); status != "" {
+		s.addMessage(message{role: "status", text: status})
 	}
 	if len(s.pendingSteer) > 0 {
 		pending := append([]string(nil), s.pendingSteer...)
@@ -685,6 +690,10 @@ func renderedMessage(msg message, width int) string {
 		for _, line := range wrapPlain(msg.text, contentWidth) {
 			lines = append(lines, " "+ansi256FG(242, line))
 		}
+	case "status":
+		for _, line := range wrapPlain(msg.text, contentWidth) {
+			lines = append(lines, " "+ansi256FG(70, "✓")+ansi256FG(242, " "+line))
+		}
 	case "error":
 		for _, line := range wrapPlain(msg.text, contentWidth) {
 			lines = append(lines, " "+ansiRGBStyle(piError, "", false, false, line))
@@ -719,6 +728,13 @@ func workingDurationLabel(startedAt, now time.Time) string {
 		return fmt.Sprintf(" (%ds)", seconds)
 	}
 	return fmt.Sprintf(" (%dm %02ds)", seconds/60, seconds%60)
+}
+
+func completedRequestMessage(startedAt, finishedAt time.Time) string {
+	if startedAt.IsZero() {
+		return ""
+	}
+	return "Done in " + formatToolDuration(finishedAt.Sub(startedAt))
 }
 
 func formatToolDuration(d time.Duration) string {

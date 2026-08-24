@@ -136,8 +136,11 @@ func TestSubmitRunsAsynchronously(t *testing.T) {
 	if s.responding || s.contextTokens != 1234 {
 		t.Fatalf("response did not finish: %#v", s)
 	}
-	if got := s.messages[len(s.messages)-1]; got.role != "agent" || got.text != "answer" {
+	if got := s.messages[len(s.messages)-2]; got.role != "agent" || got.text != "answer" {
 		t.Fatalf("agent response missing: %#v", s.messages)
+	}
+	if got := s.messages[len(s.messages)-1]; got.role != "status" || !strings.HasPrefix(got.text, "Done in ") {
+		t.Fatalf("completion duration missing: %#v", s.messages)
 	}
 }
 
@@ -153,7 +156,7 @@ func TestToolEventsAreAddedToTranscript(t *testing.T) {
 	for s.responding {
 		runtime.runNext(t)
 	}
-	if len(s.messages) != 3 {
+	if len(s.messages) != 4 {
 		t.Fatalf("messages = %#v", s.messages)
 	}
 	tool := s.messages[1]
@@ -205,8 +208,11 @@ func TestResponseErrorIsRetained(t *testing.T) {
 	for s.responding {
 		runtime.runNext(t)
 	}
-	if got := s.messages[len(s.messages)-1]; got.role != "error" || got.text != "request failed" {
+	if got := s.messages[len(s.messages)-2]; got.role != "error" || got.text != "request failed" {
 		t.Fatalf("error missing: %#v", s.messages)
+	}
+	if got := s.messages[len(s.messages)-1]; got.role != "status" || !strings.HasPrefix(got.text, "Done in ") {
+		t.Fatalf("completion duration missing after error: %#v", s.messages)
 	}
 }
 
@@ -401,6 +407,7 @@ func TestRenderedMessagesUsePiDarkTheme(t *testing.T) {
 		{message{role: "tool", toolResult: "/tmp", toolState: "success"}, "38;2;128;128;128;48;2;40;50;40"},
 		{message{role: "error", text: "failed"}, "38;2;204;102;102"},
 		{message{role: "system", text: "cancelled"}, "38;5;242"},
+		{message{role: "status", text: "Done in 1.2s"}, "38;5;70"},
 	}
 	for _, test := range tests {
 		if got := renderedMessage(test.message, 80); !strings.Contains(got, test.code) {
@@ -477,6 +484,16 @@ func TestWorkingDurationFormatsElapsedRequestTime(t *testing.T) {
 	lines, _, _ := s.render(60)
 	if plain := stripANSI(strings.Join(lines, "\n")); !strings.Contains(plain, "Working… (12s)") {
 		t.Fatalf("working status missing elapsed time: %q", plain)
+	}
+}
+
+func TestCompletedRequestMessage(t *testing.T) {
+	started := time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC)
+	if got := completedRequestMessage(started, started.Add(1250*time.Millisecond)); got != "Done in 1.2s" {
+		t.Fatalf("completed request message = %q", got)
+	}
+	if got := completedRequestMessage(time.Time{}, started); got != "" {
+		t.Fatalf("zero start produced completion message %q", got)
 	}
 }
 
