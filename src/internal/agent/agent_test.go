@@ -215,7 +215,7 @@ func TestRespondRetriesTransientFailures(t *testing.T) {
 	}
 	var retries []ToolEvent
 	for _, ev := range events {
-		if ev.Phase == "retry" {
+		if ev.Kind == ToolEventRetry {
 			retries = append(retries, ev)
 		}
 	}

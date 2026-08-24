@@ -137,9 +137,27 @@ var shellTool = responses.ToolUnionParam{
 	},
 }
 
+// ToolEventKind identifies a streamed agent event.
+type ToolEventKind uint8
+
+const (
+	ToolEventAttemptFailed ToolEventKind = iota
+	ToolEventRetry
+	ToolEventRetryDone
+	ToolEventTextReset
+	ToolEventReasoningDelta
+	ToolEventReasoningDone
+	ToolEventSteerConsumed
+	ToolEventTextDelta
+	ToolEventCall
+	ToolEventUpdate
+	ToolEventResult
+	ToolEventError
+)
+
 // ToolEvent describes streamed text, reasoning, retries, and shell-tool activity during a turn.
 type ToolEvent struct {
-	Phase       string
+	Kind        ToolEventKind
 	Name        string
 	ID          string
 	Detail      string
@@ -329,7 +347,7 @@ func (a *Agent) consumeSteering(steer <-chan string, emit func(ToolEvent)) bool 
 			return false
 		}
 		a.appendUserMessage(msg)
-		emit(ToolEvent{Phase: "steer_consumed", Detail: msg})
+		emit(ToolEvent{Kind: ToolEventSteerConsumed, Detail: msg})
 		return true
 	default:
 		return false
@@ -421,11 +439,11 @@ func (a *Agent) streamResponse(ctx context.Context, params responses.ResponseNew
 		event := stream.Current()
 		switch event.Type {
 		case "response.reasoning_summary_text.delta":
-			emit(ToolEvent{Phase: "reasoning_delta", Detail: event.AsResponseReasoningSummaryTextDelta().Delta})
+			emit(ToolEvent{Kind: ToolEventReasoningDelta, Detail: event.AsResponseReasoningSummaryTextDelta().Delta})
 		case "response.reasoning_text.delta":
-			emit(ToolEvent{Phase: "reasoning_delta", Detail: event.AsResponseReasoningTextDelta().Delta})
+			emit(ToolEvent{Kind: ToolEventReasoningDelta, Detail: event.AsResponseReasoningTextDelta().Delta})
 		case "response.output_text.delta":
-			emit(ToolEvent{Phase: "text_delta", Detail: event.AsResponseOutputTextDelta().Delta})
+			emit(ToolEvent{Kind: ToolEventTextDelta, Detail: event.AsResponseOutputTextDelta().Delta})
 		case "response.completed":
 			resp = event.AsResponseCompleted().Response
 		case "response.failed":
@@ -466,28 +484,28 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 		}
 		var resp responses.Response
 		for attempt := 0; ; attempt++ {
-			emit(ToolEvent{Phase: "text_reset"})
+			emit(ToolEvent{Kind: ToolEventTextReset})
 			var err error
 			resp, err = a.streamResponse(ctx, params, emit)
 			if err == nil {
 				if attempt > 0 {
-					emit(ToolEvent{Phase: "retry_done"})
+					emit(ToolEvent{Kind: ToolEventRetryDone})
 				}
 				break
 			}
 			if ctx.Err() != nil {
 				return Response{}
 			}
-			emit(ToolEvent{Phase: "attempt_failed"})
+			emit(ToolEvent{Kind: ToolEventAttemptFailed})
 			if !isRetryableLLMError(err) || attempt >= a.maxRetries {
-				emit(ToolEvent{Phase: "retry_done"})
+				emit(ToolEvent{Kind: ToolEventRetryDone})
 				if attempt > 0 {
 					return Response{Err: fmt.Errorf("retry failed after %d attempts: %w", attempt, err)}
 				}
 				return Response{Err: fmt.Errorf("request failed: %w", err)}
 			}
 			delay := a.retryDelay(attempt)
-			emit(ToolEvent{Phase: "retry", Detail: err.Error(), Attempt: attempt + 1, MaxAttempts: a.maxRetries, Delay: delay})
+			emit(ToolEvent{Kind: ToolEventRetry, Detail: err.Error(), Attempt: attempt + 1, MaxAttempts: a.maxRetries, Delay: delay})
 			if !waitForRetry(ctx, delay) {
 				return Response{}
 			}
@@ -517,7 +535,7 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 		}
 		a.history = append(a.history, items...)
 		if len(toolCalls) == 0 {
-			emit(ToolEvent{Phase: "reasoning_done"})
+			emit(ToolEvent{Kind: ToolEventReasoningDone})
 			text = resp.OutputText()
 			if a.consumeSteering(steer, emit) {
 				continue
@@ -528,12 +546,12 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 			return Response{}
 		}
 
-		emit(ToolEvent{Phase: "reasoning_done"})
+		emit(ToolEvent{Kind: ToolEventReasoningDone})
 		for _, call := range toolCalls {
 			output := ""
 			if call.Name != "shell" {
 				output = fmt.Sprintf("tool error: unsupported tool %q", call.Name)
-				emit(ToolEvent{Phase: "error", Name: call.Name, ID: call.CallID, Detail: output})
+				emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
 			} else {
 				var args struct {
 					Command string   `json:"command"`
@@ -541,21 +559,21 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 				}
 				if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
 					output = "tool error: invalid shell arguments: " + err.Error()
-					emit(ToolEvent{Phase: "error", Name: call.Name, ID: call.CallID, Detail: output})
+					emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
 				} else {
-					emit(ToolEvent{Phase: "call", Name: call.Name, ID: call.CallID, Detail: args.Command})
+					emit(ToolEvent{Kind: ToolEventCall, Name: call.Name, ID: call.CallID, Detail: args.Command})
 					var err error
 					output, err = runShellStreaming(ctx, args.Command, args.Timeout, func(chunk string) {
-						emit(ToolEvent{Phase: "update", Name: call.Name, ID: call.CallID, Detail: chunk})
+						emit(ToolEvent{Kind: ToolEventUpdate, Name: call.Name, ID: call.CallID, Detail: chunk})
 					})
 					if err != nil {
 						output += "\nexit status: " + err.Error()
 					}
 					output = limitToolOutput(output)
 					if err != nil {
-						emit(ToolEvent{Phase: "error", Name: call.Name, ID: call.CallID, Detail: output})
+						emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
 					} else {
-						emit(ToolEvent{Phase: "result", Name: call.Name, ID: call.CallID, Detail: output})
+						emit(ToolEvent{Kind: ToolEventResult, Name: call.Name, ID: call.CallID, Detail: output})
 					}
 				}
 			}

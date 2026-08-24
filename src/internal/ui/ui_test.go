@@ -148,8 +148,8 @@ func TestSubmitRunsAsynchronously(t *testing.T) {
 
 func TestToolEventsAreAddedToTranscript(t *testing.T) {
 	s, runtime := newState(func(_ string, _ <-chan string, emit func(toolEvent), _ context.Context) response {
-		emit(toolEvent{Phase: "call", Name: "shell", ID: "call-1", Detail: "pwd"})
-		emit(toolEvent{Phase: "result", Name: "shell", ID: "call-1", Detail: "/tmp"})
+		emit(toolEvent{Kind: toolEventCall, Name: "shell", ID: "call-1", Detail: "pwd"})
+		emit(toolEvent{Kind: toolEventResult, Name: "shell", ID: "call-1", Detail: "/tmp"})
 		return response{Text: "done"}
 	})
 	s.textarea.SetText("inspect")
@@ -171,15 +171,15 @@ func TestToolUpdatesStreamIntoPendingCard(t *testing.T) {
 	s, _ := newState(nil)
 	s.responding = true
 	s.nextRequestID = 1
-	s.handleToolEvent(1, toolEvent{Phase: "call", Name: "shell", ID: "call-1", Detail: "work"})
-	s.handleToolEvent(1, toolEvent{Phase: "update", Name: "shell", ID: "call-1", Detail: "first"})
-	s.handleToolEvent(1, toolEvent{Phase: "update", Name: "shell", ID: "call-1", Detail: " second"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventCall, Name: "shell", ID: "call-1", Detail: "work"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventUpdate, Name: "shell", ID: "call-1", Detail: "first"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventUpdate, Name: "shell", ID: "call-1", Detail: " second"})
 
 	tool := s.messages[0]
 	if tool.toolState != "pending" || tool.toolResult != "first second" {
 		t.Fatalf("streaming tool card = %#v", tool)
 	}
-	s.handleToolEvent(1, toolEvent{Phase: "result", Name: "shell", ID: "call-1", Detail: "first second"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventResult, Name: "shell", ID: "call-1", Detail: "first second"})
 	if s.messages[0].toolState != "success" || s.messages[0].toolResult != "first second" {
 		t.Fatalf("completed tool card = %#v", s.messages[0])
 	}
@@ -189,9 +189,9 @@ func TestToolResultsUpdateMatchingCallID(t *testing.T) {
 	s, _ := newState(nil)
 	s.responding = true
 	s.nextRequestID = 1
-	s.handleToolEvent(1, toolEvent{Phase: "call", Name: "shell", ID: "first", Detail: "one"})
-	s.handleToolEvent(1, toolEvent{Phase: "call", Name: "shell", ID: "second", Detail: "two"})
-	s.handleToolEvent(1, toolEvent{Phase: "result", Name: "shell", ID: "first", Detail: "one-result"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventCall, Name: "shell", ID: "first", Detail: "one"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventCall, Name: "shell", ID: "second", Detail: "two"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventResult, Name: "shell", ID: "first", Detail: "one-result"})
 
 	if s.messages[0].toolResult != "one-result" || s.messages[0].toolState != "success" {
 		t.Fatalf("first tool card was not updated: %#v", s.messages)
@@ -244,7 +244,7 @@ func TestSteerIsDeliveredIntoActiveResponse(t *testing.T) {
 	s, runtime := newState(func(_ string, steer <-chan string, emit func(toolEvent), _ context.Context) response {
 		close(started)
 		text := <-steer
-		emit(toolEvent{Phase: "steer_consumed", Detail: text})
+		emit(toolEvent{Kind: toolEventSteerConsumed, Detail: text})
 		<-release
 		return response{Text: "continued"}
 	})
@@ -466,9 +466,9 @@ func TestStreamingToolOutputBufferIsBounded(t *testing.T) {
 	s, _ := newState(nil)
 	s.responding = true
 	s.nextRequestID = 1
-	s.handleToolEvent(1, toolEvent{Phase: "call", Name: "shell", ID: "large", Detail: "many"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventCall, Name: "shell", ID: "large", Detail: "many"})
 	chunk := strings.Repeat("a", maxToolDisplayBytes+4096)
-	s.handleToolEvent(1, toolEvent{Phase: "update", Name: "shell", ID: "large", Detail: chunk})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventUpdate, Name: "shell", ID: "large", Detail: chunk})
 	if got := len(s.messages[0].toolResult); got > maxToolDisplayBytes {
 		t.Fatalf("streaming tool buffer = %d bytes, limit = %d", got, maxToolDisplayBytes)
 	}
@@ -545,11 +545,11 @@ func TestToolEventsRecordDuration(t *testing.T) {
 	s, _ := newState(nil)
 	s.responding = true
 	s.nextRequestID = 1
-	s.handleToolEvent(1, toolEvent{Phase: "call", Name: "shell", ID: "timed", Detail: "work"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventCall, Name: "shell", ID: "timed", Detail: "work"})
 	if s.messages[0].toolStartedAt.IsZero() || !s.messages[0].toolFinishedAt.IsZero() {
 		t.Fatalf("pending tool timestamps = %#v", s.messages[0])
 	}
-	s.handleToolEvent(1, toolEvent{Phase: "result", Name: "shell", ID: "timed", Detail: "done"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventResult, Name: "shell", ID: "timed", Detail: "done"})
 	if s.messages[0].toolFinishedAt.IsZero() || s.messages[0].toolFinishedAt.Before(s.messages[0].toolStartedAt) {
 		t.Fatalf("completed tool timestamps = %#v", s.messages[0])
 	}
@@ -673,8 +673,8 @@ func TestStreamingDeltaLivesInRenderedModel(t *testing.T) {
 	s, _ := newState(nil)
 	s.responding = true
 	s.nextRequestID = 1
-	s.handleToolEvent(1, toolEvent{Phase: "text_delta", Detail: "hello "})
-	s.handleToolEvent(1, toolEvent{Phase: "text_delta", Detail: "world"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventTextDelta, Detail: "hello "})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventTextDelta, Detail: "world"})
 	lines, _, _ := s.render(40)
 	if !strings.Contains(strings.Join(lines, "\n"), "hello world") {
 		t.Fatalf("stream missing from render: %q", lines)
@@ -688,8 +688,8 @@ func TestReasoningStreamUsesPiStyleAndPersists(t *testing.T) {
 	s, _ := newState(nil)
 	s.responding = true
 	s.nextRequestID = 1
-	s.handleToolEvent(1, toolEvent{Phase: "reasoning_delta", Detail: "Inspecting "})
-	s.handleToolEvent(1, toolEvent{Phase: "reasoning_delta", Detail: "the project"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventReasoningDelta, Detail: "Inspecting "})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventReasoningDelta, Detail: "the project"})
 
 	lines, _, _ := s.render(50)
 	rendered := strings.Join(lines, "\n")
@@ -703,7 +703,7 @@ func TestReasoningStreamUsesPiStyleAndPersists(t *testing.T) {
 		t.Fatalf("reasoning was finalized while still streaming: %#v", s.messages)
 	}
 
-	s.handleToolEvent(1, toolEvent{Phase: "reasoning_done"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventReasoningDone})
 	if s.reasoningText.Len() > 0 || len(s.messages) != 1 || s.messages[0].role != "reasoning" {
 		t.Fatalf("reasoning was not finalized into transcript: state=%q messages=%#v", s.reasoningText.String(), s.messages)
 	}
@@ -715,8 +715,8 @@ func TestReasoningStreamUsesPiStyleAndPersists(t *testing.T) {
 
 func TestOutputAndToolsFinalizeReasoning(t *testing.T) {
 	for _, event := range []toolEvent{
-		{Phase: "text_delta", Detail: "answer"},
-		{Phase: "call", Name: "shell", Detail: "pwd"},
+		{Kind: toolEventTextDelta, Detail: "answer"},
+		{Kind: toolEventCall, Name: "shell", Detail: "pwd"},
 	} {
 		s, _ := newState(nil)
 		s.responding = true
@@ -724,10 +724,10 @@ func TestOutputAndToolsFinalizeReasoning(t *testing.T) {
 		s.reasoningText.WriteString("completed reasoning")
 		s.handleToolEvent(1, event)
 		if s.reasoningText.Len() > 0 {
-			t.Errorf("%s event did not finish reasoning", event.Phase)
+			t.Errorf("%v event did not finish reasoning", event.Kind)
 		}
 		if len(s.messages) == 0 || s.messages[0].role != "reasoning" || s.messages[0].text != "completed reasoning" {
-			t.Errorf("%s event did not retain reasoning: %#v", event.Phase, s.messages)
+			t.Errorf("%v event did not retain reasoning: %#v", event.Kind, s.messages)
 		}
 	}
 }
@@ -737,10 +737,10 @@ func TestStreamedContentPreservesReasoningTextAndToolOrder(t *testing.T) {
 	s.responding = true
 	s.nextRequestID = 1
 	for _, event := range []toolEvent{
-		{Phase: "text_delta", Detail: "before tool"},
-		{Phase: "reasoning_delta", Detail: "more thought"},
-		{Phase: "text_delta", Detail: "after thought"},
-		{Phase: "call", Name: "shell", ID: "call-1", Detail: "pwd"},
+		{Kind: toolEventTextDelta, Detail: "before tool"},
+		{Kind: toolEventReasoningDelta, Detail: "more thought"},
+		{Kind: toolEventTextDelta, Detail: "after thought"},
+		{Kind: toolEventCall, Name: "shell", ID: "call-1", Detail: "pwd"},
 	} {
 		s.handleToolEvent(1, event)
 	}
@@ -869,12 +869,12 @@ func TestStreamingMarkdownCacheTracksContentAndWidth(t *testing.T) {
 	s, _ := newState(nil)
 	s.responding = true
 	s.nextRequestID = 1
-	s.handleToolEvent(1, toolEvent{Phase: "text_delta", Detail: "hello"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventTextDelta, Detail: "hello"})
 	first := s.renderedStreamingText(40)
 	if again := s.renderedStreamingText(40); &again[0] != &first[0] {
 		t.Fatal("unchanged streaming Markdown was rendered again")
 	}
-	s.handleToolEvent(1, toolEvent{Phase: "text_delta", Detail: " **world**"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventTextDelta, Detail: " **world**"})
 	updated := s.renderedStreamingText(40)
 	if &updated[0] == &first[0] || !strings.Contains(stripANSI(strings.Join(updated, "\n")), "hello world") {
 		t.Fatalf("streaming Markdown cache was not refreshed after a delta: %q", updated)
@@ -923,11 +923,11 @@ func TestRetryShowsPiStyleCountdownAndEscapeCancels(t *testing.T) {
 	s.responding = true
 	s.nextRequestID = 1
 	s.cancel = cancel
-	s.handleToolEvent(1, toolEvent{Phase: "text_reset"})
-	s.handleToolEvent(1, toolEvent{Phase: "reasoning_delta", Detail: "partial reasoning"})
-	s.handleToolEvent(1, toolEvent{Phase: "text_delta", Detail: "partial failed response"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventTextReset})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventReasoningDelta, Detail: "partial reasoning"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventTextDelta, Detail: "partial failed response"})
 
-	s.handleToolEvent(1, toolEvent{Phase: "retry", Detail: "server temporarily unavailable", Attempt: 1, MaxAttempts: 3, Delay: 2 * time.Second})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventRetry, Detail: "server temporarily unavailable", Attempt: 1, MaxAttempts: 3, Delay: 2 * time.Second})
 	if s.streamingText.Len() > 0 || s.reasoningText.Len() > 0 || len(s.messages) != 1 {
 		t.Fatalf("failed attempt was not replaced by one error card: text=%q reasoning=%q messages=%#v", s.streamingText.String(), s.reasoningText.String(), s.messages)
 	}
@@ -941,10 +941,10 @@ func TestRetryShowsPiStyleCountdownAndEscapeCancels(t *testing.T) {
 	}
 
 	// A later failure updates the same card instead of appending another one.
-	s.handleToolEvent(1, toolEvent{Phase: "text_reset"})
-	s.handleToolEvent(1, toolEvent{Phase: "text_delta", Detail: "another partial response"})
-	s.handleToolEvent(1, toolEvent{Phase: "attempt_failed"})
-	s.handleToolEvent(1, toolEvent{Phase: "retry", Detail: "connection reset", Attempt: 2, MaxAttempts: 3, Delay: 4 * time.Second})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventTextReset})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventTextDelta, Detail: "another partial response"})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventAttemptFailed})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventRetry, Detail: "connection reset", Attempt: 2, MaxAttempts: 3, Delay: 4 * time.Second})
 	if len(s.messages) != 1 || s.messages[0].toolName != "LLM error · retry 2/3" || s.messages[0].toolResult != "connection reset" {
 		t.Fatalf("retry error card was not updated in place: %#v", s.messages)
 	}
@@ -1014,7 +1014,7 @@ func BenchmarkRenderStreamingToolOutput(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		s.handleToolActivity(toolEvent{Phase: "update", ID: "call", Detail: "next output line\n"})
+		s.handleToolActivity(toolEvent{Kind: toolEventUpdate, ID: "call", Detail: "next output line\n"})
 		lines, row, col := s.render(100, 30)
 		if err := r.render(lines, row, col); err != nil {
 			b.Fatal(err)
@@ -1046,7 +1046,7 @@ func BenchmarkStreamingTextAssembly(b *testing.B) {
 		s.responding = true
 		s.nextRequestID = 1
 		for range 2000 {
-			s.handleToolEvent(1, toolEvent{Phase: "text_delta", Detail: chunk})
+			s.handleToolEvent(1, toolEvent{Kind: toolEventTextDelta, Detail: chunk})
 		}
 	}
 }
@@ -1081,5 +1081,22 @@ func BenchmarkRenderUnchangedToolOutput(b *testing.B) {
 		if err := r.render(lines, row, col); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+func TestRenderedMarkdownNumbersLooseOrderedLists(t *testing.T) {
+	lines := renderedMarkdownLines("1. first\n\n1. second\n\n1. third", 40)
+	got := stripANSI(strings.Join(lines, "\n"))
+	for _, item := range []string{"1. first", "2. second", "3. third"} {
+		if !strings.Contains(got, item) {
+			t.Errorf("rendered list missing %q:\n%s", item, got)
+		}
+	}
+}
+
+func TestNormalizeLooseMarkdownListsLeavesCodeFencesAlone(t *testing.T) {
+	input := "```md\n1. first\n\n1. second\n```"
+	if got := normalizeLooseMarkdownLists(input); got != input {
+		t.Fatalf("normalized fenced code = %q, want %q", got, input)
 	}
 }
