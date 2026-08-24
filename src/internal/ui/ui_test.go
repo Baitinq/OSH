@@ -185,6 +185,16 @@ func TestToolUpdatesStreamIntoPendingCard(t *testing.T) {
 	}
 }
 
+func TestWebSearchToolCardShowsSearchInsteadOfShellCommand(t *testing.T) {
+	got := renderedToolMessage(message{
+		role: "tool", toolName: "web_search", toolCommand: "latest Go release", toolState: "success",
+	}, 80, time.Now())
+	plain := stripANSI(got)
+	if !strings.Contains(plain, `web_search "latest Go release"`) || strings.Contains(plain, "$ latest Go release") {
+		t.Fatalf("web search tool card = %q", plain)
+	}
+}
+
 func TestToolResultsUpdateMatchingCallID(t *testing.T) {
 	s, _ := newState(nil)
 	s.responding = true

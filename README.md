@@ -71,6 +71,12 @@ frequent use, install MCPorter so the package is cached and immediately
 available; MCP configuration and credentials remain managed by MCPorter rather
 than OSH.
 
+## Web search
+
+OSH includes a keyless `web_search` tool backed by DuckDuckGo. It returns ranked
+result titles, URLs, and snippets so the agent can research current information;
+full pages can still be inspected with shell tools such as `curl`.
+
 ## Controls
 
 - `Enter` — send a message; while responding, steer the active agent after its current tool-call batch

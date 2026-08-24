@@ -1,10 +1,8 @@
-web search tool like pi?
 python env? rlm
 computer use? (screenshot, move mouse, press key?)
 auto-compact
 session persistance?
 cli mode so it can spawn itself?
-say in prompt something about verifiable iteration?
 knowledge about itself in order to customize itself if needed? or not
 scratchpad/notes? for agent to not miss things?
 slash summarize? when u loose context of what happened and slash model and slash reasoning
@@ -12,5 +10,4 @@ git-first?
 other-agent aware (e.g. if other agents are working maybe it can somehow know idk)
 hardware awareness? where is it running on (specs, os)
 /tree
-todo: install cli
 scrathpad/progress for human to see what is going on

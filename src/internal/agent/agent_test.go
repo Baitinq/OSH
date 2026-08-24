@@ -20,6 +20,7 @@ func TestBuildSystemPrompt(t *testing.T) {
 	for _, want := range []string{
 		"expert general-purpose assistant operating inside OSH",
 		"Available tools:",
+		"web_search: Search the web with DuckDuckGo",
 		"npx -y mcporter@latest list",
 		"npx -y mcporter@latest call <server>.<tool>",
 		"Prioritize fast, verifiable iteration",

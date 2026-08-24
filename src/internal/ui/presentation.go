@@ -251,6 +251,9 @@ func renderedToolMessage(msg message, width int, now time.Time) string {
 			lines = append(lines, piBoxLine(" "+strings.TrimSpace(duration), width, piText, bg, true))
 		}
 		command := "$ " + sanitizeTerminalText(msg.toolCommand)
+		if msg.toolName == "web_search" {
+			command = `web_search "` + sanitizeTerminalText(msg.toolCommand) + `"`
+		}
 		for _, line := range wrapPlain(command, inner) {
 			lines = append(lines, piBoxLine(" "+line, width, piText, bg, true))
 		}

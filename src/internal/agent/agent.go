@@ -26,6 +26,7 @@ const systemPrompt = `You are an expert general-purpose assistant operating insi
 
 Available tools:
 - shell: Run a shell command and return its combined stdout and stderr.
+- web_search: Search the web with DuckDuckGo and return result titles, URLs, and snippets.
 
 MCP:
 - Configured MCP servers can be discovered and invoked through the mcporter CLI using the shell tool.
@@ -479,7 +480,7 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 			Instructions: openai.String(a.instructions),
 			Input:        responses.ResponseNewParamsInputUnion{OfInputItemList: responses.ResponseInputParam(a.history)},
 			Reasoning:    shared.ReasoningParam{Effort: reasoningEffort, Summary: shared.ReasoningSummaryAuto},
-			Tools:        []responses.ToolUnionParam{shellTool},
+			Tools:        []responses.ToolUnionParam{shellTool, webSearchTool},
 			Store:        openai.Bool(false),
 		}
 		var resp responses.Response
@@ -549,10 +550,8 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 		emit(ToolEvent{Kind: ToolEventReasoningDone})
 		for _, call := range toolCalls {
 			output := ""
-			if call.Name != "shell" {
-				output = fmt.Sprintf("tool error: unsupported tool %q", call.Name)
-				emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
-			} else {
+			switch call.Name {
+			case "shell":
 				var args struct {
 					Command string   `json:"command"`
 					Timeout *float64 `json:"timeout"`
@@ -560,22 +559,44 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 				if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
 					output = "tool error: invalid shell arguments: " + err.Error()
 					emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
-				} else {
-					emit(ToolEvent{Kind: ToolEventCall, Name: call.Name, ID: call.CallID, Detail: args.Command})
-					var err error
-					output, err = runShellStreaming(ctx, args.Command, args.Timeout, func(chunk string) {
-						emit(ToolEvent{Kind: ToolEventUpdate, Name: call.Name, ID: call.CallID, Detail: chunk})
-					})
-					if err != nil {
-						output += "\nexit status: " + err.Error()
-					}
-					output = limitToolOutput(output)
-					if err != nil {
-						emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
-					} else {
-						emit(ToolEvent{Kind: ToolEventResult, Name: call.Name, ID: call.CallID, Detail: output})
-					}
+					break
 				}
+				emit(ToolEvent{Kind: ToolEventCall, Name: call.Name, ID: call.CallID, Detail: args.Command})
+				var err error
+				output, err = runShellStreaming(ctx, args.Command, args.Timeout, func(chunk string) {
+					emit(ToolEvent{Kind: ToolEventUpdate, Name: call.Name, ID: call.CallID, Detail: chunk})
+				})
+				if err != nil {
+					output += "\nexit status: " + err.Error()
+				}
+				output = limitToolOutput(output)
+				if err != nil {
+					emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
+				} else {
+					emit(ToolEvent{Kind: ToolEventResult, Name: call.Name, ID: call.CallID, Detail: output})
+				}
+			case "web_search":
+				var args struct {
+					Query      string `json:"query"`
+					MaxResults int    `json:"max_results"`
+				}
+				if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+					output = "tool error: invalid web_search arguments: " + err.Error()
+					emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
+					break
+				}
+				emit(ToolEvent{Kind: ToolEventCall, Name: call.Name, ID: call.CallID, Detail: args.Query})
+				var err error
+				output, err = searchWeb(ctx, http.DefaultClient, duckDuckGoSearchURL, args.Query, args.MaxResults)
+				if err != nil {
+					output = "web search failed: " + err.Error()
+					emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
+				} else {
+					emit(ToolEvent{Kind: ToolEventResult, Name: call.Name, ID: call.CallID, Detail: output})
+				}
+			default:
+				output = fmt.Sprintf("tool error: unsupported tool %q", call.Name)
+				emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
 			}
 			a.history = append(a.history, responses.ResponseInputItemUnionParam{
 				OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{
