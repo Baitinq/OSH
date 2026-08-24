@@ -203,6 +203,7 @@ func TestRespondRetriesTransientFailures(t *testing.T) {
 		instructions:   "test",
 		maxRetries:     3,
 		retryBaseDelay: time.Millisecond,
+		retryJitter:    func() float64 { return 1 },
 	}
 	var events []ToolEvent
 	resp := a.Respond("hello", make(chan string), func(ev ToolEvent) { events = append(events, ev) }, t.Context())
@@ -220,6 +221,27 @@ func TestRespondRetriesTransientFailures(t *testing.T) {
 	}
 	if len(retries) != 2 || retries[0].Attempt != 1 || retries[0].Delay != time.Millisecond || retries[1].Attempt != 2 || retries[1].Delay != 2*time.Millisecond {
 		t.Fatalf("retry events = %#v", retries)
+	}
+}
+
+func TestRetryDelayUsesEqualJitterAndCapsBackoff(t *testing.T) {
+	a := &Agent{
+		retryBaseDelay: 2 * time.Second,
+		retryJitter:    func() float64 { return 0 },
+	}
+	if got := a.retryDelay(0); got != time.Second {
+		t.Fatalf("first retry delay = %s, want 1s", got)
+	}
+	if got := a.retryDelay(10); got != 15*time.Second {
+		t.Fatalf("capped retry delay = %s, want 15s", got)
+	}
+
+	a.retryJitter = func() float64 { return 1 }
+	if got := a.retryDelay(0); got != 2*time.Second {
+		t.Fatalf("maximum first retry delay = %s, want 2s", got)
+	}
+	if got := a.retryDelay(10); got != maxRetryDelay {
+		t.Fatalf("maximum capped retry delay = %s, want %s", got, maxRetryDelay)
 	}
 }
 

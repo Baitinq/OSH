@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"os/exec"
@@ -113,6 +114,7 @@ const reasoningEffort = shared.ReasoningEffortMedium
 const (
 	maxLLMRetries       = 10
 	retryBaseDelay      = 2 * time.Second
+	maxRetryDelay       = 30 * time.Second
 	maxShellTimeoutSecs = 2_147_483_647 / 1000.0
 )
 
@@ -166,6 +168,7 @@ type Agent struct {
 	history        []responses.ResponseInputItemUnionParam
 	maxRetries     int
 	retryBaseDelay time.Duration
+	retryJitter    func() float64
 }
 
 func New() *Agent {
@@ -178,6 +181,7 @@ func New() *Agent {
 		instructions:   buildSystemPrompt(cwd),
 		maxRetries:     maxLLMRetries,
 		retryBaseDelay: retryBaseDelay,
+		retryJitter:    rand.Float64,
 	}
 }
 
@@ -393,6 +397,11 @@ func isQuotaError(message string) bool {
 	return false
 }
 
+func (a *Agent) retryDelay(attempt int) time.Duration {
+	delay := min(a.retryBaseDelay*time.Duration(1<<attempt), maxRetryDelay)
+	return delay/2 + time.Duration(a.retryJitter()*float64(delay/2))
+}
+
 func waitForRetry(ctx context.Context, delay time.Duration) bool {
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
@@ -477,7 +486,7 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 				}
 				return Response{Err: fmt.Errorf("request failed: %w", err)}
 			}
-			delay := a.retryBaseDelay * time.Duration(1<<attempt)
+			delay := a.retryDelay(attempt)
 			emit(ToolEvent{Phase: "retry", Detail: err.Error(), Attempt: attempt + 1, MaxAttempts: a.maxRetries, Delay: delay})
 			if !waitForRetry(ctx, delay) {
 				return Response{}
