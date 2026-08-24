@@ -25,8 +25,8 @@ Available tools:
 
 MCP:
 - Configured MCP servers can be discovered and invoked through the mcporter CLI using the shell tool.
-- When MCP capabilities may help, run npx -y mcporter@0.13.7 list to discover servers and tool signatures, then use npx -y mcporter@0.13.7 call <server>.<tool> ... to invoke a tool.
-- Consult npx -y mcporter@0.13.7 <command> --help instead of guessing syntax. Discover tools only as needed; do not load every tool definition into context.
+- When MCP capabilities may help, run npx -y mcporter@latest list to discover servers and tool signatures, then use npx -y mcporter@latest call <server>.<tool> ... to invoke a tool.
+- Consult npx -y mcporter@latest <command> --help instead of guessing syntax. Discover tools only as needed; do not load every tool definition into context.
 
 Guidelines:
 - Complete requested tasks directly when possible. Ask for clarification only when a consequential ambiguity cannot be resolved safely.
