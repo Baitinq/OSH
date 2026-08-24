@@ -3,6 +3,8 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -306,6 +308,10 @@ func TestCtrlCCancelsThenExitsOnSecondPress(t *testing.T) {
 	s.cancel = cancel
 	s.nextRequestID = 3
 	s.messages = append(s.messages, message{role: "tool", toolCommand: "sleep 10", toolState: "pending"})
+	s.render(60)
+	if len(s.messages[0].renderedLines) == 0 {
+		t.Fatal("pending tool render cache was not populated before cancellation")
+	}
 	ctrlC := tui.KeyEvent{Key: tui.KeyRune, Rune: 'c', Mod: tui.ModCtrl}
 
 	if keepRunning := s.handleKey(ctrlC); !keepRunning {
@@ -319,6 +325,11 @@ func TestCtrlCCancelsThenExitsOnSecondPress(t *testing.T) {
 	}
 	if s.messages[0].toolState != "error" || s.messages[0].toolResult != "Cancelled." {
 		t.Fatalf("pending tool was not marked cancelled: %#v", s.messages[0])
+	}
+	after, _, _ := s.render(60)
+	rendered := stripANSI(strings.Join(after, "\n"))
+	if strings.Contains(rendered, "Running...") || !strings.Contains(rendered, "Cancelled.") {
+		t.Fatalf("cancelled tool retained stale rendered content:\n%s", rendered)
 	}
 	if keepRunning := s.handleKey(ctrlC); keepRunning {
 		t.Fatal("second Ctrl+C did not exit")
@@ -525,7 +536,7 @@ func TestToolDurationFormatsAndPersists(t *testing.T) {
 		t.Fatalf("completed duration changed after completion: %q", got)
 	}
 	pending := message{toolStartedAt: started}
-	if got := toolDurationLabel(pending, started.Add(350*time.Millisecond)); got != " (350ms)" {
+	if got := toolDurationLabel(pending, started.Add(350*time.Millisecond)); got != " (300ms)" {
 		t.Fatalf("pending duration did not use current time: %q", got)
 	}
 }
@@ -589,6 +600,16 @@ func TestMainScreenRendererClearsStartupEchoFromCurrentLine(t *testing.T) {
 	}
 	if got := out.String(); !strings.Contains(got, "\r\x1b[2Kinput") {
 		t.Fatalf("initial render did not clear the current line: %q", got)
+	}
+}
+
+func TestMainScreenRendererValidatesOnlyChangedLines(t *testing.T) {
+	r := newMainScreenRenderer(io.Discard, 10, 4)
+	if err := r.render([]string{"history", "input"}, 1, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.render([]string{"history", "input is too wide"}, 1, 0); err == nil {
+		t.Fatal("changed over-width line was not rejected")
 	}
 }
 
@@ -683,8 +704,8 @@ func TestReasoningStreamUsesPiStyleAndPersists(t *testing.T) {
 	}
 
 	s.handleToolEvent(1, toolEvent{Phase: "reasoning_done"})
-	if s.reasoningText != "" || len(s.messages) != 1 || s.messages[0].role != "reasoning" {
-		t.Fatalf("reasoning was not finalized into transcript: state=%q messages=%#v", s.reasoningText, s.messages)
+	if s.reasoningText.Len() > 0 || len(s.messages) != 1 || s.messages[0].role != "reasoning" {
+		t.Fatalf("reasoning was not finalized into transcript: state=%q messages=%#v", s.reasoningText.String(), s.messages)
 	}
 	lines, _, _ = s.render(50)
 	if !strings.Contains(strings.Join(lines, "\n"), "Inspecting the project") {
@@ -700,9 +721,9 @@ func TestOutputAndToolsFinalizeReasoning(t *testing.T) {
 		s, _ := newState(nil)
 		s.responding = true
 		s.nextRequestID = 1
-		s.reasoningText = "completed reasoning"
+		s.reasoningText.WriteString("completed reasoning")
 		s.handleToolEvent(1, event)
-		if s.reasoningText != "" {
+		if s.reasoningText.Len() > 0 {
 			t.Errorf("%s event did not finish reasoning", event.Phase)
 		}
 		if len(s.messages) == 0 || s.messages[0].role != "reasoning" || s.messages[0].text != "completed reasoning" {
@@ -844,6 +865,44 @@ func TestShortDocumentFillsAndBottomAlignsViewport(t *testing.T) {
 	}
 }
 
+func TestStreamingMarkdownCacheTracksContentAndWidth(t *testing.T) {
+	s, _ := newState(nil)
+	s.responding = true
+	s.nextRequestID = 1
+	s.handleToolEvent(1, toolEvent{Phase: "text_delta", Detail: "hello"})
+	first := s.renderedStreamingText(40)
+	if again := s.renderedStreamingText(40); &again[0] != &first[0] {
+		t.Fatal("unchanged streaming Markdown was rendered again")
+	}
+	s.handleToolEvent(1, toolEvent{Phase: "text_delta", Detail: " **world**"})
+	updated := s.renderedStreamingText(40)
+	if &updated[0] == &first[0] || !strings.Contains(stripANSI(strings.Join(updated, "\n")), "hello world") {
+		t.Fatalf("streaming Markdown cache was not refreshed after a delta: %q", updated)
+	}
+	resized := s.renderedStreamingText(60)
+	if &resized[0] == &updated[0] {
+		t.Fatal("streaming Markdown cache was not refreshed after a resize")
+	}
+}
+
+func TestFinalizedMessagesCacheRenderedLinesByWidth(t *testing.T) {
+	s, _ := newState(nil)
+	s.messages = []message{{role: "agent", text: "**cached** Markdown"}}
+	s.render(40)
+	first := s.messages[0].renderedLines
+	if len(first) == 0 || s.messages[0].renderedWidth != 40 {
+		t.Fatalf("render cache was not populated: %#v", s.messages[0])
+	}
+	s.render(40)
+	if &s.messages[0].renderedLines[0] != &first[0] {
+		t.Fatal("unchanged message was rendered again")
+	}
+	s.render(60)
+	if s.messages[0].renderedWidth != 60 || &s.messages[0].renderedLines[0] == &first[0] {
+		t.Fatal("width change did not refresh the render cache")
+	}
+}
+
 func TestLongDocumentIsNotViewportPadded(t *testing.T) {
 	s, _ := newState(nil)
 	for i := 0; i < 20; i++ {
@@ -869,8 +928,8 @@ func TestRetryShowsPiStyleCountdownAndEscapeCancels(t *testing.T) {
 	s.handleToolEvent(1, toolEvent{Phase: "text_delta", Detail: "partial failed response"})
 
 	s.handleToolEvent(1, toolEvent{Phase: "retry", Detail: "server temporarily unavailable", Attempt: 1, MaxAttempts: 3, Delay: 2 * time.Second})
-	if s.streamingText != "" || s.reasoningText != "" || len(s.messages) != 1 {
-		t.Fatalf("failed attempt was not replaced by one error card: text=%q reasoning=%q messages=%#v", s.streamingText, s.reasoningText, s.messages)
+	if s.streamingText.Len() > 0 || s.reasoningText.Len() > 0 || len(s.messages) != 1 {
+		t.Fatalf("failed attempt was not replaced by one error card: text=%q reasoning=%q messages=%#v", s.streamingText.String(), s.reasoningText.String(), s.messages)
 	}
 	lines, _, _ := s.render(80)
 	rendered := stripANSI(strings.Join(lines, "\n"))
@@ -889,6 +948,11 @@ func TestRetryShowsPiStyleCountdownAndEscapeCancels(t *testing.T) {
 	if len(s.messages) != 1 || s.messages[0].toolName != "LLM error · retry 2/3" || s.messages[0].toolResult != "connection reset" {
 		t.Fatalf("retry error card was not updated in place: %#v", s.messages)
 	}
+	lines, _, _ = s.render(80)
+	rendered = stripANSI(strings.Join(lines, "\n"))
+	if !strings.Contains(rendered, "connection reset") {
+		t.Fatalf("updated retry card retained stale rendered content:\n%s", rendered)
+	}
 
 	s.handleKey(tui.KeyEvent{Key: tui.KeyEscape})
 	if s.responding || s.retryAttempt != 0 {
@@ -901,5 +965,121 @@ func TestRetryShowsPiStyleCountdownAndEscapeCancels(t *testing.T) {
 	}
 	if got := s.messages[len(s.messages)-1]; got.role != "system" || got.text != "Cancelled." {
 		t.Fatalf("cancellation message = %#v", got)
+	}
+}
+
+func BenchmarkRenderLongTranscript(b *testing.B) {
+	s, _ := newState(nil)
+	for i := 0; i < 250; i++ {
+		s.messages = append(s.messages,
+			message{role: "you", text: fmt.Sprintf("Request %d: inspect the implementation and explain the relevant behavior.", i)},
+			message{role: "agent", text: fmt.Sprintf("## Result %d\n\nThe implementation keeps the transcript responsive while preserving **Markdown**, terminal history, and tool output.\n\n```go\nresult := %d\n```", i, i)},
+		)
+	}
+	s.textarea.SetText("editing a new request")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		s.render(100, 30)
+	}
+}
+
+func BenchmarkRenderFrameLongTranscript(b *testing.B) {
+	s, _ := newState(nil)
+	for i := 0; i < 250; i++ {
+		s.messages = append(s.messages,
+			message{role: "you", text: fmt.Sprintf("Request %d: inspect the implementation and explain the relevant behavior.", i)},
+			message{role: "agent", text: fmt.Sprintf("## Result %d\n\nThe implementation keeps the transcript responsive while preserving **Markdown**, terminal history, and tool output.", i)},
+		)
+	}
+	r := newMainScreenRenderer(io.Discard, 100, 30)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := range b.N {
+		s.textarea.SetText(fmt.Sprintf("editing request %d", i))
+		lines, row, col := s.render(100, 30)
+		if err := r.render(lines, row, col); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkRenderStreamingToolOutput(b *testing.B) {
+	s, _ := newState(nil)
+	s.messages = []message{{
+		role: "tool", toolID: "call", toolCommand: "produce output", toolState: "pending",
+		toolResult: strings.Repeat("streamed tool output with enough text to wrap across the terminal width\n", 700),
+	}}
+	r := newMainScreenRenderer(io.Discard, 100, 30)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		s.handleToolActivity(toolEvent{Phase: "update", ID: "call", Detail: "next output line\n"})
+		lines, row, col := s.render(100, 30)
+		if err := r.render(lines, row, col); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkRenderStreamingMarkdown(b *testing.B) {
+	s, _ := newState(nil)
+	s.responding = true
+	s.streamingText.WriteString(strings.Repeat("A paragraph with **formatted text** and `inline code` that streams from the model.\n\n", 600))
+	r := newMainScreenRenderer(io.Discard, 100, 30)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		s.streamingText.WriteString("more text ")
+		lines, row, col := s.render(100, 30)
+		if err := r.render(lines, row, col); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkStreamingTextAssembly(b *testing.B) {
+	chunk := strings.Repeat("x", 32)
+	b.ReportAllocs()
+	for range b.N {
+		s, _ := newState(nil)
+		s.responding = true
+		s.nextRequestID = 1
+		for range 2000 {
+			s.handleToolEvent(1, toolEvent{Phase: "text_delta", Detail: chunk})
+		}
+	}
+}
+
+func BenchmarkRenderUnchangedStreamingMarkdown(b *testing.B) {
+	s, _ := newState(nil)
+	s.responding = true
+	s.streamingText.WriteString(strings.Repeat("A paragraph with **formatted text** and `inline code`.\n\n", 800))
+	r := newMainScreenRenderer(io.Discard, 100, 30)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		lines, row, col := s.render(100, 30)
+		if err := r.render(lines, row, col); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkRenderUnchangedToolOutput(b *testing.B) {
+	s, _ := newState(nil)
+	s.messages = []message{{
+		role: "tool", toolID: "call", toolCommand: "produce output", toolState: "pending",
+		toolStartedAt: time.Now(),
+		toolResult:    strings.Repeat("streamed tool output with enough text to wrap across the terminal width\n", 700),
+	}}
+	r := newMainScreenRenderer(io.Discard, 100, 30)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		lines, row, col := s.render(100, 30)
+		if err := r.render(lines, row, col); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

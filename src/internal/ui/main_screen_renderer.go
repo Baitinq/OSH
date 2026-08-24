@@ -34,10 +34,13 @@ func (r *mainScreenRenderer) resize(width, height int) {
 
 func (r *mainScreenRenderer) render(lines []string, cursorRow, cursorCol int) error {
 	width, height := max(r.width, 1), max(r.height, 1)
-	for i, line := range lines {
-		if w := lineWidth(line); w > width {
-			return fmt.Errorf("rendered line %d exceeds terminal width (%d > %d)", i, w, width)
+	validateLines := func(start, end int) error {
+		for i := start; i < end; i++ {
+			if w := lineWidth(lines[i]); w > width {
+				return fmt.Errorf("rendered line %d exceeds terminal width (%d > %d)", i, w, width)
+			}
 		}
+		return nil
 	}
 	widthChanged := r.previousWidth != 0 && r.previousWidth != width
 	heightChanged := r.previousHeight != 0 && r.previousHeight != height
@@ -85,9 +88,15 @@ func (r *mainScreenRenderer) render(lines []string, cursorRow, cursorCol int) er
 	}
 
 	if len(r.previousLines) == 0 && !widthChanged && !heightChanged {
+		if err := validateLines(0, len(lines)); err != nil {
+			return err
+		}
 		return fullRender(false)
 	}
 	if widthChanged || heightChanged || len(lines) < r.maxLinesRendered {
+		if err := validateLines(0, len(lines)); err != nil {
+			return err
+		}
 		return fullRender(true)
 	}
 
@@ -111,6 +120,9 @@ func (r *mainScreenRenderer) render(lines []string, cursorRow, cursorCol int) er
 		r.previousViewportTop = prevViewportTop
 		r.previousHeight = height
 		return r.positionCursor(cursorRow, cursorCol, len(lines))
+	}
+	if err := validateLines(firstChanged, min(lastChanged+1, len(lines))); err != nil {
+		return err
 	}
 	if firstChanged < prevViewportTop || firstChanged >= len(lines) {
 		return fullRender(true)

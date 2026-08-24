@@ -113,14 +113,23 @@ wait_for 'BURST-60'
 wait_for 'context 876 tokens'
 "${tmux[@]}" pipe-pane -t "$session"
 sleep .05
-render_frames=$(python3 - "$render_log" <<'PY'
+read -r render_frames render_replays render_bytes < <(python3 - "$render_log" <<'PY'
 import pathlib
 import sys
-print(pathlib.Path(sys.argv[1]).read_bytes().count(b"\x1b[?2026h"))
+data = pathlib.Path(sys.argv[1]).read_bytes()
+print(data.count(b"\x1b[?2026h"), data.count(b"\x1b[3J"), len(data))
 PY
 )
-if [[ "$render_frames" -gt 13 ]]; then
-  echo "tool burst caused $render_frames renderer frames, want at most 13" >&2
+if [[ "$render_frames" -lt 25 || "$render_frames" -gt 50 ]]; then
+  echo "tool burst caused $render_frames renderer frames, want 25-50" >&2
+  exit 1
+fi
+if [[ "$render_replays" -ne 0 ]]; then
+  echo "tool burst caused $render_replays full transcript replays, want 0" >&2
+  exit 1
+fi
+if [[ "$render_bytes" -gt 40000 ]]; then
+  echo "tool burst wrote $render_bytes terminal bytes, want at most 40000" >&2
   exit 1
 fi
 all=$(capture)
@@ -178,4 +187,4 @@ if capture | grep -q '│  ype a message'; then
   exit 1
 fi
 
-printf 'tmux e2e passed: streaming, active-loop steering, throttled tool bursts (%s frames), tools, history, scroll anchoring, dynamic multiline input, cancellation, resize, and cleanup\n' "$render_frames"
+printf 'tmux e2e passed: streaming, active-loop steering, throttled tool bursts (%s frames, %s bytes, no full replays), tools, history, scroll anchoring, dynamic multiline input, cancellation, resize, and cleanup\n' "$render_frames" "$render_bytes"

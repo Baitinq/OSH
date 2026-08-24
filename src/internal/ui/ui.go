@@ -21,7 +21,15 @@ type message struct {
 	toolID, toolName, toolCommand string
 	toolResult, toolState         string
 	toolStartedAt, toolFinishedAt time.Time
+	renderedWidth                 int
+	renderedLines                 []string
+	renderedToolDuration          string
 }
+
+func (m *message) invalidateRender() {
+	m.renderedLines = nil
+}
+
 type response struct {
 	id            int
 	Text          string
@@ -32,36 +40,38 @@ type toolEvent = agent.ToolEvent
 type pendingInput struct{ kind, text string }
 
 type oshUI struct {
-	modelName           string
-	reasoningEffort     string
-	contextTokens       int64
-	respond             func(string, <-chan string, func(toolEvent), context.Context) response
-	textarea            *tui.TextArea
-	textareaWidth       int
-	messages            []message
-	streamingText       string
-	reasoningText       string
-	responding          bool
-	spinnerFrame        int
-	retryAttempt        int
-	retryMaxAttempts    int
-	retryDeadline       time.Time
-	requestStartedAt    time.Time
-	retryMessageIndex   int
-	attemptMessageStart int
-	queued              []string
-	pendingSteer        []string
-	steer               chan string
-	pendingInputs       []pendingInput
-	inputHistory        []string
-	historyIndex        int
-	historyDraft        string
-	nextRequestID       int
-	lastCtrlC           time.Time
-	cancel              context.CancelFunc
-	dispatch            func(func())
-	invalidate          func()
-	emit                func(message)
+	modelName              string
+	reasoningEffort        string
+	contextTokens          int64
+	respond                func(string, <-chan string, func(toolEvent), context.Context) response
+	textarea               *tui.TextArea
+	textareaWidth          int
+	messages               []message
+	streamingText          strings.Builder
+	streamingRenderedWidth int
+	streamingRenderedLines []string
+	reasoningText          strings.Builder
+	responding             bool
+	spinnerFrame           int
+	retryAttempt           int
+	retryMaxAttempts       int
+	retryDeadline          time.Time
+	requestStartedAt       time.Time
+	retryMessageIndex      int
+	attemptMessageStart    int
+	queued                 []string
+	pendingSteer           []string
+	steer                  chan string
+	pendingInputs          []pendingInput
+	inputHistory           []string
+	historyIndex           int
+	historyDraft           string
+	nextRequestID          int
+	lastCtrlC              time.Time
+	cancel                 context.CancelFunc
+	dispatch               func(func())
+	invalidate             func()
+	emit                   func(message)
 }
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -71,10 +81,9 @@ const (
 	ctrlCDoublePressInterval = time.Second
 	// Background streams can produce many updates per second. Rendering each
 	// one is especially expensive for growing tool cards because the card pushes
-	// the spinner and editor down. Ten frames per second still looks live while
-	// substantially reducing terminal rewrites; direct input and resize events
-	// bypass this limit below.
-	backgroundRenderInterval = 100 * time.Millisecond
+	// the spinner and editor down. Cap background rendering at 60 frames per
+	// second; direct input and resize events bypass this limit below.
+	backgroundRenderInterval = time.Second / 60
 	eventPollInterval        = 10 * time.Millisecond
 	maxUpdatesPerIteration   = 64
 	toolPreviewLines         = 5
@@ -147,7 +156,9 @@ func (s *oshUI) startRequest(text string, showUser bool) {
 	id := s.nextRequestID
 	ctx, cancel := context.WithCancel(context.Background())
 	steer := make(chan string, 256)
-	s.responding, s.spinnerFrame, s.cancel, s.streamingText, s.reasoningText = true, 0, cancel, "", ""
+	s.responding, s.spinnerFrame, s.cancel = true, 0, cancel
+	s.resetStreamingText()
+	s.reasoningText.Reset()
 	s.requestStartedAt = time.Now()
 	s.retryAttempt, s.retryMaxAttempts, s.retryDeadline = 0, 0, time.Time{}
 	s.retryMessageIndex = -1
@@ -193,7 +204,8 @@ func (s *oshUI) handleToolEvent(id int, ev toolEvent) {
 	}
 	switch ev.Phase {
 	case "attempt_failed":
-		s.reasoningText, s.streamingText = "", ""
+		s.reasoningText.Reset()
+		s.resetStreamingText()
 		if s.attemptMessageStart <= len(s.messages) {
 			s.messages = s.messages[:s.attemptMessageStart]
 		}
@@ -203,7 +215,8 @@ func (s *oshUI) handleToolEvent(id int, ev toolEvent) {
 		// A failed stream may have emitted partial reasoning, text, or tool
 		// calls. Drop that partial attempt, but keep one persistent error card
 		// and update it with the latest failure on every retry.
-		s.reasoningText, s.streamingText = "", ""
+		s.reasoningText.Reset()
+		s.resetStreamingText()
 		if s.attemptMessageStart <= len(s.messages) {
 			s.messages = s.messages[:s.attemptMessageStart]
 		}
@@ -212,6 +225,7 @@ func (s *oshUI) handleToolEvent(id int, ev toolEvent) {
 			msg := &s.messages[s.retryMessageIndex]
 			msg.toolName, msg.toolResult = title, ev.Detail
 			msg.toolFinishedAt = time.Now()
+			msg.invalidateRender()
 		} else {
 			s.retryMessageIndex = len(s.messages)
 			s.addMessage(message{
@@ -236,7 +250,7 @@ func (s *oshUI) handleToolEvent(id int, ev toolEvent) {
 		return
 	case "reasoning_delta":
 		s.finishStreamingText()
-		s.reasoningText += ev.Detail
+		s.reasoningText.WriteString(ev.Detail)
 		s.markDirty()
 		return
 	case "reasoning_done":
@@ -250,7 +264,8 @@ func (s *oshUI) handleToolEvent(id int, ev toolEvent) {
 		return
 	case "text_delta":
 		s.finishReasoning()
-		s.streamingText += ev.Detail
+		s.streamingText.WriteString(ev.Detail)
+		s.streamingRenderedLines = nil
 		s.markDirty()
 		return
 	}
@@ -300,6 +315,7 @@ func (s *oshUI) handleToolActivity(ev toolEvent) {
 				msg.toolState = "success"
 			}
 		}
+		msg.invalidateRender()
 		s.markDirty()
 		return
 	}
@@ -319,21 +335,36 @@ func (s *oshUI) handleToolActivity(ev toolEvent) {
 	s.addMessage(msg)
 }
 
+func (s *oshUI) resetStreamingText() {
+	s.streamingText.Reset()
+	s.streamingRenderedLines = nil
+}
+
+func (s *oshUI) renderedStreamingText(width int) []string {
+	if s.streamingRenderedWidth == width && s.streamingRenderedLines != nil {
+		return s.streamingRenderedLines
+	}
+	lines := renderedMessageLines(message{role: "agent", text: s.streamingText.String()}, width)
+	s.streamingRenderedWidth = width
+	s.streamingRenderedLines = lines
+	return lines
+}
+
 func (s *oshUI) finishReasoning() {
-	if s.reasoningText == "" {
+	if s.reasoningText.Len() == 0 {
 		return
 	}
-	text := s.reasoningText
-	s.reasoningText = ""
+	text := s.reasoningText.String()
+	s.reasoningText.Reset()
 	s.addMessage(message{role: "reasoning", text: text})
 }
 
 func (s *oshUI) finishStreamingText() {
-	if s.streamingText == "" {
+	if s.streamingText.Len() == 0 {
 		return
 	}
-	text := s.streamingText
-	s.streamingText = ""
+	text := s.streamingText.String()
+	s.resetStreamingText()
 	s.addMessage(message{role: "agent", text: text})
 }
 
@@ -346,7 +377,7 @@ func (s *oshUI) finishResponse(resp response) {
 	s.cancel, s.responding, s.steer = nil, false, nil
 	s.requestStartedAt = time.Time{}
 	s.retryAttempt, s.retryMaxAttempts, s.retryDeadline = 0, 0, time.Time{}
-	hadStreamingText := s.streamingText != ""
+	hadStreamingText := s.streamingText.Len() > 0
 	s.finishReasoning()
 	s.finishStreamingText()
 	if resp.Err == nil {
@@ -400,6 +431,7 @@ func (s *oshUI) cancelRequest() {
 	s.finishStreamingText()
 	for i := range s.messages {
 		if s.messages[i].role == "tool" && s.messages[i].toolState == "pending" {
+			s.messages[i].invalidateRender()
 			s.messages[i].toolState = "error"
 			s.messages[i].toolFinishedAt = time.Now()
 			if s.messages[i].toolResult == "" {
@@ -622,16 +654,16 @@ func (s *oshUI) render(width int, viewportHeight ...int) ([]string, int, int) {
 	width = max(width, 10)
 	s.setTextareaWidth(max(width-4, 1))
 	var lines []string
-	for _, msg := range s.messages {
-		lines = append(lines, renderedMessageLines(msg, width)...)
+	for i := range s.messages {
+		lines = append(lines, s.renderedMessageLines(&s.messages[i], width)...)
 		lines = append(lines, "")
 	}
-	if s.reasoningText != "" {
-		lines = append(lines, renderedMessageLines(message{role: "reasoning", text: s.reasoningText}, width)...)
+	if s.reasoningText.Len() > 0 {
+		lines = append(lines, renderedMessageLines(message{role: "reasoning", text: s.reasoningText.String()}, width)...)
 		lines = append(lines, "")
 	}
-	if s.streamingText != "" {
-		lines = append(lines, renderedMessageLines(message{role: "agent", text: s.streamingText}, width)...)
+	if s.streamingText.Len() > 0 {
+		lines = append(lines, s.renderedStreamingText(width)...)
 		lines = append(lines, "")
 	}
 	if s.responding {
@@ -664,10 +696,28 @@ func (s *oshUI) render(width int, viewportHeight ...int) ([]string, int, int) {
 	return lines, cursorRow, ccol
 }
 
+func (s *oshUI) renderedMessageLines(msg *message, width int) []string {
+	now := time.Now()
+	duration := ""
+	if msg.toolState == "pending" {
+		duration = toolDurationLabel(*msg, now)
+	}
+	if msg.renderedWidth == width && msg.renderedLines != nil && msg.renderedToolDuration == duration {
+		return msg.renderedLines
+	}
+	lines := strings.Split(renderedMessageAt(*msg, width, now), "\n")
+	msg.renderedWidth, msg.renderedLines, msg.renderedToolDuration = width, lines, duration
+	return lines
+}
+
 func renderedMessageLines(msg message, width int) []string {
 	return strings.Split(renderedMessage(msg, width), "\n")
 }
 func renderedMessage(msg message, width int) string {
+	return renderedMessageAt(msg, width, time.Now())
+}
+
+func renderedMessageAt(msg message, width int, now time.Time) string {
 	width = max(width, 10)
 	contentWidth := max(width-2, 8)
 	var lines []string
@@ -697,7 +747,7 @@ func renderedMessage(msg message, width int) string {
 			lines = append(lines, " "+ansiRGBStyle(piError, "", false, false, line))
 		}
 	case "tool":
-		return renderedToolMessage(msg, width)
+		return renderedToolMessage(msg, width, now)
 	default:
 		for _, line := range wrapPlain(msg.text, contentWidth) {
 			lines = append(lines, " "+ansiRGBStyle(piText, "", false, false, line))
@@ -766,7 +816,8 @@ func toolDurationLabel(msg message, now time.Time) string {
 	}
 	end := msg.toolFinishedAt
 	if end.IsZero() {
-		end = now
+		elapsed := max(now.Sub(msg.toolStartedAt), 0).Truncate(100 * time.Millisecond)
+		return " (" + formatToolDuration(elapsed) + ")"
 	}
 	return " (" + formatToolDuration(end.Sub(msg.toolStartedAt)) + ")"
 }
@@ -788,7 +839,7 @@ func renderedMarkdownLines(text string, width int) []string {
 	return lines
 }
 
-func renderedToolMessage(msg message, width int) string {
+func renderedToolMessage(msg message, width int, now time.Time) string {
 	bg := piToolPendingBg
 	if msg.toolState == "success" {
 		bg = piToolSuccessBg
@@ -797,7 +848,7 @@ func renderedToolMessage(msg message, width int) string {
 	}
 	inner := max(width-2, 1)
 	lines := []string{piBoxLine("", width, piText, bg, false)}
-	duration := toolDurationLabel(msg, time.Now())
+	duration := toolDurationLabel(msg, now)
 	if msg.toolCommand != "" {
 		if duration != "" {
 			// Keep timing metadata on its own line above the command so it cannot
@@ -1091,7 +1142,7 @@ func Run(modelName, reasoningEffort string, respond func(string, <-chan string, 
 				return err
 			}
 			dirty, urgentRender = false, false
-			lastRender = now
+			lastRender = time.Now()
 		}
 
 		// Check stdin before draining background work so a fast stream of model
