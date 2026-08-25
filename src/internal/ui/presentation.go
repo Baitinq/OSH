@@ -5,8 +5,15 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
+	"charm.land/glamour/v2"
+	"charm.land/glamour/v2/styles"
 	tui "github.com/grindlemire/go-tui"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/text"
 )
 
 func (s *oshUI) render(width int, viewportHeight ...int) ([]string, int, int) {
@@ -115,16 +122,6 @@ func renderedMessageAt(msg message, width int, now time.Time) string {
 	return strings.Join(lines, "\n")
 }
 
-var markdownTheme = func() tui.MarkdownTheme {
-	theme := tui.DefaultMarkdownTheme()
-	textColor := tui.RGBColor(212, 212, 212)
-	theme.Paragraph = tui.NewStyle().Foreground(textColor)
-	for i, style := range theme.Heading {
-		theme.Heading[i] = style.Foreground(textColor)
-	}
-	return theme
-}()
-
 const (
 	piText          = "212;212;212"
 	piGray          = "128;128;128"
@@ -181,96 +178,129 @@ func toolDurationLabel(msg message, now time.Time) string {
 	return " (" + formatToolDuration(end.Sub(msg.toolStartedAt)) + ")"
 }
 
-func normalizeLooseMarkdownLists(text string) string {
-	lines := strings.Split(text, "\n")
-	out := make([]string, 0, len(lines))
-	activeIndent := -1
-	activeOrdered := false
-	pendingBlanks := 0
-	inFence := false
-
-	flushBlanks := func() {
-		for range pendingBlanks {
-			out = append(out, "")
-		}
-		pendingBlanks = 0
-	}
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			flushBlanks()
-			out = append(out, line)
-			inFence = !inFence
-			activeIndent = -1
-			continue
-		}
-		if inFence {
-			out = append(out, line)
-			continue
-		}
-		if trimmed == "" {
-			if activeIndent >= 0 {
-				pendingBlanks++
-			} else {
-				out = append(out, line)
-			}
-			continue
-		}
-
-		indent, ordered, isMarker := markdownListMarker(line)
-		if activeIndent >= 0 {
-			if isMarker && indent == activeIndent && ordered == activeOrdered {
-				pendingBlanks = 0
-				out = append(out, line)
-				continue
-			}
-			if indent > activeIndent && !isMarker {
-				pendingBlanks = 0
-				out[len(out)-1] += " " + trimmed
-				continue
-			}
-			flushBlanks()
-			activeIndent = -1
-		}
-
-		out = append(out, line)
-		if isMarker {
-			activeIndent, activeOrdered = indent, ordered
-		}
-	}
-	flushBlanks()
-	return strings.Join(out, "\n")
-}
-
-func markdownListMarker(line string) (indent int, ordered, ok bool) {
-	trimmed := strings.TrimLeft(line, " ")
-	indent = len(line) - len(trimmed)
-	if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") || strings.HasPrefix(trimmed, "+ ") {
-		return indent, false, true
-	}
-	digits := 0
-	for digits < len(trimmed) && trimmed[digits] >= '0' && trimmed[digits] <= '9' {
-		digits++
-	}
-	return indent, true, digits > 0 && strings.HasPrefix(trimmed[digits:], ". ")
-}
-
 func renderedMarkdownLines(text string, width int) []string {
-	markdown := tui.NewMarkdown(
-		tui.WithMarkdownSource(normalizeLooseMarkdownLists(text)),
-		tui.WithMarkdownWidth(width),
-		tui.WithMarkdownTheme(markdownTheme),
+	style := styles.ASCIIStyleConfig
+	zero := uint(0)
+	style.Document.Margin = &zero
+	style.Document.Color = stringPointer("#D4D4D4")
+	style.Heading.Color = stringPointer("#F0C674")
+	style.Heading.Bold = boolPointer(true)
+	style.H1.Prefix, style.H2.Prefix = "", ""
+	style.H1.Underline = boolPointer(true)
+	style.Strikethrough.BlockPrefix, style.Strikethrough.BlockSuffix = "", ""
+	style.Strikethrough.CrossedOut = boolPointer(true)
+	style.Emph.BlockPrefix, style.Emph.BlockSuffix = "", ""
+	style.Emph.Italic = boolPointer(true)
+	style.Strong.BlockPrefix, style.Strong.BlockSuffix = "", ""
+	style.Strong.Bold = boolPointer(true)
+	style.Code.Color = stringPointer("#8ABEB7")
+	style.Code.BlockPrefix, style.Code.BlockSuffix = "", ""
+	style.Link.Color = stringPointer("#666666")
+	style.LinkText.Color = stringPointer("#81A2BE")
+	style.LinkText.Underline = boolPointer(true)
+	style.List.Color = stringPointer("#8ABEB7")
+	style.BlockQuote.Color = stringPointer("#808080")
+	style.BlockQuote.Italic = boolPointer(true)
+	style.HorizontalRule.Color = stringPointer("#808080")
+	style.CodeBlock.Margin = &zero
+	style.CodeBlock.Color = stringPointer("#B5BD68")
+	style.CodeBlock.Chroma = styles.DarkStyleConfig.CodeBlock.Chroma
+	style.CodeBlock.Chroma.Text.Color = stringPointer("#B5BD68")
+	style.CodeBlock.Chroma.Comment.Color = stringPointer("#6A9955")
+	style.CodeBlock.Chroma.Keyword.Color = stringPointer("#569CD6")
+	style.CodeBlock.Chroma.NameFunction.Color = stringPointer("#DCDCAA")
+	style.CodeBlock.Chroma.Name.Color = stringPointer("#9CDCFE")
+	style.CodeBlock.Chroma.LiteralString.Color = stringPointer("#CE9178")
+	style.CodeBlock.Chroma.LiteralNumber.Color = stringPointer("#B5CEA8")
+	style.CodeBlock.Chroma.KeywordType.Color = stringPointer("#4EC9B0")
+	style.CodeBlock.Chroma.Operator.Color = stringPointer("#D4D4D4")
+	style.CodeBlock.Chroma.Punctuation.Color = stringPointer("#D4D4D4")
+	renderer, err := glamour.NewTermRenderer(
+		glamour.WithStyles(style),
+		glamour.WithWordWrap(max(width-1, 1)),
+		glamour.WithPreservedNewLines(),
+		glamour.WithChromaFormatter("terminal16m"),
 	)
-	rendered := tui.Sprint(markdown.Render(nil), tui.WithPrintWidth(width))
+	if err != nil {
+		panic(err)
+	}
+	rendered, err := renderer.Render(escapeMarkdownHTML(text))
+	if err != nil {
+		panic(err)
+	}
+	rendered = strings.Trim(rendered, "\n")
 	if rendered == "" {
 		return nil
 	}
 	lines := strings.Split(rendered, "\n")
-	for i := range lines {
-		lines[i] = " " + lines[i]
+	for i, line := range lines {
+		lines[i] = " " + trimMarkdownPadding(line)
 	}
 	return lines
+}
+
+func trimMarkdownPadding(line string) string {
+	end := 0
+	for i := 0; i < len(line); {
+		if line[i] == 0x1b {
+			i = ansiSequenceEnd(line, i)
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(line[i:])
+		i += size
+		if !unicode.IsSpace(r) {
+			end = i
+		}
+	}
+	if end == 0 {
+		return ""
+	}
+	return line[:end] + "\x1b[0m\x1b]8;;\x1b\\"
+}
+
+func stringPointer(s string) *string { return &s }
+func boolPointer(b bool) *bool       { return &b }
+
+func escapeMarkdownHTML(source string) string {
+	marked := make([]bool, len(source))
+	mark := func(segments *text.Segments) {
+		for i := range segments.Len() {
+			segment := segments.At(i)
+			for j := segment.Start; j < segment.Stop; j++ {
+				marked[j] = true
+			}
+		}
+	}
+	document := goldmark.New(goldmark.WithExtensions(extension.GFM)).Parser().Parse(text.NewReader([]byte(source)))
+	_ = ast.Walk(document, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		switch node := node.(type) {
+		case *ast.RawHTML:
+			mark(node.Segments)
+		case *ast.HTMLBlock:
+			mark(node.Lines())
+			if node.HasClosure() {
+				for i := node.ClosureLine.Start; i < node.ClosureLine.Stop; i++ {
+					marked[i] = true
+				}
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+
+	var escaped strings.Builder
+	for i := 0; i < len(source); i++ {
+		if marked[i] && source[i] == '<' {
+			escaped.WriteString("&lt;")
+		} else if marked[i] && source[i] == '>' {
+			escaped.WriteString("&gt;")
+		} else {
+			escaped.WriteByte(source[i])
+		}
+	}
+	return escaped.String()
 }
 
 func renderedToolMessage(msg message, width int, now time.Time) string {

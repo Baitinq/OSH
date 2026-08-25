@@ -686,7 +686,7 @@ func TestStreamingDeltaLivesInRenderedModel(t *testing.T) {
 	s.handleToolEvent(1, toolEvent{Kind: toolEventTextDelta, Detail: "hello "})
 	s.handleToolEvent(1, toolEvent{Kind: toolEventTextDelta, Detail: "world"})
 	lines, _, _ := s.render(40)
-	if !strings.Contains(strings.Join(lines, "\n"), "hello world") {
+	if !strings.Contains(stripANSI(strings.Join(lines, "\n")), "hello world") {
 		t.Fatalf("stream missing from render: %q", lines)
 	}
 	if len(s.messages) != 0 {
@@ -777,7 +777,7 @@ func TestAssistantRendersMarkdownAndReasoningRemainsPlain(t *testing.T) {
 	if strings.Contains(plain, "**bold**") || strings.Contains(plain, "```") {
 		t.Fatalf("markdown syntax remained visible: %q", plain)
 	}
-	if !strings.Contains(assistant, "\x1b[0;1;") || !strings.Contains(assistant, "\x1b[0;95m") {
+	if !strings.Contains(assistant, ";1m") || !strings.Contains(assistant, "38;2;138;190;183m") {
 		t.Fatalf("bold or inline code styling missing: %q", assistant)
 	}
 
@@ -1134,9 +1134,55 @@ Overall: already a credible personal daily-driver.`
 	}
 }
 
-func TestNormalizeLooseMarkdownListsLeavesCodeFencesAlone(t *testing.T) {
-	input := "```md\n1. first\n\n1. second\n```"
-	if got := normalizeLooseMarkdownLists(input); got != input {
-		t.Fatalf("normalized fenced code = %q, want %q", got, input)
+func TestRenderedMarkdownShowsLinkDestination(t *testing.T) {
+	rendered := strings.Join(renderedMarkdownLines("Read [the docs](https://example.com/docs).", 60), "\n")
+	plain := stripANSI(rendered)
+	if !strings.Contains(plain, "the docs https://example.com/docs") {
+		t.Fatalf("rendered link does not show its destination: %q", plain)
+	}
+	if !strings.Contains(rendered, ";https://example.com/docs\a") {
+		t.Fatalf("rendered link is not clickable: %q", rendered)
+	}
+}
+
+func TestRenderedMarkdownPreservesAngleBracketText(t *testing.T) {
+	input := "ECHO<queued-order> and <b>literal HTML</b>\n\n```go\nif a < b {}\n```"
+	plain := stripANSI(strings.Join(renderedMarkdownLines(input, 80), "\n"))
+	for _, want := range []string{"ECHO<queued-order>", "<b>literal HTML</b>", "if a < b {}"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("rendered markdown missing %q: %q", want, plain)
+		}
+	}
+}
+
+func TestRenderedMarkdownFitsWidth(t *testing.T) {
+	inputs := []string{
+		"This is a long paragraph that must wrap without exceeding the requested terminal width.",
+		"1. A long list item that must wrap and retain its continuation indentation.",
+		"[documentation](https://example.com/a/very/long/documentation/path)",
+		"```go\nfmt.Println(\"a very long code line that exceeds the width\")\n```",
+	}
+	for _, input := range inputs {
+		lines := renderedMarkdownLines(input, 24)
+		for _, line := range lines {
+			if width := lineWidth(line); width > 25 {
+				t.Fatalf("rendered line width = %d, want at most 25: %q", width, line)
+			}
+		}
+	}
+}
+
+func TestRenderedMarkdownUsesPiColors(t *testing.T) {
+	rendered := strings.Join(renderedMarkdownLines("# Heading\n\n[docs](https://example.com)\n\n- item\n\n> quote", 60), "\n")
+	for name, color := range map[string]string{
+		"heading":     "38;2;240;198;116",
+		"link":        "38;2;129;162;190",
+		"link URL":    "38;2;102;102;102",
+		"list bullet": "38;2;138;190;183",
+		"quote":       "38;2;128;128;128",
+	} {
+		if !strings.Contains(rendered, color) {
+			t.Errorf("rendered Markdown missing Pi %s color %q: %q", name, color, rendered)
+		}
 	}
 }

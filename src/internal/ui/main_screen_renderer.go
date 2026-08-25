@@ -242,41 +242,46 @@ func sanitizeTerminalText(s string) string {
 func stripANSI(s string) string {
 	var b strings.Builder
 	for i := 0; i < len(s); {
-		if s[i] != 0x1b {
-			b.WriteByte(s[i])
-			i++
+		if s[i] == 0x1b {
+			i = ansiSequenceEnd(s, i)
 			continue
 		}
+		b.WriteByte(s[i])
 		i++
-		if i >= len(s) {
-			break
-		}
-		switch s[i] {
-		case '[':
-			i++
-			for i < len(s) {
-				c := s[i]
-				i++
-				if c >= 0x40 && c <= 0x7e {
-					break
-				}
-			}
-		case ']':
-			i++
-			for i < len(s) {
-				if s[i] == 0x07 {
-					i++
-					break
-				}
-				if s[i] == 0x1b && i+1 < len(s) && s[i+1] == '\\' {
-					i += 2
-					break
-				}
-				i++
-			}
-		default:
-			i++
-		}
 	}
 	return b.String()
+}
+
+func ansiSequenceEnd(s string, start int) int {
+	i := start + 1
+	if i >= len(s) {
+		return i
+	}
+	switch s[i] {
+	case '[':
+		i++
+		for i < len(s) {
+			c := s[i]
+			i++
+			if c >= 0x40 && c <= 0x7e {
+				break
+			}
+		}
+	case ']':
+		i++
+		for i < len(s) {
+			if s[i] == 0x07 {
+				i++
+				break
+			}
+			if s[i] == 0x1b && i+1 < len(s) && s[i+1] == '\\' {
+				i += 2
+				break
+			}
+			i++
+		}
+	default:
+		i++
+	}
+	return i
 }
