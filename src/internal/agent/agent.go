@@ -90,6 +90,11 @@ func loadContextFiles(cwd string) []contextFile {
 }
 
 func buildSystemPrompt(cwd string) string {
+	home, _ := os.UserHomeDir()
+	return buildSystemPromptWithSkills(cwd, loadSkills(cwd, home))
+}
+
+func buildSystemPromptWithSkills(cwd string, skills []skill) string {
 	prompt := systemPrompt
 	files := loadContextFiles(cwd)
 	if len(files) > 0 {
@@ -98,6 +103,7 @@ func buildSystemPrompt(cwd string) string {
 			prompt += fmt.Sprintf("\n\n<project_instructions path=%q>\n%s\n</project_instructions>", file.path, file.content)
 		}
 	}
+	prompt += formatSkillsForPrompt(skills)
 	if cwd != "" {
 		prompt += "\n\nCurrent working directory: " + cwd
 	}
@@ -192,12 +198,14 @@ type Agent struct {
 
 func New() *Agent {
 	cwd, _ := os.Getwd()
+	home, _ := os.UserHomeDir()
+	skills := loadSkills(cwd, home)
 	return &Agent{
 		// Keep retries at the visible agent layer. The SDK otherwise retries
 		// silently, making a disconnected network look like a hung request.
 		client:         openai.NewClient(option.WithBaseURL(baseURL), option.WithMaxRetries(0)),
 		modelName:      modelName,
-		instructions:   buildSystemPrompt(cwd),
+		instructions:   buildSystemPromptWithSkills(cwd, skills),
 		maxRetries:     maxLLMRetries,
 		retryBaseDelay: retryBaseDelay,
 		retryJitter:    rand.Float64,

@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/grindlemire/go-tui v0.19.0
 	github.com/openai/openai-go/v3 v3.52.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
