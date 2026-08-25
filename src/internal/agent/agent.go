@@ -27,6 +27,7 @@ const systemPrompt = `You are an expert general-purpose assistant operating insi
 Available tools:
 - shell: Run a shell command and return its combined stdout and stderr.
 - web_search: Search the web with DuckDuckGo and return result titles, URLs, and snippets.
+- OSH itself can be invoked recursively with osh -p "<prompt>"; print mode runs a child agent without the terminal UI and writes only its final response to stdout.
 
 MCP:
 - Configured MCP servers can be discovered and invoked through the mcporter CLI using the shell tool.

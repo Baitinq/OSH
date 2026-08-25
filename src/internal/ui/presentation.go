@@ -184,24 +184,63 @@ func toolDurationLabel(msg message, now time.Time) string {
 func normalizeLooseMarkdownLists(text string) string {
 	lines := strings.Split(text, "\n")
 	out := make([]string, 0, len(lines))
+	activeIndent := -1
+	activeOrdered := false
+	pendingBlanks := 0
 	inFence := false
-	for i, line := range lines {
+
+	flushBlanks := func() {
+		for range pendingBlanks {
+			out = append(out, "")
+		}
+		pendingBlanks = 0
+	}
+
+	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			flushBlanks()
+			out = append(out, line)
 			inFence = !inFence
-		}
-		if !inFence && trimmed == "" && i > 0 && i+1 < len(lines) && sameMarkdownListLevel(lines[i-1], lines[i+1]) {
+			activeIndent = -1
 			continue
 		}
-		out = append(out, line)
-	}
-	return strings.Join(out, "\n")
-}
+		if inFence {
+			out = append(out, line)
+			continue
+		}
+		if trimmed == "" {
+			if activeIndent >= 0 {
+				pendingBlanks++
+			} else {
+				out = append(out, line)
+			}
+			continue
+		}
 
-func sameMarkdownListLevel(left, right string) bool {
-	leftIndent, leftOrdered, leftOK := markdownListMarker(left)
-	rightIndent, rightOrdered, rightOK := markdownListMarker(right)
-	return leftOK && rightOK && leftIndent == rightIndent && leftOrdered == rightOrdered
+		indent, ordered, isMarker := markdownListMarker(line)
+		if activeIndent >= 0 {
+			if isMarker && indent == activeIndent && ordered == activeOrdered {
+				pendingBlanks = 0
+				out = append(out, line)
+				continue
+			}
+			if indent > activeIndent && !isMarker {
+				pendingBlanks = 0
+				out[len(out)-1] += " " + trimmed
+				continue
+			}
+			flushBlanks()
+			activeIndent = -1
+		}
+
+		out = append(out, line)
+		if isMarker {
+			activeIndent, activeOrdered = indent, ordered
+		}
+	}
+	flushBlanks()
+	return strings.Join(out, "\n")
 }
 
 func markdownListMarker(line string) (indent int, ordered, ok bool) {

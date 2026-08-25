@@ -1104,6 +1104,36 @@ func TestRenderedMarkdownNumbersLooseOrderedLists(t *testing.T) {
 	}
 }
 
+func TestRenderedMarkdownKeepsLooseListDescriptionsInTheirItems(t *testing.T) {
+	input := `1. Context compaction and session persistence.
+   These are the largest practical gaps.
+
+1. Cancellation-history correctness.
+   A cancelled tool call must not corrupt history.
+
+1. Runtime configuration eventually.
+   Environment variables or flags would be enough.
+
+1. Keep parallel tool execution optional or absent.
+   Concurrency would complicate event ordering.
+
+Overall: already a credible personal daily-driver.`
+	got := stripANSI(strings.Join(renderedMarkdownLines(input, 60), "\n"))
+	for _, want := range []string{
+		"1. Context compaction",
+		"2. Cancellation-history",
+		"3. Runtime configuration",
+		"4. Keep parallel tool",
+		"These are the",
+		"largest practical gaps.",
+		"Overall: already a credible personal daily-driver.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("rendered list missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestNormalizeLooseMarkdownListsLeavesCodeFencesAlone(t *testing.T) {
 	input := "```md\n1. first\n\n1. second\n```"
 	if got := normalizeLooseMarkdownLists(input); got != input {

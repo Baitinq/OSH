@@ -26,6 +26,16 @@ go build -o osh ./cmd/osh
 ./osh
 ```
 
+For non-interactive use, print only the final response to stdout:
+
+```sh
+osh -p "summarize the changes in this repository"
+# --print is equivalent to -p
+```
+
+Print mode gives the child agent the same tools and project context as interactive
+mode, so an OSH agent can use it to spawn another OSH agent recursively.
+
 ## Configuration
 
 The endpoint and model are intentionally configured as constants near the top of
