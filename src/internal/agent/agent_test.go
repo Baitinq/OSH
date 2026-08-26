@@ -340,6 +340,20 @@ func TestPythonREPLPersistsStateAndExposesShell(t *testing.T) {
 	}
 }
 
+func TestPythonREPLIsolatesRuntimeAndRestoresHostFunctions(t *testing.T) {
+	repl := newPythonREPL()
+	t.Cleanup(repl.close)
+
+	_, failed, err := repl.execute(t.Context(), `json = "user value"; _protocol_out = None; shell = "shadowed"`)
+	if err != nil || failed {
+		t.Fatalf("shadowing result: failed=%v, error=%v", failed, err)
+	}
+	output, failed, err := repl.execute(t.Context(), `(json, _protocol_out, callable(shell))`)
+	if err != nil || failed || output != "('user value', None, True)" {
+		t.Fatalf("isolated result = %q, failed=%v, error=%v", output, failed, err)
+	}
+}
+
 func TestPythonREPLWebSearchReturnsValues(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, `<a class="result__a" href="https://example.com">Example</a><div class="result__snippet">A result.</div>`)
@@ -348,7 +362,7 @@ func TestPythonREPLWebSearchReturnsValues(t *testing.T) {
 
 	repl := newPythonREPL()
 	t.Cleanup(repl.close)
-	code := fmt.Sprintf(`_web_search_url = %q; hits = web_search("test", 1); (hits[0].title, hits[0].url, hits[0].snippet)`, server.URL)
+	code := fmt.Sprintf(`web_search.__globals__["_web_search_url"] = %q; hits = web_search("test", 1); (hits[0].title, hits[0].url, hits[0].snippet)`, server.URL)
 	output, failed, err := repl.execute(t.Context(), code)
 	if err != nil || failed || output != "('Example', 'https://example.com', 'A result.')" {
 		t.Fatalf("search result = %q, failed=%v, error=%v", output, failed, err)

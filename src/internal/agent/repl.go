@@ -133,9 +133,15 @@ def web_search(query, max_results=8):
             break
     return results
 
-_globals = globals()
+_user_globals = {}
 
 def _execute(code):
+    _user_globals.update(
+        shell=shell,
+        web_search=web_search,
+        ShellResult=ShellResult,
+        SearchResult=SearchResult,
+    )
     output = io.StringIO()
     value = None
     try:
@@ -144,11 +150,11 @@ def _execute(code):
             if tree.body and isinstance(tree.body[-1], ast.Expr):
                 prefix = ast.Module(body=tree.body[:-1], type_ignores=[])
                 if prefix.body:
-                    exec(compile(prefix, "<osh-repl>", "exec"), _globals)
+                    exec(compile(prefix, "<osh-repl>", "exec"), _user_globals)
                 expression = ast.Expression(tree.body[-1].value)
-                value = eval(compile(expression, "<osh-repl>", "eval"), _globals)
+                value = eval(compile(expression, "<osh-repl>", "eval"), _user_globals)
             else:
-                exec(compile(tree, "<osh-repl>", "exec"), _globals)
+                exec(compile(tree, "<osh-repl>", "exec"), _user_globals)
         rendered = output.getvalue()
         if value is not None:
             rendered += repr(value)
