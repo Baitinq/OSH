@@ -71,6 +71,8 @@ hits = web_search("latest Go release")
 `web_search()` returns `SearchResult` values with `title`, `url`, and `snippet` fields.
 Assignments stay in the REPL; only printed output and the final expression are returned
 to the model. The Python environment performs command execution and web requests directly.
+After a turn completes, its reasoning and REPL call history remain visible in the terminal but
+are omitted from future model context. User messages, final responses, and Python state persist.
 
 ## MCP
 

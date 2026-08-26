@@ -460,6 +460,24 @@ func (a *Agent) streamResponse(ctx context.Context, params responses.ResponseNew
 	return resp, nil
 }
 
+func (a *Agent) pruneTransientHistory(transientMessages map[*responses.ResponseOutputMessageParam]bool) {
+	kept := a.history[:0]
+	for _, item := range a.history {
+		if item.OfMessage != nil || item.OfOutputMessage != nil && !transientMessages[item.OfOutputMessage] {
+			kept = append(kept, item)
+		}
+	}
+	a.history = kept
+}
+
+func markOutputMessages(items []responses.ResponseInputItemUnionParam, marked map[*responses.ResponseOutputMessageParam]bool) {
+	for _, item := range items {
+		if item.OfOutputMessage != nil {
+			marked[item.OfOutputMessage] = true
+		}
+	}
+}
+
 func (a *Agent) input() []responses.ResponseInputItemUnionParam {
 	if a.summary == "" {
 		return a.history
@@ -473,6 +491,8 @@ func (a *Agent) input() []responses.ResponseInputItemUnionParam {
 
 func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), ctx context.Context) Response {
 	a.appendUserMessage(msg)
+	transientMessages := make(map[*responses.ResponseOutputMessageParam]bool)
+	defer a.pruneTransientHistory(transientMessages)
 
 	var text string
 	var contextTokens int64
@@ -557,10 +577,12 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 			emit(ToolEvent{Kind: ToolEventReasoningDone})
 			text = resp.OutputText()
 			if a.consumeSteering(steer, emit) {
+				markOutputMessages(items, transientMessages)
 				continue
 			}
 			break
 		}
+		markOutputMessages(items, transientMessages)
 		if ctx.Err() != nil {
 			return Response{}
 		}
