@@ -33,10 +33,28 @@ func parseArgs(args []string) (string, bool, error) {
 		}
 		return "", false, nil
 	}
-	if flags.NArg() == 0 {
-		return "", false, fmt.Errorf("print mode requires a prompt")
-	}
 	return strings.Join(flags.Args(), " "), true, nil
+}
+
+func buildPrintPrompt(instruction string, stdin io.Reader) (string, error) {
+	if file, ok := stdin.(*os.File); ok {
+		info, err := file.Stat()
+		if err != nil {
+			return "", err
+		}
+		if info.Mode()&os.ModeCharDevice != 0 {
+			stdin = strings.NewReader("")
+		}
+	}
+	input, err := io.ReadAll(stdin)
+	if err != nil {
+		return "", err
+	}
+	prompt := strings.TrimSpace(strings.Join([]string{instruction, string(input)}, "\n\n"))
+	if prompt == "" {
+		return "", fmt.Errorf("print mode requires a prompt or stdin input")
+	}
+	return prompt, nil
 }
 
 func printResponse(prompt string, respond func(string, <-chan string, func(agent.ToolEvent), context.Context) agent.Response, out io.Writer) error {
@@ -54,10 +72,16 @@ func printResponse(prompt string, respond func(string, <-chan string, func(agent
 	return nil
 }
 
-func run(args []string, stdout io.Writer) error {
+func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	prompt, printMode, err := parseArgs(args)
 	if err != nil {
 		return err
+	}
+	if printMode {
+		prompt, err = buildPrintPrompt(prompt, stdin)
+		if err != nil {
+			return err
+		}
 	}
 	if err := requireOpenAIAPIKey(); err != nil {
 		return err
@@ -71,7 +95,7 @@ func run(args []string, stdout io.Writer) error {
 }
 
 func main() {
-	if err := run(os.Args[1:], os.Stdout); err != nil {
+	if err := run(os.Args[1:], os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

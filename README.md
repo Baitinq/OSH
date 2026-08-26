@@ -29,11 +29,12 @@ go build -o osh ./cmd/osh
 ./osh
 ```
 
-For non-interactive use, print only the final response to stdout:
+For non-interactive use, print only the final response to stdout. Piped input is appended to the prompt:
 
 ```sh
 osh -p "summarize the changes in this repository"
-# --print is equivalent to -p
+git diff | osh -p "review this diff"
+cat error.log | osh --print "find the root cause"
 ```
 
 ## Configuration

@@ -32,7 +32,7 @@ func TestParseArgs(t *testing.T) {
 		{name: "interactive"},
 		{name: "short print", args: []string{"-p", "inspect", "this"}, prompt: "inspect this", printMode: true},
 		{name: "long print", args: []string{"--print", "inspect this"}, prompt: "inspect this", printMode: true},
-		{name: "missing prompt", args: []string{"-p"}, wantErr: "requires a prompt"},
+		{name: "stdin print", args: []string{"-p"}, printMode: true},
 		{name: "unexpected argument", args: []string{"hello"}, wantErr: "use -p"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -45,6 +45,34 @@ func TestParseArgs(t *testing.T) {
 			}
 			if err != nil || prompt != test.prompt || printMode != test.printMode {
 				t.Fatalf("parseArgs() = %q, %v, %v", prompt, printMode, err)
+			}
+		})
+	}
+}
+
+func TestBuildPrintPrompt(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		instruction string
+		stdin       string
+		want        string
+		wantErr     bool
+	}{
+		{name: "instruction", instruction: "review this", want: "review this"},
+		{name: "stdin", stdin: "review this\n", want: "review this"},
+		{name: "instruction and stdin", instruction: "review this", stdin: "diff content\n", want: "review this\n\ndiff content"},
+		{name: "empty", wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := buildPrintPrompt(test.instruction, strings.NewReader(test.stdin))
+			if test.wantErr {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				return
+			}
+			if err != nil || got != test.want {
+				t.Fatalf("buildPrintPrompt() = %q, %v; want %q", got, err, test.want)
 			}
 		})
 	}
