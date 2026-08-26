@@ -122,9 +122,9 @@ def _result_url(value):
         return None
     return urllib.parse.urlunparse(parsed)
 
-def osh(prompt):
-    """Run a task in a fresh OSH child agent and return its final response."""
-    _protocol_out.write(json.dumps({"host_call": "osh", "prompt": prompt}) + "\n")
+def llm(prompt):
+    """Run one fresh, tool-free model call and return its response as a string."""
+    _protocol_out.write(json.dumps({"host_call": "llm", "prompt": prompt}) + "\n")
     _protocol_out.flush()
     response = json.loads(_protocol_in.readline())
     if "error" in response:
@@ -165,7 +165,7 @@ def _execute(code):
     _user_globals.update(
         shell=shell,
         web_search=web_search,
-        osh=osh,
+        llm=llm,
         ShellResult=ShellResult,
         SearchResult=SearchResult,
     )
@@ -204,7 +204,7 @@ for line in _protocol_in:
 
 type pythonREPL struct {
 	mu     sync.Mutex
-	osh    func(context.Context, string) (string, error)
+	llm    func(context.Context, string) (string, error)
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	stdout *bufio.Reader
@@ -218,8 +218,8 @@ type replResult struct {
 	Prompt   string `json:"prompt"`
 }
 
-func newPythonREPL(osh func(context.Context, string) (string, error)) *pythonREPL {
-	return &pythonREPL{osh: osh}
+func newPythonREPL(llm func(context.Context, string) (string, error)) *pythonREPL {
+	return &pythonREPL{llm: llm}
 }
 
 func (r *pythonREPL) start() error {
@@ -329,8 +329,8 @@ func (r *pythonREPL) readResult(ctx context.Context) (string, bool, error) {
 				r.stop()
 				return "", true, fmt.Errorf("invalid Python REPL response: %w", err)
 			}
-			if response.HostCall == "osh" {
-				text, err := r.osh(ctx, response.Prompt)
+			if response.HostCall == "llm" {
+				text, err := r.llm(ctx, response.Prompt)
 				hostResponse := map[string]string{"result": text}
 				if err != nil {
 					hostResponse = map[string]string{"error": err.Error()}

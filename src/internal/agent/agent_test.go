@@ -62,7 +62,7 @@ func TestNewUsesEnvironmentOverrides(t *testing.T) {
 	}
 }
 
-func TestCallOSHUsesFreshAgent(t *testing.T) {
+func TestCallLLMUsesFreshToolFreeRequest(t *testing.T) {
 	var request map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -77,30 +77,18 @@ func TestCallOSHUsesFreshAgent(t *testing.T) {
 		client:          openai.NewClient(option.WithAPIKey("test-key"), option.WithBaseURL(server.URL+"/"), option.WithMaxRetries(0)),
 		modelName:       "test-model",
 		reasoningEffort: "low",
-		instructions:    systemPrompt,
 	}
-	text, err := a.callOSH(t.Context(), "classify this")
+	text, err := a.callLLM(t.Context(), "classify this")
 	if err != nil || text != "classified" {
-		t.Fatalf("callOSH() = %q, %v", text, err)
+		t.Fatalf("callLLM() = %q, %v", text, err)
 	}
-	if len(request["tools"].([]any)) != 1 {
-		t.Fatalf("child OSH tools = %#v", request["tools"])
+	if _, ok := request["tools"]; ok {
+		t.Fatalf("llm request included tools: %#v", request["tools"])
 	}
 	input := request["input"].([]any)
 	message := input[0].(map[string]any)
-	if !strings.Contains(message["content"].(string), "classify this") {
-		t.Fatalf("child OSH input = %#v", request["input"])
-	}
-	if !strings.Contains(request["instructions"].(string), "operating inside OSH") {
-		t.Fatalf("child OSH instructions = %#v", request["instructions"])
-	}
-}
-
-func TestCallOSHLimitsRecursionToOneChildLevel(t *testing.T) {
-	a := &Agent{depth: 1}
-	_, err := a.callOSH(t.Context(), "delegate again")
-	if err == nil || !strings.Contains(err.Error(), "limited to one child level") {
-		t.Fatalf("callOSH() error = %v", err)
+	if message["content"] != "classify this" {
+		t.Fatalf("llm input = %#v", request["input"])
 	}
 }
 
@@ -112,7 +100,7 @@ func TestBuildSystemPrompt(t *testing.T) {
 		"repl: Execute Python in a persistent REPL",
 		"shell(command, timeout=None) -> ShellResult",
 		"web_search(query, max_results=8) -> list[SearchResult]",
-		"osh(prompt) -> str",
+		"llm(prompt) -> str",
 		"Only printed output and the final expression enter model context",
 		"npx -y mcporter@latest list",
 		"npx -y mcporter@latest call <server>.<tool>",
@@ -490,7 +478,7 @@ func TestPythonREPLPersistsStateAndExposesShell(t *testing.T) {
 	}
 }
 
-func TestPythonREPLExposesOSH(t *testing.T) {
+func TestPythonREPLExposesLLM(t *testing.T) {
 	var prompts []string
 	repl := newPythonREPL(func(_ context.Context, prompt string) (string, error) {
 		prompts = append(prompts, prompt)
@@ -498,12 +486,12 @@ func TestPythonREPLExposesOSH(t *testing.T) {
 	})
 	t.Cleanup(repl.close)
 
-	output, failed, err := repl.execute(t.Context(), `[osh(item) for item in ["first", "second"]]`)
+	output, failed, err := repl.execute(t.Context(), `[llm(item) for item in ["first", "second"]]`)
 	if err != nil || failed || output != "['result for first', 'result for second']" {
-		t.Fatalf("osh result = %q, failed=%v, error=%v", output, failed, err)
+		t.Fatalf("llm result = %q, failed=%v, error=%v", output, failed, err)
 	}
 	if strings.Join(prompts, ",") != "first,second" {
-		t.Fatalf("osh prompts = %#v", prompts)
+		t.Fatalf("llm prompts = %#v", prompts)
 	}
 }
 
