@@ -1,4 +1,4 @@
-module osh
+module fn
 
 go 1.26.0
 

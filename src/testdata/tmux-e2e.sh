@@ -2,10 +2,10 @@
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-socket="osh-e2e-$$"
-session=osh-e2e
-binary=$(mktemp "${TMPDIR:-/tmp}/osh-e2e.XXXXXX")
-render_log=$(mktemp "${TMPDIR:-/tmp}/osh-render-log.XXXXXX")
+socket="fn-e2e-$$"
+session=fn-e2e
+binary=$(mktemp "${TMPDIR:-/tmp}/fn-e2e.XXXXXX")
+render_log=$(mktemp "${TMPDIR:-/tmp}/fn-render-log.XXXXXX")
 tmux=(tmux -L "$socket")
 cleanup() { "${tmux[@]}" kill-server 2>/dev/null || true; rm -f "$binary" "$render_log"; }
 trap cleanup EXIT
@@ -14,7 +14,7 @@ cd "$root"
 go test -c -o "$binary" ./internal/ui
 "${tmux[@]}" new-session -d -x 60 -y 18 -s "$session" /bin/sh
 "${tmux[@]}" set-option -t "$session" remain-on-exit on
-"${tmux[@]}" send-keys -t "$session" "OSH_TMUX_HARNESS=1 '$binary' -test.run '^TestTmuxHarness$' -test.count=1" Enter
+"${tmux[@]}" send-keys -t "$session" "FN_TMUX_HARNESS=1 '$binary' -test.run '^TestTmuxHarness$' -test.count=1" Enter
 # Type before initialization finishes. Startup input must survive terminal-mode
 # setup and appear in the editor rather than as stray text above the UI.
 "${tmux[@]}" send-keys -t "$session" -l STARTUP-DRAFT

@@ -13,7 +13,7 @@ import (
 
 	tui "github.com/grindlemire/go-tui"
 
-	"osh/internal/agent"
+	"fn/internal/agent"
 )
 
 type message struct {
@@ -59,7 +59,7 @@ const (
 
 type pendingInput struct{ kind, text string }
 
-type oshUI struct {
+type fnUI struct {
 	modelName              string
 	reasoningEffort        string
 	contextTokens          int64
@@ -110,8 +110,8 @@ const (
 	maxToolDisplayBytes      = 50 * 1024
 )
 
-func newUI(modelName, reasoningEffort string, respond func(string, <-chan string, func(toolEvent), context.Context) response) *oshUI {
-	s := &oshUI{
+func newUI(modelName, reasoningEffort string, respond func(string, <-chan string, func(toolEvent), context.Context) response) *fnUI {
+	s := &fnUI{
 		modelName: modelName, reasoningEffort: reasoningEffort, respond: respond,
 		historyIndex: -1, retryMessageIndex: -1,
 	}
@@ -120,11 +120,11 @@ func newUI(modelName, reasoningEffort string, respond func(string, <-chan string
 	return s
 }
 
-func (s *oshUI) ensureTextarea() {
+func (s *fnUI) ensureTextarea() {
 	s.setTextareaWidth(76)
 }
 
-func (s *oshUI) setTextareaWidth(width int) {
+func (s *fnUI) setTextareaWidth(width int) {
 	width = max(width, 1)
 	if s.textarea != nil && s.textareaWidth == width {
 		return
@@ -139,7 +139,7 @@ func (s *oshUI) setTextareaWidth(width int) {
 	s.textareaWidth = width
 }
 
-func (s *oshUI) submitInput(text string, queue bool) {
+func (s *fnUI) submitInput(text string, queue bool) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return
@@ -168,7 +168,7 @@ func (s *oshUI) submitInput(text string, queue bool) {
 	s.markDirty()
 }
 
-func (s *oshUI) startRequest(text string, showUser bool) {
+func (s *fnUI) startRequest(text string, showUser bool) {
 	if s.respond == nil || s.dispatch == nil {
 		return
 	}
@@ -198,7 +198,7 @@ func (s *oshUI) startRequest(text string, showUser bool) {
 	}()
 }
 
-func (s *oshUI) spin(ctx context.Context, finished <-chan struct{}, id int) {
+func (s *fnUI) spin(ctx context.Context, finished <-chan struct{}, id int) {
 	t := time.NewTicker(spinnerInterval)
 	defer t.Stop()
 	for {
@@ -218,7 +218,7 @@ func (s *oshUI) spin(ctx context.Context, finished <-chan struct{}, id int) {
 	}
 }
 
-func (s *oshUI) handleToolEvent(id int, ev toolEvent) {
+func (s *fnUI) handleToolEvent(id int, ev toolEvent) {
 	if id != s.nextRequestID || !s.responding {
 		return
 	}
@@ -318,7 +318,7 @@ func trimToolDisplayTail(output string) string {
 	return output[start:]
 }
 
-func (s *oshUI) handleToolActivity(ev toolEvent) {
+func (s *fnUI) handleToolActivity(ev toolEvent) {
 	if ev.Kind == toolEventCall {
 		s.addMessage(message{
 			role: "tool", toolID: ev.ID, toolName: ev.Name,
@@ -368,12 +368,12 @@ func (s *oshUI) handleToolActivity(ev toolEvent) {
 	s.addMessage(msg)
 }
 
-func (s *oshUI) resetStreamingText() {
+func (s *fnUI) resetStreamingText() {
 	s.streamingText.Reset()
 	s.streamingRenderedLines = nil
 }
 
-func (s *oshUI) renderedStreamingText(width int) []string {
+func (s *fnUI) renderedStreamingText(width int) []string {
 	if s.streamingRenderedWidth == width && s.streamingRenderedLines != nil {
 		return s.streamingRenderedLines
 	}
@@ -383,7 +383,7 @@ func (s *oshUI) renderedStreamingText(width int) []string {
 	return lines
 }
 
-func (s *oshUI) finishReasoning() {
+func (s *fnUI) finishReasoning() {
 	if s.reasoningText.Len() == 0 {
 		return
 	}
@@ -392,7 +392,7 @@ func (s *oshUI) finishReasoning() {
 	s.addMessage(message{role: "reasoning", text: text})
 }
 
-func (s *oshUI) finishStreamingText() {
+func (s *fnUI) finishStreamingText() {
 	if s.streamingText.Len() == 0 {
 		return
 	}
@@ -401,7 +401,7 @@ func (s *oshUI) finishStreamingText() {
 	s.addMessage(message{role: "agent", text: text})
 }
 
-func (s *oshUI) finishResponse(resp response) {
+func (s *fnUI) finishResponse(resp response) {
 	if resp.id != s.nextRequestID {
 		return
 	}
@@ -447,7 +447,7 @@ func (s *oshUI) finishResponse(resp response) {
 	s.markDirty()
 }
 
-func (s *oshUI) cancelRequest() {
+func (s *fnUI) cancelRequest() {
 	if !s.responding || s.cancel == nil {
 		return
 	}
@@ -476,20 +476,20 @@ func (s *oshUI) cancelRequest() {
 	s.markDirty()
 }
 
-func (s *oshUI) addMessage(msg message) {
+func (s *fnUI) addMessage(msg message) {
 	s.messages = append(s.messages, msg)
 	if s.emit != nil {
 		s.emit(msg)
 	}
 	s.markDirty()
 }
-func (s *oshUI) markDirty() {
+func (s *fnUI) markDirty() {
 	if s.invalidate != nil {
 		s.invalidate()
 	}
 }
 
-func (s *oshUI) consumePendingSteer(text string) {
+func (s *fnUI) consumePendingSteer(text string) {
 	for i, pending := range s.pendingSteer {
 		if pending == text {
 			s.pendingSteer = append(s.pendingSteer[:i], s.pendingSteer[i+1:]...)
@@ -504,7 +504,7 @@ func (s *oshUI) consumePendingSteer(text string) {
 	}
 }
 
-func (s *oshUI) removePendingInputs(kind string, limit int) {
+func (s *fnUI) removePendingInputs(kind string, limit int) {
 	kept := s.pendingInputs[:0]
 	removed := 0
 	for _, item := range s.pendingInputs {
@@ -517,7 +517,7 @@ func (s *oshUI) removePendingInputs(kind string, limit int) {
 	s.pendingInputs = kept
 }
 
-func (s *oshUI) moveWord(direction int) {
+func (s *fnUI) moveWord(direction int) {
 	raw := s.textarea.Text()
 	text := []rune(raw)
 	pos := clusterToRuneIndex(raw, s.textarea.CursorPos())
@@ -539,7 +539,7 @@ func (s *oshUI) moveWord(direction int) {
 	s.textarea.SetCursorPos(pos)
 	s.markDirty()
 }
-func (s *oshUI) deleteWord(direction int) {
+func (s *fnUI) deleteWord(direction int) {
 	raw := s.textarea.Text()
 	text := []rune(raw)
 	start := clusterToRuneIndex(raw, s.textarea.CursorPos())
@@ -561,7 +561,7 @@ func (s *oshUI) deleteWord(direction int) {
 	}
 	s.replaceTextRange(text, start, end)
 }
-func (s *oshUI) deleteToLineStart() {
+func (s *fnUI) deleteToLineStart() {
 	raw := s.textarea.Text()
 	text := []rune(raw)
 	end := clusterToRuneIndex(raw, s.textarea.CursorPos())
@@ -571,7 +571,7 @@ func (s *oshUI) deleteToLineStart() {
 	}
 	s.replaceTextRange(text, start, end)
 }
-func (s *oshUI) deleteToLineEnd() {
+func (s *fnUI) deleteToLineEnd() {
 	raw := s.textarea.Text()
 	text := []rune(raw)
 	start := clusterToRuneIndex(raw, s.textarea.CursorPos())
@@ -581,14 +581,14 @@ func (s *oshUI) deleteToLineEnd() {
 	}
 	s.replaceTextRange(text, start, end)
 }
-func (s *oshUI) replaceTextRange(text []rune, start, end int) {
+func (s *fnUI) replaceTextRange(text []rune, start, end int) {
 	next := string(append(append([]rune{}, text[:start]...), text[end:]...))
 	s.textarea.SetText(next)
 	s.textarea.SetCursorPos(runeToClusterIndex(next, start))
 	s.markDirty()
 }
 
-func (s *oshUI) navigateHistory(direction int) bool {
+func (s *fnUI) navigateHistory(direction int) bool {
 	if len(s.inputHistory) == 0 {
 		return false
 	}
@@ -618,7 +618,7 @@ func (s *oshUI) navigateHistory(direction int) bool {
 	return true
 }
 
-func (s *oshUI) handleKey(k tui.KeyEvent) bool {
+func (s *fnUI) handleKey(k tui.KeyEvent) bool {
 	if k.Key == tui.KeyRune && k.Rune == 'c' && k.Mod.Has(tui.ModCtrl) {
 		now := time.Now()
 		if !s.lastCtrlC.IsZero() && now.Sub(s.lastCtrlC) <= ctrlCDoublePressInterval {

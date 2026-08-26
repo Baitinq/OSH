@@ -34,9 +34,9 @@ func TestNewUsesEnvironmentOverrides(t *testing.T) {
 	defer server.Close()
 
 	t.Setenv("OPENAI_API_KEY", "test-key")
-	t.Setenv("OSH_BASE_URL", server.URL+"/custom/v1/")
-	t.Setenv("OSH_MODEL", "override-model")
-	t.Setenv("OSH_REASONING_EFFORT", "high")
+	t.Setenv("FN_BASE_URL", server.URL+"/custom/v1/")
+	t.Setenv("FN_MODEL", "override-model")
+	t.Setenv("FN_REASONING_EFFORT", "high")
 
 	a := New()
 	if a.ModelName() != "override-model" || a.ReasoningEffort() != "high" {
@@ -95,7 +95,7 @@ func TestCallLLMUsesFreshToolFreeRequest(t *testing.T) {
 func TestBuildSystemPrompt(t *testing.T) {
 	prompt := buildSystemPrompt("/work/project")
 	for _, want := range []string{
-		"expert general-purpose assistant operating inside OSH",
+		"expert general-purpose assistant operating inside fn agent",
 		"Available tool:",
 		"repl: Execute Python in a persistent REPL",
 		"shell(command, timeout=None) -> ShellResult",

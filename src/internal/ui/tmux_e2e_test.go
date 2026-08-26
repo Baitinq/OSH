@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"osh/internal/agent"
+	"fn/internal/agent"
 	"time"
 )
 
@@ -15,7 +15,7 @@ import (
 // It is skipped during the normal suite and intentionally exercises the same
 // Run entry point as production.
 func TestTmuxHarness(t *testing.T) {
-	if os.Getenv("OSH_TMUX_HARNESS") != "1" {
+	if os.Getenv("FN_TMUX_HARNESS") != "1" {
 		t.Skip("tmux harness")
 	}
 	respond := func(input string, steer <-chan string, emit func(agent.ToolEvent), ctx context.Context) agent.Response {

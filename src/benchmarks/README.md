@@ -1,6 +1,6 @@
 # Benchmarks
 
-This directory contains reproducible evaluations for OSH and other coding harnesses.
+This directory contains reproducible evaluations for fn agent and other coding harnesses.
 
 ## HarnessBench
 
@@ -14,16 +14,16 @@ From `src/benchmarks/harnessbench`:
 make setup
 ```
 
-This creates an ignored Python virtual environment and upstream checkout, installs the pinned dependencies, and builds the current OSH source into the benchmark cache.
+This creates an ignored Python virtual environment and upstream checkout, installs the pinned dependencies, and builds the current fn agent source into the benchmark cache.
 
-Run `make setup` again after changing OSH so the benchmark uses a fresh binary.
+Run `make setup` again after changing fn agent so the benchmark uses a fresh binary.
 
 ### Run
 
 The quick suite contains 15 tasks: every odd-numbered task from 027 through 055.
 
 ```sh
-make quick LABEL=my-osh-run HARNESS=osh
+make quick LABEL=my-fn-run HARNESS=fn
 make quick LABEL=my-pi-run HARNESS=pi
 make quick LABEL=my-codex-run HARNESS=codex
 ```

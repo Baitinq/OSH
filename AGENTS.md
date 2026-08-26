@@ -1,4 +1,4 @@
-# OSH
+# fn agent
 
 Priorities: simplicity > speed > features.
 

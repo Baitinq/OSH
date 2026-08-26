@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SOURCE_ROOT = ROOT.parents[1]
 UPSTREAM = ROOT / ".cache" / "upstream"
-OSH_BINARY = ROOT / ".cache" / "osh"
+FN_BINARY = ROOT / ".cache" / "fn"
 VENV_PYTHON = ROOT / ".venv" / "bin" / "python"
 RESULTS = ROOT / "results"
 UPSTREAM_REVISION = "1025086a446653702b80cfb48babbeec35db6b2c"
@@ -43,11 +43,11 @@ def setup():
     command(["uv", "pip", "install", "--python", VENV_PYTHON, "-r", ROOT / "requirements.lock"])
     command(["uv", "pip", "install", "--python", VENV_PYTHON, "--no-deps", "-e", UPSTREAM])
     command(
-        ["go", "build", "-o", OSH_BINARY, "./cmd/osh"],
+        ["go", "build", "-o", FN_BINARY, "./cmd/fn"],
         cwd=SOURCE_ROOT,
         env={**os.environ, "CGO_ENABLED": "0"},
     )
-    print(f"HarnessBench {UPSTREAM_REVISION[:8]} and OSH are ready.")
+    print(f"HarnessBench {UPSTREAM_REVISION[:8]} and fn agent are ready.")
 
 
 def task_ids(first, last, step=1):
@@ -73,13 +73,13 @@ def runtime_files(run_dir, args):
     }
     harnesses = {
         "models": {
-            "osh": {
+            "fn": {
                 "adapter": "generic_cli",
                 "command": "sh",
-                "args": [str(ROOT / "scripts" / "run-osh.sh"), "{prompt_file}"],
+                "args": [str(ROOT / "scripts" / "run-fn.sh"), "{prompt_file}"],
                 "model": args.model,
                 "timeout_sec": args.timeout,
-                "session_prefix": "harnessbench-osh",
+                "session_prefix": "harnessbench-fn",
             },
             "pi": {
                 "adapter": "generic_cli",
@@ -117,13 +117,13 @@ def metadata(args, ids):
         "label": args.label,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "task_ids": ids,
-        "harnesses": [args.harness] if args.harness != "both" else ["osh", "pi"],
+        "harnesses": [args.harness] if args.harness != "both" else ["fn", "pi"],
         "model": args.model,
         "reasoning_effort": args.reasoning_effort,
         "pi_provider": args.pi_provider,
         "timeout_sec": args.timeout,
         "harnessbench_revision": UPSTREAM_REVISION,
-        "osh_binary_sha256": hashlib.sha256(OSH_BINARY.read_bytes()).hexdigest(),
+        "fn_binary_sha256": hashlib.sha256(FN_BINARY.read_bytes()).hexdigest(),
         "repository_git_commit": git.stdout.strip() if git.returncode == 0 else None,
         "repository_git_dirty": bool(dirty.stdout.strip()),
         "pi_version": version(["pi", "--version"]),
@@ -146,9 +146,9 @@ def run_one(run_dir, app_path, harness_path, harness, task_id, args):
         "HARNESSBENCH_HARNESS_CONFIG": str(harness_path),
         "HARNESSBENCH_SKIP_PROCESS_GRADE": "1",
         "HARNESSBENCH_SKIP_ORACLE_QUALITY_LLM": "1",
-        "OSH_BENCH_BINARY": str(OSH_BINARY),
-        "OSH_MODEL": args.model,
-        "OSH_REASONING_EFFORT": args.reasoning_effort,
+        "FN_BENCH_BINARY": str(FN_BINARY),
+        "FN_MODEL": args.model,
+        "FN_REASONING_EFFORT": args.reasoning_effort,
         "PI_BENCH_PROVIDER": args.pi_provider,
         "PI_BENCH_MODEL": args.model,
         "PI_BENCH_THINKING": args.reasoning_effort,
@@ -201,21 +201,21 @@ def write_summary(run_dir, records):
     paired = {}
     for task_id in dict.fromkeys(record["task_id"] for record in records):
         values = {record["harness"]: record for record in records if record["task_id"] == task_id}
-        if "osh" in values and "pi" in values:
-            paired[task_id] = {name: values[name]["passed"] for name in ("osh", "pi")}
+        if "fn" in values and "pi" in values:
+            paired[task_id] = {name: values[name]["passed"] for name in ("fn", "pi")}
     summary = {"harnesses": by_harness, "paired": paired}
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print("\nHarness  Passed  Mean score  Failures  Time")
     for harness, value in by_harness.items():
         print(f"{harness:7}  {value['passed']:2}/{value['tasks']:<2}   {str(value['mean_outcome_score']):10}  {value['adapter_failures']:8}  {value['total_seconds']:7.1f}s")
     if paired:
-        osh_only = sum(value["osh"] and not value["pi"] for value in paired.values())
-        pi_only = sum(value["pi"] and not value["osh"] for value in paired.values())
-        print(f"Paired disagreements: OSH-only={osh_only}, Pi-only={pi_only}")
+        fn_only = sum(value["fn"] and not value["pi"] for value in paired.values())
+        pi_only = sum(value["pi"] and not value["fn"] for value in paired.values())
+        print(f"Paired disagreements: fn-only={fn_only}, Pi-only={pi_only}")
 
 
 def run(args):
-    if not VENV_PYTHON.is_file() or not OSH_BINARY.is_file() or not (UPSTREAM / ".git").is_dir():
+    if not VENV_PYTHON.is_file() or not FN_BINARY.is_file() or not (UPSTREAM / ".git").is_dir():
         raise SystemExit("benchmark is not set up; run `make setup`")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", args.label):
         raise SystemExit("--label may contain only letters, numbers, dot, underscore, and dash")
@@ -232,7 +232,7 @@ def run(args):
     with records_path.open("w") as output:
         for index, task_id in enumerate(ids):
             if args.harness == "both":
-                order = ("osh", "pi") if index % 2 == 0 else ("pi", "osh")
+                order = ("fn", "pi") if index % 2 == 0 else ("pi", "fn")
             else:
                 order = (args.harness,)
             for harness in order:
@@ -253,7 +253,7 @@ def report(path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Compare OSH and Pi on HarnessBench tasks")
+    parser = argparse.ArgumentParser(description="Compare fn agent and Pi on HarnessBench tasks")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("setup")
     run_parser = subparsers.add_parser("run")
@@ -262,9 +262,9 @@ def main():
     run_parser.add_argument("--last", type=int, default=56)
     run_parser.add_argument("--step", type=int, default=1)
     run_parser.add_argument("--timeout", type=int, default=900)
-    run_parser.add_argument("--harness", choices=("osh", "pi", "codex", "both"), default="both")
-    run_parser.add_argument("--model", default=os.environ.get("OSH_MODEL", DEFAULT_MODEL))
-    run_parser.add_argument("--reasoning-effort", default=os.environ.get("OSH_REASONING_EFFORT", "medium"))
+    run_parser.add_argument("--harness", choices=("fn", "pi", "codex", "both"), default="both")
+    run_parser.add_argument("--model", default=os.environ.get("FN_MODEL", DEFAULT_MODEL))
+    run_parser.add_argument("--reasoning-effort", default=os.environ.get("FN_REASONING_EFFORT", "medium"))
     run_parser.add_argument("--pi-provider", default="openai")
     report_parser = subparsers.add_parser("report")
     report_parser.add_argument("run_dir")

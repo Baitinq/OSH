@@ -1,8 +1,7 @@
-python env? rlm
+todo: context number update continously?
 computer use? (screenshot, move mouse, press key?)
-auto-compact
 session persistance?
-cli mode so it can spawn itself?
+subagents?
 knowledge about itself in order to customize itself if needed? or not
 scratchpad/notes? for agent to not miss things?
 slash summarize? when u loose context of what happened and slash model and slash reasoning

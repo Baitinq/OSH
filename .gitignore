@@ -1,6 +1,6 @@
 # Build artifacts
-/osh
-/src/osh
+/fn
+/src/fn
 *.test
 *.out
 

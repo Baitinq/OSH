@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"osh/internal/agent"
-	"osh/internal/ui"
+	"fn/internal/agent"
+	"fn/internal/ui"
 )
 
 func requireOpenAIAPIKey() error {
@@ -20,7 +20,7 @@ func requireOpenAIAPIKey() error {
 }
 
 func parseArgs(args []string) (string, bool, error) {
-	flags := flag.NewFlagSet("osh", flag.ContinueOnError)
+	flags := flag.NewFlagSet("fn", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	printMode := flags.Bool("p", false, "print the response without starting the UI")
 	flags.BoolVar(printMode, "print", false, "print the response without starting the UI")

@@ -17,7 +17,7 @@ import (
 	"github.com/yuin/goldmark/text"
 )
 
-func (s *oshUI) render(width int, viewportHeight ...int) ([]string, int, int) {
+func (s *fnUI) render(width int, viewportHeight ...int) ([]string, int, int) {
 	width = max(width, 10)
 	s.setTextareaWidth(max(width-4, 1))
 	var lines []string
@@ -63,7 +63,7 @@ func (s *oshUI) render(width int, viewportHeight ...int) ([]string, int, int) {
 	return lines, cursorRow, ccol
 }
 
-func (s *oshUI) renderedMessageLines(msg *message, width int) []string {
+func (s *fnUI) renderedMessageLines(msg *message, width int) []string {
 	now := time.Now()
 	duration := ""
 	if msg.toolState == "pending" {

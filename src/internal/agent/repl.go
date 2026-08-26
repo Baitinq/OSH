@@ -144,7 +144,7 @@ def web_search(query, max_results=8):
     request = urllib.request.Request(
         _web_search_url,
         data=data,
-        headers={"User-Agent": "Mozilla/5.0 (compatible; OSH/1.0)"},
+        headers={"User-Agent": "Mozilla/5.0 (compatible; fn-agent/1.0)"},
     )
     with urllib.request.urlopen(request) as response:
         body = response.read().decode("utf-8", errors="replace")
@@ -179,11 +179,11 @@ def _execute(code):
             if tree.body and isinstance(tree.body[-1], ast.Expr):
                 prefix = ast.Module(body=tree.body[:-1], type_ignores=[])
                 if prefix.body:
-                    exec(compile(prefix, "<osh-repl>", "exec"), _user_globals)
+                    exec(compile(prefix, "<fn-repl>", "exec"), _user_globals)
                 expression = ast.Expression(tree.body[-1].value)
-                value = eval(compile(expression, "<osh-repl>", "eval"), _user_globals)
+                value = eval(compile(expression, "<fn-repl>", "eval"), _user_globals)
             else:
-                exec(compile(tree, "<osh-repl>", "exec"), _user_globals)
+                exec(compile(tree, "<fn-repl>", "exec"), _user_globals)
         rendered = output.getvalue()
         if value is not None:
             rendered += repr(value)

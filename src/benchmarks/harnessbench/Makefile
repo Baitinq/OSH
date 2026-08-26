@@ -10,8 +10,8 @@ smoke:
 	.venv/bin/python benchmark.py run --label "$(LABEL)" --first 27 --last 27
 
 quick:
-	@test -n "$(LABEL)" || (echo "usage: make quick LABEL=<name> [HARNESS=osh|codex|pi|both]" >&2; exit 2)
-	.venv/bin/python benchmark.py run --label "$(LABEL)" --harness "$(or $(HARNESS),osh)" --first 27 --last 55 --step 2
+	@test -n "$(LABEL)" || (echo "usage: make quick LABEL=<name> [HARNESS=fn|codex|pi|both]" >&2; exit 2)
+	.venv/bin/python benchmark.py run --label "$(LABEL)" --harness "$(or $(HARNESS),fn)" --first 27 --last 55 --step 2
 
 run:
 	@test -n "$(LABEL)" || (echo "usage: make run LABEL=<name>" >&2; exit 2)

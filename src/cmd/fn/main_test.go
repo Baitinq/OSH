@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"osh/internal/agent"
+	"fn/internal/agent"
 )
 
 func TestRequireOpenAIAPIKey(t *testing.T) {

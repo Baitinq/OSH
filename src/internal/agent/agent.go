@@ -18,7 +18,7 @@ import (
 	"github.com/openai/openai-go/v3/shared"
 )
 
-const systemPrompt = `You are an expert general-purpose assistant operating inside OSH, a terminal agent harness. You help users answer questions and complete tasks by reasoning, inspecting the environment, running code, and modifying files.
+const systemPrompt = `You are an expert general-purpose assistant operating inside fn agent, a terminal agent harness. You help users answer questions and complete tasks by reasoning, inspecting the environment, running code, and modifying files.
 
 Available tool:
 - repl: Execute Python in a persistent REPL. Python variables, imports, functions, and tool results survive across calls.
@@ -233,9 +233,9 @@ func New() *Agent {
 	return &Agent{
 		// Keep retries at the visible agent layer. The SDK otherwise retries
 		// silently, making a disconnected network look like a hung request.
-		client:          openai.NewClient(option.WithBaseURL(envOrDefault("OSH_BASE_URL", defaultBaseURL)), option.WithMaxRetries(0)),
-		modelName:       envOrDefault("OSH_MODEL", defaultModelName),
-		reasoningEffort: shared.ReasoningEffort(envOrDefault("OSH_REASONING_EFFORT", string(defaultReasoningEffort))),
+		client:          openai.NewClient(option.WithBaseURL(envOrDefault("FN_BASE_URL", defaultBaseURL)), option.WithMaxRetries(0)),
+		modelName:       envOrDefault("FN_MODEL", defaultModelName),
+		reasoningEffort: shared.ReasoningEffort(envOrDefault("FN_REASONING_EFFORT", string(defaultReasoningEffort))),
 		instructions:    buildSystemPromptWithSkills(cwd, skills),
 		maxRetries:      maxLLMRetries,
 		retryBaseDelay:  retryBaseDelay,

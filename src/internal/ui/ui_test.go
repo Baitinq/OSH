@@ -32,7 +32,7 @@ func (r *testRuntime) runNext(t *testing.T) {
 	}
 }
 
-func newState(respond func(string, <-chan string, func(toolEvent), context.Context) response) (*oshUI, *testRuntime) {
+func newState(respond func(string, <-chan string, func(toolEvent), context.Context) response) (*fnUI, *testRuntime) {
 	runtime := newTestRuntime()
 	s := newUI(testModelName, testReasoningEffort, respond)
 	s.ensureTextarea()

@@ -1,6 +1,6 @@
-# OSH vs Pi: HarnessBench
+# fn agent vs Pi: HarnessBench
 
-This is a lightweight, paired comparison of OSH and Pi using the upstream
+This is a lightweight, paired comparison of fn agent and Pi using the upstream
 [HarnessBench](https://github.com/Qihoo360/harness-bench) task fixtures and
 programmatic oracles. It does not use Harbor or rebuild benchmark scoring.
 
@@ -24,15 +24,15 @@ scoring deterministic and avoids judging one agent with another model. A task is
 a headline pass only when its oracle outcome score is 1. Partial outcome scores
 are retained and included in the mean.
 
-This compares the installed Pi configuration with the current OSH checkout.
-Pi and OSH use their normal non-interactive print modes with installed resources
+This compares the installed Pi configuration with the current fn agent checkout.
+Pi and fn agent use their normal non-interactive print modes with installed resources
 enabled. Pi receives the task prompt on stdin so long prompts are not passed as
 command-line arguments.
 
 ## Requirements
 
 - macOS with Python, Go, Node.js, and `uv`
-- OSH's configured Responses API available through `OSH_BASE_URL`
+- fn agent's configured Responses API available through `FN_BASE_URL`
 - Pi configured for the native OpenAI provider
 - API credentials for both harnesses
 
@@ -47,7 +47,7 @@ make setup
 ```
 
 Setup pins upstream HarnessBench to commit `1025086a`, installs it in a Python
-3.12 virtual environment, and builds the current native OSH binary. The upstream
+3.12 virtual environment, and builds the current native fn agent binary. The upstream
 checkout and build products stay under the ignored `.cache/` directory.
 
 ## Validate both adapters
@@ -68,20 +68,20 @@ workspaces instead of drawing conclusions from only a few coding tasks.
 make quick LABEL=current
 ```
 
-It takes about 14 minutes with OSH on this Mac. Override `HARNESS=codex` for the same slice with Codex. Use `HARNESS=pi` to run the same slice with Pi. Fifteen tasks are still a
+It takes about 14 minutes with fn agent on this Mac. Override `HARNESS=codex` for the same slice with Codex. Use `HARNESS=pi` to run the same slice with Pi. Fifteen tasks are still a
 screening benchmark; use the 30-task suite and repeated runs before making a
 high-confidence decision.
 
 ## Run the 30-task comparison
 
 ```sh
-make run LABEL=osh-vs-pi
+make run LABEL=fn-vs-pi
 ```
 
-Run only OSH when establishing a standalone baseline:
+Run only fn agent when establishing a standalone baseline:
 
 ```sh
-.venv/bin/python benchmark.py run --label osh-baseline --harness osh
+.venv/bin/python benchmark.py run --label fn-baseline --harness fn
 ```
 
 The complete comparison can take one to several hours and consumes 60 model
@@ -116,7 +116,7 @@ Each run is isolated under `results/<label>/`:
 Reprint a summary with:
 
 ```sh
-.venv/bin/python benchmark.py report results/osh-vs-pi
+.venv/bin/python benchmark.py report results/fn-vs-pi
 ```
 
 ## Interpretation
