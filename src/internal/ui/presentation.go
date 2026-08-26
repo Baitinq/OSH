@@ -148,7 +148,7 @@ func completedRequestMessage(startedAt, finishedAt time.Time) string {
 	if startedAt.IsZero() {
 		return ""
 	}
-	return "Done in " + formatToolDuration(finishedAt.Sub(startedAt))
+	return "Done in " + formatToolDuration(finishedAt.Sub(startedAt)) + " at " + finishedAt.Format("15:04")
 }
 
 func formatToolDuration(d time.Duration) string {

@@ -510,7 +510,7 @@ func TestWorkingDurationFormatsElapsedRequestTime(t *testing.T) {
 
 func TestCompletedRequestMessage(t *testing.T) {
 	started := time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC)
-	if got := completedRequestMessage(started, started.Add(1250*time.Millisecond)); got != "Done in 1.2s" {
+	if got := completedRequestMessage(started, started.Add(1250*time.Millisecond)); got != "Done in 1.2s at 00:00" {
 		t.Fatalf("completed request message = %q", got)
 	}
 	if got := completedRequestMessage(time.Time{}, started); got != "" {
