@@ -15,6 +15,7 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
+	"github.com/openai/openai-go/v3/responses"
 )
 
 func TestNewUsesEnvironmentOverrides(t *testing.T) {
@@ -115,6 +116,36 @@ func TestConsumeSteeringDeliversOneMessageAtATime(t *testing.T) {
 	}
 	if a.consumeSteering(steer, emit) {
 		t.Fatal("empty steering queue reported a message")
+	}
+}
+
+func TestPruneTransientHistoryKeepsConversationAndREPLCalls(t *testing.T) {
+	prior := &responses.ResponseOutputMessageParam{ID: "prior"}
+	intermediate := &responses.ResponseOutputMessageParam{ID: "intermediate"}
+	final := &responses.ResponseOutputMessageParam{ID: "final"}
+	a := &Agent{history: []responses.ResponseInputItemUnionParam{
+		responses.ResponseInputItemParamOfMessage("first", responses.EasyInputMessageRoleUser),
+		{OfOutputMessage: prior},
+		responses.ResponseInputItemParamOfMessage("second", responses.EasyInputMessageRoleUser),
+		{OfReasoning: &responses.ResponseReasoningItemParam{}},
+		{OfOutputMessage: intermediate},
+		{OfFunctionCall: &responses.ResponseFunctionToolCallParam{}},
+		{OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{}},
+		{OfOutputMessage: final},
+	}}
+
+	a.pruneTransientHistory(map[*responses.ResponseOutputMessageParam]bool{intermediate: true})
+
+	if len(a.history) != 6 {
+		t.Fatalf("retained history = %#v", a.history)
+	}
+	if a.history[0].OfMessage == nil || a.history[1].OfOutputMessage != prior ||
+		a.history[2].OfMessage == nil || a.history[3].OfFunctionCall == nil ||
+		a.history[4].OfFunctionCallOutput == nil || a.history[5].OfOutputMessage != final {
+		t.Fatalf("retained history = %#v", a.history)
+	}
+	if output := a.history[4].OfFunctionCallOutput.Output.OfString.Value; output != omittedREPLResult {
+		t.Fatalf("retained REPL output = %q", output)
 	}
 }
 
@@ -231,6 +262,80 @@ func TestRespondRetriesTransientFailures(t *testing.T) {
 	}
 	if len(retries) != 2 || retries[0].Attempt != 1 || retries[0].Delay != time.Millisecond || retries[1].Attempt != 2 || retries[1].Delay != 2*time.Millisecond {
 		t.Fatalf("retry events = %#v", retries)
+	}
+}
+
+func TestRespondDropsCompletedToolHistoryFromLaterTurns(t *testing.T) {
+	var requests []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Errorf("decode request: %v", err)
+			return
+		}
+		requests = append(requests, request)
+
+		var output []any
+		switch len(requests) {
+		case 1:
+			output = []any{map[string]any{
+				"id": "fc_test", "type": "function_call", "call_id": "call_test",
+				"name": "repl", "arguments": `{"code":"saved = ''.join(map(chr, [83, 69, 67, 82, 69, 84])); print(saved)"}`, "status": "completed",
+			}}
+		case 2:
+			output = []any{map[string]any{
+				"id": "msg_first", "type": "message", "role": "assistant", "status": "completed",
+				"content": []any{map[string]any{"type": "output_text", "text": "first answer", "annotations": []any{}}},
+			}}
+		case 3:
+			output = []any{map[string]any{
+				"id": "msg_second", "type": "message", "role": "assistant", "status": "completed",
+				"content": []any{map[string]any{"type": "output_text", "text": "second answer", "annotations": []any{}}},
+			}}
+		}
+		payload, _ := json.Marshal(map[string]any{
+			"type": "response.completed", "sequence_number": 1,
+			"response": map[string]any{
+				"id": "resp_test", "object": "response", "model": "test", "status": "completed", "output": output,
+			},
+		})
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "event: response.completed\ndata: %s\n\n", payload)
+	}))
+	defer server.Close()
+
+	a := &Agent{
+		client:       openai.NewClient(option.WithAPIKey("test"), option.WithBaseURL(server.URL+"/"), option.WithMaxRetries(0)),
+		modelName:    "test",
+		instructions: "test",
+		maxRetries:   0,
+	}
+	defer a.Close()
+	if response := a.Respond("first question", nil, func(ToolEvent) {}, t.Context()); response.Err != nil {
+		t.Fatal(response.Err)
+	}
+	if response := a.Respond("second question", nil, func(ToolEvent) {}, t.Context()); response.Err != nil {
+		t.Fatal(response.Err)
+	}
+
+	if len(requests) != 3 {
+		t.Fatalf("requests = %d, want 3", len(requests))
+	}
+	activeTurn, _ := json.Marshal(requests[1]["input"])
+	if !strings.Contains(string(activeTurn), "function_call") || !strings.Contains(string(activeTurn), "SECRET") {
+		t.Fatalf("active turn did not include complete tool history: %s", activeTurn)
+	}
+	laterTurn, _ := json.Marshal(requests[2]["input"])
+	if !strings.Contains(string(laterTurn), "function_call") || !strings.Contains(string(laterTurn), "saved =") {
+		t.Fatalf("later turn omitted the REPL code cell: %s", laterTurn)
+	}
+	if strings.Contains(string(laterTurn), "SECRET") || !strings.Contains(string(laterTurn), omittedREPLResult) {
+		t.Fatalf("later turn did not replace the REPL result: %s", laterTurn)
+	}
+	for _, text := range []string{"first question", "first answer", "second question"} {
+		if !strings.Contains(string(laterTurn), text) {
+			t.Fatalf("later turn omitted %q: %s", text, laterTurn)
+		}
 	}
 }
 
