@@ -1,0 +1,128 @@
+# OSH vs Pi: HarnessBench
+
+This is a lightweight, paired comparison of OSH and Pi using the upstream
+[HarnessBench](https://github.com/Qihoo360/harness-bench) task fixtures and
+programmatic oracles. It does not use Harbor or rebuild benchmark scoring.
+
+The default suite contains tasks 027–056: 30 deterministic office, retrieval,
+software-engineering, and data-analysis workspaces. Each task runs once through
+each harness, for 60 agent runs total. The order alternates by task to reduce
+systematic time-of-run bias.
+
+## Controlled variables
+
+Both harnesses receive the same task prompt, fresh fixture workspace, model,
+reasoning level, and 15-minute timeout. The defaults are:
+
+- Model: `openai/gpt-5.6-sol`
+- Reasoning: `medium`
+- Pi provider: native `openai`
+- Outcome: upstream HarnessBench `oracle_result.outcome_score`
+
+Optional HarnessBench LLM process and quality graders are disabled. This keeps
+scoring deterministic and avoids judging one agent with another model. A task is
+a headline pass only when its oracle outcome score is 1. Partial outcome scores
+are retained and included in the mean.
+
+This compares the installed Pi configuration with the current OSH checkout.
+Pi and OSH use their normal non-interactive print modes with installed resources
+enabled. Pi receives the task prompt on stdin so long prompts are not passed as
+command-line arguments.
+
+## Requirements
+
+- macOS with Python, Go, Node.js, and `uv`
+- OSH's configured Responses API available through `OSH_BASE_URL`
+- Pi configured for the native OpenAI provider
+- API credentials for both harnesses
+
+No task Docker images are needed. Fixture workspaces and results are small.
+
+## Set up
+
+From `src/benchmarks/harnessbench`:
+
+```sh
+make setup
+```
+
+Setup pins upstream HarnessBench to commit `1025086a`, installs it in a Python
+3.12 virtual environment, and builds the current native OSH binary. The upstream
+checkout and build products stay under the ignored `.cache/` directory.
+
+## Validate both adapters
+
+Run one task through both harnesses before starting all 60 runs:
+
+```sh
+make smoke LABEL=adapter-smoke
+```
+
+## Quick benchmark
+
+For routine iteration, use a systematic 15-task sample: every other task from
+027 through 055. It spans office, retrieval, software-engineering, and data
+workspaces instead of drawing conclusions from only a few coding tasks.
+
+```sh
+make quick LABEL=current
+```
+
+It takes about 14 minutes with OSH on this Mac. Override `HARNESS=codex` for the same slice with Codex. Use `HARNESS=pi` to run the same slice with Pi. Fifteen tasks are still a
+screening benchmark; use the 30-task suite and repeated runs before making a
+high-confidence decision.
+
+## Run the 30-task comparison
+
+```sh
+make run LABEL=osh-vs-pi
+```
+
+Run only OSH when establishing a standalone baseline:
+
+```sh
+.venv/bin/python benchmark.py run --label osh-baseline --harness osh
+```
+
+The complete comparison can take one to several hours and consumes 60 model
+sessions. It is deliberately sequential so local proxy load and task ordering
+stay predictable.
+
+Choose a smaller or different contiguous range when iterating:
+
+```sh
+.venv/bin/python benchmark.py run --label code-only --first 39 --last 48
+```
+
+Override controlled settings explicitly when needed:
+
+```sh
+.venv/bin/python benchmark.py run --label low-reasoning \
+  --model openai/gpt-5.6-sol --reasoning-effort low \
+  --pi-provider openai --timeout 600
+```
+
+## Results
+
+Each run is isolated under `results/<label>/`:
+
+- `metadata.json`: model, harness versions, binary hash, task IDs, and host
+- `records.jsonl`: paired outcome, adapter status, latency, and errors
+- `summary.json`: pass rates, mean outcome score, and paired results
+- `raw/`: untouched upstream HarnessBench result JSON
+- `work/`: retained task workspaces for diagnosis
+- `logs/`: one runner log per harness and task
+
+Reprint a summary with:
+
+```sh
+.venv/bin/python benchmark.py report results/osh-vs-pi
+```
+
+## Interpretation
+
+This is a diagnostic harness comparison, not a replacement for SWE-bench. It has
+more samples and far lower setup cost, but many tasks create structured artifacts
+rather than patches in large repositories. Use paired disagreements to inspect
+where one harness behaves better, and keep the two-task SWE-bench smoke result as
+a separate real-repository check.
