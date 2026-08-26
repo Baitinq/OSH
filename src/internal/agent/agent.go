@@ -267,9 +267,9 @@ func tailBytesUTF8(output string, limit int) string {
 	return output[start:]
 }
 
-// limitToolOutput mirrors Pi's shell limits: keep the last 2,000 lines or
-// 50KB, whichever is reached first, and leave the complete output in a private
-// temporary file so it remains available when deeper inspection is needed.
+// limitToolOutput keeps the last 2,000 lines or 50KB, whichever is reached
+// first. Large results should be assigned to a persistent Python variable when
+// the complete output needs further inspection.
 func limitToolOutput(output string) string {
 	totalLines, totalBytes := toolOutputLineCount(output), len(output)
 	if totalLines <= maxToolOutputLines && totalBytes <= maxToolOutputBytes {
@@ -291,22 +291,8 @@ func limitToolOutput(output string) string {
 	}
 	limited = tailBytesUTF8(limited, maxToolOutputBytes)
 
-	path := ""
-	if file, err := os.CreateTemp("", "osh-tool-output-*.log"); err == nil {
-		path = file.Name()
-		if _, err := file.WriteString(output); err != nil {
-			path = ""
-		}
-		if err := file.Close(); err != nil {
-			path = ""
-		}
-	}
-
 	shownLines := toolOutputLineCount(limited)
-	footer := fmt.Sprintf("Tool output truncated: showing last %d of %d lines (%dKB limit).", shownLines, totalLines, maxToolOutputBytes/1024)
-	if path != "" {
-		footer += " Full output: " + path
-	}
+	footer := fmt.Sprintf("Tool output truncated: showing last %d of %d lines (%dKB limit). Assign large results to a Python variable and inspect them incrementally.", shownLines, totalLines, maxToolOutputBytes/1024)
 	return strings.TrimSuffix(limited, "\n") + "\n\n[" + footer + "]"
 }
 

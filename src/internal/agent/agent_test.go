@@ -118,7 +118,7 @@ func TestConsumeSteeringDeliversOneMessageAtATime(t *testing.T) {
 	}
 }
 
-func TestLimitToolOutputKeepsTailAndSavesFullOutput(t *testing.T) {
+func TestLimitToolOutputKeepsTail(t *testing.T) {
 	var full strings.Builder
 	for i := 1; i <= maxToolOutputLines+10; i++ {
 		fmt.Fprintf(&full, "line-%04d\n", i)
@@ -127,17 +127,8 @@ func TestLimitToolOutputKeepsTailAndSavesFullOutput(t *testing.T) {
 	if strings.Contains(limited, "line-0001") || !strings.Contains(limited, "line-2010") {
 		t.Fatalf("limited output did not retain the tail: prefix=%q suffix=%q", limited[:min(100, len(limited))], limited[max(0, len(limited)-100):])
 	}
-	if !strings.Contains(limited, "Tool output truncated:") || !strings.Contains(limited, "Full output:") {
-		t.Fatalf("limited output lacks truncation details: %q", limited[max(0, len(limited)-300):])
-	}
-	path := strings.TrimSuffix(strings.Split(limited, "Full output: ")[1], "]")
-	t.Cleanup(func() { _ = os.Remove(path) })
-	saved, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(saved) != full.String() {
-		t.Fatalf("saved output length = %d, want %d", len(saved), full.Len())
+	if !strings.Contains(limited, "Tool output truncated:") || !strings.Contains(limited, "Assign large results to a Python variable") {
+		t.Fatalf("limited output lacks truncation guidance: %q", limited[max(0, len(limited)-300):])
 	}
 }
 
@@ -149,10 +140,6 @@ func TestLimitToolOutputRespectsByteLimitAndUTF8(t *testing.T) {
 	}
 	if !strings.Contains(limited, "50KB limit") {
 		t.Fatalf("byte limit was not reported: %q", limited[max(0, len(limited)-200):])
-	}
-	if parts := strings.Split(limited, "Full output: "); len(parts) == 2 {
-		path := strings.TrimSuffix(parts[1], "]")
-		t.Cleanup(func() { _ = os.Remove(path) })
 	}
 }
 
