@@ -1187,12 +1187,12 @@ func TestRenderedMarkdownUsesPiColors(t *testing.T) {
 	}
 }
 
-func TestRenderREPLToolUsesPythonPrompt(t *testing.T) {
+func TestRenderREPLToolAsCodeCell(t *testing.T) {
 	msg := message{
 		role: "tool", toolName: "repl", toolCommand: "value = shell(\"pwd\")", toolState: "success",
 	}
 	plain := stripANSI(renderedMessage(msg, 80))
-	if !strings.Contains(plain, `>>> value = shell("pwd")`) || strings.Contains(plain, `$ value`) {
+	if !strings.Contains(plain, "python") || !strings.Contains(plain, `value = shell("pwd")`) || strings.Contains(plain, ">>>") {
 		t.Fatalf("REPL tool rendering = %q", plain)
 	}
 }

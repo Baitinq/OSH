@@ -36,33 +36,22 @@ osh -p "summarize the changes in this repository"
 # --print is equivalent to -p
 ```
 
-Print mode gives the child agent the same tools and project context as interactive
-mode, so an OSH agent can use it to spawn another OSH agent recursively.
-
 ## Configuration
 
-The endpoint and model are intentionally configured as constants near the top of
-`src/internal/agent/agent.go`:
+`OPENAI_API_KEY` must be set. OSH also supports these optional environment
+overrides:
 
-```go
-const baseURL = "https://api.openai.com/v1/"
-const modelName = "gpt-5.6-sol"
-```
+| Variable | Default |
+| --- | --- |
+| `OSH_BASE_URL` | `https://api.openai.com/v1/` |
+| `OSH_MODEL` | `gpt-5.6-sol` |
+| `OSH_REASONING_EFFORT` | `medium` |
+| `OSH_PYTHON` | `python3` |
 
-Edit these values to use another provider. `OPENAI_API_KEY` remains an environment
-variable so credentials are not committed to source control. For local servers
-that ignore authentication, use any non-empty value.
-
-For example:
-
-```go
-const baseURL = "http://localhost:11434/v1/"
-const modelName = "your-model-name"
-```
-
-The configured server must implement the OpenAI **Responses API** (`POST
-/responses`), including function tool calls. Compatibility limited to the Chat
-Completions API is not sufficient.
+For local servers that ignore authentication, use any non-empty API key. The
+configured server must implement the OpenAI **Responses API** (`POST /responses`),
+including function tool calls. Compatibility limited to the Chat Completions API
+is not sufficient.
 
 ## Persistent REPL
 
@@ -81,13 +70,11 @@ hits = web_search("latest Go release")
 Assignments stay in the REPL; only printed output and the final expression are returned
 to the model. The Python environment performs command execution and web requests directly.
 
-Set `OSH_PYTHON` to override the default `python3` executable.
-
 ## MCP
 
 OSH keeps MCP out of its core, following the same CLI-first approach as Pi. The
-agent knows it can use [MCPorter](https://mcporter.sh) through its shell tool to
-discover and invoke MCP servers:
+agent knows it can use [MCPorter](https://mcporter.sh) through `shell()` to discover
+and invoke MCP servers:
 
 ```sh
 npx -y mcporter@latest list
@@ -105,7 +92,7 @@ than OSH.
 
 ## Web search
 
-OSH includes a keyless `web_search` tool backed by DuckDuckGo. It returns ranked
+OSH includes a keyless `web_search()` function backed by DuckDuckGo. It returns ranked
 result titles, URLs, and snippets so the agent can research current information;
 full pages can still be inspected with `shell("curl ...")`.
 
@@ -114,7 +101,7 @@ full pages can still be inspected with `shell("curl ...")`.
 - `Enter` — send a message; while responding, steer the active agent after its current tool-call batch
 - `Shift+Enter` — queue a follow-up until the active agent finishes
 - Reasoning summaries stream as italic gray text and remain in the transcript
-- REPL calls appear in Pi-style cards; model-visible output is capped at 2,000 lines or 50KB
+- REPL calls appear as Python code cells; model-visible output is capped at 2,000 lines or 50KB
 - `Ctrl+J` — insert a newline in the input editor
 - `↑` / `↓` — navigate previously submitted messages and return to the current draft
 - `Ctrl+C` — cancel the active response; press twice within one second to quit

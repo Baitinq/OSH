@@ -314,19 +314,24 @@ func renderedToolMessage(msg message, width int, now time.Time) string {
 	lines := []string{piBoxLine("", width, piText, bg, false)}
 	duration := toolDurationLabel(msg, now)
 	if msg.toolCommand != "" {
-		if duration != "" {
-			// Keep timing metadata on its own line above the command so it cannot
-			// be mistaken for part of a long or wrapped invocation.
-			lines = append(lines, piBoxLine(" "+strings.TrimSpace(duration), width, piText, bg, true))
-		}
-		command := "$ " + sanitizeTerminalText(msg.toolCommand)
-		if msg.toolName == "web_search" {
-			command = `web_search "` + sanitizeTerminalText(msg.toolCommand) + `"`
-		} else if msg.toolName == "repl" {
-			command = ">>> " + sanitizeTerminalText(msg.toolCommand)
+		command := sanitizeTerminalText(msg.toolCommand)
+		bold := true
+		if msg.toolName == "repl" {
+			lines = append(lines, piBoxLine(" python"+duration, width, piGray, bg, true))
+			bold = false
+		} else {
+			if duration != "" {
+				// Keep timing metadata on its own line above the command so it cannot
+				// be mistaken for part of a long or wrapped invocation.
+				lines = append(lines, piBoxLine(" "+strings.TrimSpace(duration), width, piText, bg, true))
+			}
+			command = "$ " + command
+			if msg.toolName == "web_search" {
+				command = `web_search "` + sanitizeTerminalText(msg.toolCommand) + `"`
+			}
 		}
 		for _, line := range wrapPlain(command, inner) {
-			lines = append(lines, piBoxLine(" "+line, width, piText, bg, true))
+			lines = append(lines, piBoxLine(" "+line, width, piText, bg, bold))
 		}
 	} else if msg.toolName != "" {
 		lines = append(lines, piBoxLine(" "+sanitizeTerminalText(msg.toolName)+duration, width, piText, bg, true))
