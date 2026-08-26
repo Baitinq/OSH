@@ -1,6 +1,12 @@
-# fn agent
+<h1 align="center">fn agent</h1>
 
-**A programmable terminal agent.**
+<p align="center"><strong>A programmable terminal agent.</strong></p>
+
+<p align="center">
+  <a href="src/go.mod"><img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.26+"></a>
+  <a href="#requirements"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+"></a>
+  <a href="#configuration"><img src="https://img.shields.io/badge/API-OpenAI_Responses-111111?style=flat-square&logo=openai&logoColor=white" alt="OpenAI Responses API"></a>
+</p>
 
 `fn` gives an OpenAI model one persistent Python environment for reasoning, tools,
 and working memory. Python variables, imports, and results survive across calls, so
