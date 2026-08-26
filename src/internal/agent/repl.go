@@ -79,6 +79,7 @@ def shell(command, timeout=None):
         command,
         shell=True,
         executable="/bin/sh",
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

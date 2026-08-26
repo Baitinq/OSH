@@ -401,6 +401,15 @@ func TestPythonREPLCancellationPreservesState(t *testing.T) {
 	}
 }
 
+func TestPythonREPLShellDoesNotInheritProtocolInput(t *testing.T) {
+	repl := newPythonREPL()
+	t.Cleanup(repl.close)
+	output, failed, err := repl.execute(t.Context(), `result = shell("if read line; then printf data; else printf eof; fi", 0.1); (result.stdout, result.exit_code, result.error)`)
+	if err != nil || failed || output != "('eof', 0, None)" {
+		t.Fatalf("shell result = %q, failed=%v, error=%v", output, failed, err)
+	}
+}
+
 func TestPythonREPLShellTimeout(t *testing.T) {
 	repl := newPythonREPL()
 	t.Cleanup(repl.close)
