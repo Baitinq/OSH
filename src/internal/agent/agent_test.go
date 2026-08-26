@@ -385,18 +385,19 @@ func TestPythonREPLReportsPythonErrorsWithoutLosingState(t *testing.T) {
 	}
 }
 
-func TestPythonREPLCancellationRestartsInterpreter(t *testing.T) {
+func TestPythonREPLCancellationPreservesState(t *testing.T) {
 	repl := newPythonREPL()
 	t.Cleanup(repl.close)
+	_, _, _ = repl.execute(t.Context(), "saved = 42")
 	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	defer cancel()
 	_, _, err := repl.execute(ctx, `shell("sleep 10 | cat")`)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("cancellation error = %v", err)
 	}
-	output, failed, err := repl.execute(t.Context(), "6 * 7")
+	output, failed, err := repl.execute(t.Context(), "saved")
 	if err != nil || failed || output != "42" {
-		t.Fatalf("restarted result = %q, failed=%v, error=%v", output, failed, err)
+		t.Fatalf("preserved result = %q, failed=%v, error=%v", output, failed, err)
 	}
 }
 

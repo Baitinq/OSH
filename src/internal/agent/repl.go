@@ -33,6 +33,7 @@ import urllib.request
 _protocol_in = sys.stdin
 _protocol_out = sys.stdout
 _active_process = None
+_executing = False
 _web_search_url = "https://html.duckduckgo.com/html/"
 
 @dataclasses.dataclass
@@ -47,15 +48,27 @@ class SearchResult:
     url: str
     snippet: str
 
-def _stop_active_process(*_):
+def _kill_active_process():
     if _active_process is not None and _active_process.poll() is None:
         try:
             os.killpg(_active_process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+
+def _stop_repl(*_):
+    _kill_active_process()
     os._exit(143)
 
-signal.signal(signal.SIGTERM, _stop_active_process)
+def _interrupt_execution(*_):
+    global _executing
+    if not _executing:
+        return
+    _executing = False
+    _kill_active_process()
+    raise KeyboardInterrupt
+
+signal.signal(signal.SIGTERM, _stop_repl)
+signal.signal(signal.SIGINT, _interrupt_execution)
 
 def shell(command, timeout=None):
     """Run a shell command and return ShellResult with combined stdout/stderr."""
@@ -79,6 +92,9 @@ def shell(command, timeout=None):
             os.killpg(process.pid, signal.SIGKILL)
             output, _ = process.communicate()
             return ShellResult(output, -1, f"timeout:{timeout:g}")
+        except KeyboardInterrupt:
+            process.wait()
+            raise
         error = None if process.returncode == 0 else f"exit status {process.returncode}"
         return ShellResult(output, process.returncode, error)
     finally:
@@ -165,9 +181,12 @@ def _execute(code):
 for line in _protocol_in:
     try:
         request = json.loads(line)
+        _executing = True
         response = _execute(request.get("code", ""))
     except BaseException:
         response = {"output": traceback.format_exc(), "error": True}
+    finally:
+        _executing = False
     _protocol_out.write(json.dumps(response) + "\n")
     _protocol_out.flush()
 `
@@ -263,8 +282,21 @@ func (r *pythonREPL) execute(ctx context.Context, code string) (string, bool, er
 	}()
 	select {
 	case <-ctx.Done():
-		r.stop()
-		return "", true, ctx.Err()
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		timeout := time.NewTimer(500 * time.Millisecond)
+		defer timeout.Stop()
+		for {
+			_ = r.cmd.Process.Signal(syscall.SIGINT)
+			select {
+			case <-read:
+				return "", true, ctx.Err()
+			case <-ticker.C:
+			case <-timeout.C:
+				r.stop()
+				return "", true, ctx.Err()
+			}
+		}
 	case result := <-read:
 		if result.err != nil {
 			r.stop()
