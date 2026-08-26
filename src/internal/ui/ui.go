@@ -39,18 +39,21 @@ type response struct {
 type toolEvent = agent.ToolEvent
 
 const (
-	toolEventAttemptFailed  = agent.ToolEventAttemptFailed
-	toolEventRetry          = agent.ToolEventRetry
-	toolEventRetryDone      = agent.ToolEventRetryDone
-	toolEventTextReset      = agent.ToolEventTextReset
-	toolEventReasoningDelta = agent.ToolEventReasoningDelta
-	toolEventReasoningDone  = agent.ToolEventReasoningDone
-	toolEventSteerConsumed  = agent.ToolEventSteerConsumed
-	toolEventTextDelta      = agent.ToolEventTextDelta
-	toolEventCall           = agent.ToolEventCall
-	toolEventUpdate         = agent.ToolEventUpdate
-	toolEventResult         = agent.ToolEventResult
-	toolEventError          = agent.ToolEventError
+	toolEventAttemptFailed    = agent.ToolEventAttemptFailed
+	toolEventCompactionStart  = agent.ToolEventCompactionStart
+	toolEventCompactionDone   = agent.ToolEventCompactionDone
+	toolEventCompactionFailed = agent.ToolEventCompactionFailed
+	toolEventRetry            = agent.ToolEventRetry
+	toolEventRetryDone        = agent.ToolEventRetryDone
+	toolEventTextReset        = agent.ToolEventTextReset
+	toolEventReasoningDelta   = agent.ToolEventReasoningDelta
+	toolEventReasoningDone    = agent.ToolEventReasoningDone
+	toolEventSteerConsumed    = agent.ToolEventSteerConsumed
+	toolEventTextDelta        = agent.ToolEventTextDelta
+	toolEventCall             = agent.ToolEventCall
+	toolEventUpdate           = agent.ToolEventUpdate
+	toolEventResult           = agent.ToolEventResult
+	toolEventError            = agent.ToolEventError
 )
 
 type pendingInput struct{ kind, text string }
@@ -219,6 +222,15 @@ func (s *oshUI) handleToolEvent(id int, ev toolEvent) {
 		return
 	}
 	switch ev.Kind {
+	case toolEventCompactionStart:
+		s.addMessage(message{role: "system", text: "Compacting context…"})
+		return
+	case toolEventCompactionDone:
+		s.addMessage(message{role: "status", text: ev.Detail})
+		return
+	case toolEventCompactionFailed:
+		s.addMessage(message{role: "error", text: "Context compaction failed: " + ev.Detail})
+		return
 	case toolEventAttemptFailed:
 		s.reasoningText.Reset()
 		s.resetStreamingText()

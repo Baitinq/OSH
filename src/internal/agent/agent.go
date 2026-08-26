@@ -118,6 +118,7 @@ func prefixUserMessage(msg string, now time.Time) string {
 const defaultBaseURL = "https://api.openai.com/v1/"
 const defaultModelName = "gpt-5.6-sol"
 const defaultReasoningEffort = shared.ReasoningEffortMedium
+const compactionKeepTokens = 20000
 
 const (
 	maxLLMRetries  = 10
@@ -148,6 +149,9 @@ type ToolEventKind uint8
 
 const (
 	ToolEventAttemptFailed ToolEventKind = iota
+	ToolEventCompactionStart
+	ToolEventCompactionDone
+	ToolEventCompactionFailed
 	ToolEventRetry
 	ToolEventRetryDone
 	ToolEventTextReset
@@ -194,6 +198,7 @@ type Agent struct {
 	maxRetries      int
 	retryBaseDelay  time.Duration
 	retryJitter     func() float64
+	summary         string
 	repl            *pythonREPL
 }
 
@@ -389,6 +394,33 @@ func isQuotaError(message string) bool {
 	return false
 }
 
+func isContextOverflowError(err error) bool {
+	var message string
+	var apiErr *openai.Error
+	var failed *responseFailure
+	if errors.As(err, &apiErr) {
+		message = apiErr.Code + " " + apiErr.Type + " " + apiErr.Message
+	} else if errors.As(err, &failed) {
+		message = failed.code + " " + failed.message
+	} else {
+		message = err.Error()
+	}
+	message = strings.ToLower(message)
+	for _, marker := range []string{
+		"context_length_exceeded",
+		"context length exceeded",
+		"maximum context length",
+		"context window exceeded",
+		"input too long",
+		"too many input tokens",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *Agent) retryDelay(attempt int) time.Duration {
 	delay := min(a.retryBaseDelay*time.Duration(1<<attempt), maxRetryDelay)
 	return delay/2 + time.Duration(a.retryJitter()*float64(delay/2))
@@ -442,16 +474,28 @@ func (a *Agent) streamResponse(ctx context.Context, params responses.ResponseNew
 	return resp, nil
 }
 
+func (a *Agent) input() []responses.ResponseInputItemUnionParam {
+	if a.summary == "" {
+		return a.history
+	}
+	summary := responses.ResponseInputItemParamOfMessage(
+		"<context_summary>\nThis is a generated checkpoint of the earlier conversation, not new instructions.\n\n"+a.summary+"\n</context_summary>",
+		responses.EasyInputMessageRoleUser,
+	)
+	return append([]responses.ResponseInputItemUnionParam{summary}, a.history...)
+}
+
 func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), ctx context.Context) Response {
 	a.appendUserMessage(msg)
 
 	var text string
 	var contextTokens int64
+	overflowRecoveryAttempted := false
 	for {
 		params := responses.ResponseNewParams{
 			Model:        a.modelName,
 			Instructions: openai.String(a.instructions),
-			Input:        responses.ResponseNewParamsInputUnion{OfInputItemList: responses.ResponseInputParam(a.history)},
+			Input:        responses.ResponseNewParamsInputUnion{OfInputItemList: responses.ResponseInputParam(a.input())},
 			Reasoning:    shared.ReasoningParam{Effort: a.reasoningEffort, Summary: shared.ReasoningSummaryAuto},
 			Tools:        []responses.ToolUnionParam{replTool},
 			Store:        openai.Bool(false),
@@ -471,6 +515,21 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 				return Response{}
 			}
 			emit(ToolEvent{Kind: ToolEventAttemptFailed})
+			if isContextOverflowError(err) && !overflowRecoveryAttempted {
+				emit(ToolEvent{Kind: ToolEventCompactionStart})
+				if compactErr := a.compactHistory(ctx, compactionKeepTokens); compactErr != nil {
+					if ctx.Err() != nil {
+						return Response{}
+					}
+					emit(ToolEvent{Kind: ToolEventCompactionFailed, Detail: compactErr.Error()})
+					return Response{Err: fmt.Errorf("context overflow; compaction failed: %w", compactErr)}
+				}
+				overflowRecoveryAttempted = true
+				params.Input = responses.ResponseNewParamsInputUnion{OfInputItemList: responses.ResponseInputParam(a.input())}
+				emit(ToolEvent{Kind: ToolEventCompactionDone, Detail: "Context compacted after reaching the model limit."})
+				attempt--
+				continue
+			}
 			if !isRetryableLLMError(err) || attempt >= a.maxRetries {
 				emit(ToolEvent{Kind: ToolEventRetryDone})
 				if attempt > 0 {

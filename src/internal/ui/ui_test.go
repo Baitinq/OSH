@@ -167,6 +167,18 @@ func TestToolEventsAreAddedToTranscript(t *testing.T) {
 	}
 }
 
+func TestCompactionEventsAreAddedToTranscript(t *testing.T) {
+	s, _ := newState(nil)
+	s.responding = true
+	s.nextRequestID = 1
+	s.handleToolEvent(1, toolEvent{Kind: toolEventCompactionStart})
+	s.handleToolEvent(1, toolEvent{Kind: toolEventCompactionDone, Detail: "Compacted context at 200000 tokens."})
+
+	if len(s.messages) != 2 || s.messages[0].role != "system" || s.messages[1].role != "status" {
+		t.Fatalf("compaction transcript = %#v", s.messages)
+	}
+}
+
 func TestToolUpdatesStreamIntoPendingCard(t *testing.T) {
 	s, _ := newState(nil)
 	s.responding = true

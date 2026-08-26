@@ -47,6 +47,8 @@ overrides:
 | `OSH_MODEL` | `gpt-5.6-sol` |
 | `OSH_REASONING_EFFORT` | `medium` |
 
+When a model rejects a request because its context limit was reached, OSH summarizes older context, preserves approximately 20,000 recent tokens verbatim, and retries the request once.
+
 For local servers that ignore authentication, use any non-empty API key. The
 configured server must implement the OpenAI **Responses API** (`POST /responses`),
 including function tool calls. Compatibility limited to the Chat Completions API

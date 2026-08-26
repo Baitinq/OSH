@@ -191,6 +191,21 @@ func TestIsRetryableLLMError(t *testing.T) {
 	}
 }
 
+func TestIsContextOverflowError(t *testing.T) {
+	for _, err := range []error{
+		&openai.Error{StatusCode: http.StatusBadRequest, Code: "context_length_exceeded"},
+		&responseFailure{message: "Maximum context length exceeded"},
+		fmt.Errorf("input too long for model"),
+	} {
+		if !isContextOverflowError(err) {
+			t.Errorf("did not recognize context overflow: %v", err)
+		}
+	}
+	if isContextOverflowError(&openai.Error{StatusCode: http.StatusBadRequest, Message: "invalid argument"}) {
+		t.Fatal("ordinary bad request was recognized as context overflow")
+	}
+}
+
 func TestRespondRetriesTransientFailures(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
