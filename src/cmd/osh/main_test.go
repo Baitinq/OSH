@@ -27,24 +27,26 @@ func TestParseArgs(t *testing.T) {
 		args      []string
 		prompt    string
 		printMode bool
+		sessionID string
 		wantErr   string
 	}{
 		{name: "interactive"},
+		{name: "resume", args: []string{"--session", "8cf10b8d-6b16-49d2-a9d2-40566bb7e620"}, sessionID: "8cf10b8d-6b16-49d2-a9d2-40566bb7e620"},
 		{name: "short print", args: []string{"-p", "inspect", "this"}, prompt: "inspect this", printMode: true},
 		{name: "long print", args: []string{"--print", "inspect this"}, prompt: "inspect this", printMode: true},
 		{name: "missing prompt", args: []string{"-p"}, wantErr: "requires a prompt"},
 		{name: "unexpected argument", args: []string{"hello"}, wantErr: "use -p"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			prompt, printMode, err := parseArgs(test.args)
+			prompt, printMode, sessionID, err := parseArgs(test.args)
 			if test.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
 					t.Fatalf("error = %v, want containing %q", err, test.wantErr)
 				}
 				return
 			}
-			if err != nil || prompt != test.prompt || printMode != test.printMode {
-				t.Fatalf("parseArgs() = %q, %v, %v", prompt, printMode, err)
+			if err != nil || prompt != test.prompt || printMode != test.printMode || sessionID != test.sessionID {
+				t.Fatalf("parseArgs() = %q, %v, %q, %v", prompt, printMode, sessionID, err)
 			}
 		})
 	}

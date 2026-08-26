@@ -195,6 +195,7 @@ type Agent struct {
 	maxRetries      int
 	retryBaseDelay  time.Duration
 	retryJitter     func() float64
+	sessionID       string
 }
 
 func envOrDefault(name, fallback string) string {
@@ -629,5 +630,8 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 		a.consumeSteering(steer, emit)
 	}
 
+	if err := a.saveSession(); err != nil {
+		return Response{Text: text, ContextTokens: contextTokens, Err: fmt.Errorf("save session: %w", err)}
+	}
 	return Response{Text: text, ContextTokens: contextTokens}
 }

@@ -19,24 +19,25 @@ func requireOpenAIAPIKey() error {
 	return nil
 }
 
-func parseArgs(args []string) (string, bool, error) {
+func parseArgs(args []string) (string, bool, string, error) {
 	flags := flag.NewFlagSet("osh", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	printMode := flags.Bool("p", false, "print the response without starting the UI")
+	sessionID := flags.String("session", "", "resume a session by UUID")
 	flags.BoolVar(printMode, "print", false, "print the response without starting the UI")
 	if err := flags.Parse(args); err != nil {
-		return "", false, err
+		return "", false, "", err
 	}
 	if !*printMode {
 		if flags.NArg() > 0 {
-			return "", false, fmt.Errorf("unexpected arguments; use -p to run in print mode")
+			return "", false, "", fmt.Errorf("unexpected arguments; use -p to run in print mode")
 		}
-		return "", false, nil
+		return "", false, *sessionID, nil
 	}
 	if flags.NArg() == 0 {
-		return "", false, fmt.Errorf("print mode requires a prompt")
+		return "", false, "", fmt.Errorf("print mode requires a prompt")
 	}
-	return strings.Join(flags.Args(), " "), true, nil
+	return strings.Join(flags.Args(), " "), true, *sessionID, nil
 }
 
 func printResponse(prompt string, respond func(string, <-chan string, func(agent.ToolEvent), context.Context) agent.Response, out io.Writer) error {
@@ -55,18 +56,21 @@ func printResponse(prompt string, respond func(string, <-chan string, func(agent
 }
 
 func run(args []string, stdout io.Writer) error {
-	prompt, printMode, err := parseArgs(args)
+	prompt, printMode, sessionID, err := parseArgs(args)
 	if err != nil {
 		return err
 	}
 	if err := requireOpenAIAPIKey(); err != nil {
 		return err
 	}
-	a := agent.New()
+	a, err := agent.NewSession(sessionID)
+	if err != nil {
+		return err
+	}
 	if printMode {
 		return printResponse(prompt, a.Respond, stdout)
 	}
-	return ui.Run(a.ModelName(), a.ReasoningEffort(), a.Respond)
+	return ui.Run(a.ModelName(), a.ReasoningEffort(), a.SessionID(), a.Transcript(), a.Respond)
 }
 
 func main() {

@@ -666,7 +666,7 @@ func (s *oshUI) handleKey(k tui.KeyEvent) bool {
 	return true
 }
 
-func Run(modelName, reasoningEffort string, respond func(string, <-chan string, func(agent.ToolEvent), context.Context) agent.Response) error {
+func Run(modelName, reasoningEffort, sessionID string, transcript []agent.TranscriptItem, respond func(string, <-chan string, func(agent.ToolEvent), context.Context) agent.Response) error {
 	term, err := tui.NewANSITerminal(os.Stdout, os.Stdin)
 	if err != nil {
 		return err
@@ -701,6 +701,17 @@ func Run(modelName, reasoningEffort string, respond func(string, <-chan string, 
 		result := respond(input, steer, emit, ctx)
 		return response{Text: result.Text, ContextTokens: result.ContextTokens, Err: result.Err}
 	})
+	root.messages = append(root.messages, message{role: "system", text: "Session " + sessionID})
+	for _, item := range transcript {
+		msg := message{role: item.Role, text: item.Text, toolID: item.ToolID, toolName: item.ToolName, toolCommand: item.ToolCommand, toolResult: item.ToolResult}
+		if item.Role == "tool" {
+			msg.toolState = "success"
+		}
+		root.messages = append(root.messages, msg)
+		if item.Role == "you" {
+			root.inputHistory = append(root.inputHistory, item.Text)
+		}
+	}
 	root.dispatch = func(fn func()) { updates <- fn }
 	// Run serializes every state mutation below and marks the corresponding
 	// branch dirty, so state-level invalidation does not need a second wakeup.
