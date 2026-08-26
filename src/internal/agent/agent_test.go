@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,42 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 )
+
+func TestNewUsesEnvironmentOverrides(t *testing.T) {
+	var request map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/custom/v1/responses" {
+			t.Errorf("request path = %q", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Errorf("decode request: %v", err)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":1,\"response\":{\"id\":\"resp_test\",\"object\":\"response\",\"model\":\"override-model\",\"status\":\"completed\",\"output\":[]}}\n\n")
+	}))
+	defer server.Close()
+
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("OSH_BASE_URL", server.URL+"/custom/v1/")
+	t.Setenv("OSH_MODEL", "override-model")
+	t.Setenv("OSH_REASONING_EFFORT", "high")
+
+	a := New()
+	if a.ModelName() != "override-model" || a.ReasoningEffort() != "high" {
+		t.Fatalf("configuration = model %q, reasoning %q", a.ModelName(), a.ReasoningEffort())
+	}
+	if resp := a.Respond("hello", nil, func(ToolEvent) {}, t.Context()); resp.Err != nil {
+		t.Fatal(resp.Err)
+	}
+	if request["model"] != "override-model" {
+		t.Fatalf("request model = %v", request["model"])
+	}
+	reasoning, ok := request["reasoning"].(map[string]any)
+	if !ok || reasoning["effort"] != "high" {
+		t.Fatalf("request reasoning = %#v", request["reasoning"])
+	}
+}
 
 func TestBuildSystemPrompt(t *testing.T) {
 	prompt := buildSystemPrompt("/work/project")

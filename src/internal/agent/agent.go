@@ -114,9 +114,9 @@ func prefixUserMessage(msg string, now time.Time) string {
 	return fmt.Sprintf("[%s]\n\n%s", now.Format(time.RFC3339), msg)
 }
 
-const baseURL = "https://api.openai.com/v1/"
-const modelName = "gpt-5.6-sol"
-const reasoningEffort = shared.ReasoningEffortMedium
+const defaultBaseURL = "https://api.openai.com/v1/"
+const defaultModelName = "gpt-5.6-sol"
+const defaultReasoningEffort = shared.ReasoningEffortMedium
 
 const (
 	maxLLMRetries       = 10
@@ -184,16 +184,24 @@ type Response struct {
 func (a *Agent) ModelName() string { return a.modelName }
 
 // ReasoningEffort returns the configured reasoning level.
-func (a *Agent) ReasoningEffort() string { return string(reasoningEffort) }
+func (a *Agent) ReasoningEffort() string { return string(a.reasoningEffort) }
 
 type Agent struct {
-	client         openai.Client
-	modelName      string
-	instructions   string
-	history        []responses.ResponseInputItemUnionParam
-	maxRetries     int
-	retryBaseDelay time.Duration
-	retryJitter    func() float64
+	client          openai.Client
+	modelName       string
+	reasoningEffort shared.ReasoningEffort
+	instructions    string
+	history         []responses.ResponseInputItemUnionParam
+	maxRetries      int
+	retryBaseDelay  time.Duration
+	retryJitter     func() float64
+}
+
+func envOrDefault(name, fallback string) string {
+	if value := os.Getenv(name); value != "" {
+		return value
+	}
+	return fallback
 }
 
 func New() *Agent {
@@ -203,12 +211,13 @@ func New() *Agent {
 	return &Agent{
 		// Keep retries at the visible agent layer. The SDK otherwise retries
 		// silently, making a disconnected network look like a hung request.
-		client:         openai.NewClient(option.WithBaseURL(baseURL), option.WithMaxRetries(0)),
-		modelName:      modelName,
-		instructions:   buildSystemPromptWithSkills(cwd, skills),
-		maxRetries:     maxLLMRetries,
-		retryBaseDelay: retryBaseDelay,
-		retryJitter:    rand.Float64,
+		client:          openai.NewClient(option.WithBaseURL(envOrDefault("OSH_BASE_URL", defaultBaseURL)), option.WithMaxRetries(0)),
+		modelName:       envOrDefault("OSH_MODEL", defaultModelName),
+		reasoningEffort: shared.ReasoningEffort(envOrDefault("OSH_REASONING_EFFORT", string(defaultReasoningEffort))),
+		instructions:    buildSystemPromptWithSkills(cwd, skills),
+		maxRetries:      maxLLMRetries,
+		retryBaseDelay:  retryBaseDelay,
+		retryJitter:     rand.Float64,
 	}
 }
 
@@ -487,7 +496,7 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 			Model:        a.modelName,
 			Instructions: openai.String(a.instructions),
 			Input:        responses.ResponseNewParamsInputUnion{OfInputItemList: responses.ResponseInputParam(a.history)},
-			Reasoning:    shared.ReasoningParam{Effort: reasoningEffort, Summary: shared.ReasoningSummaryAuto},
+			Reasoning:    shared.ReasoningParam{Effort: a.reasoningEffort, Summary: shared.ReasoningSummaryAuto},
 			Tools:        []responses.ToolUnionParam{shellTool, webSearchTool},
 			Store:        openai.Bool(false),
 		}
