@@ -1187,6 +1187,14 @@ func TestRenderedMarkdownUsesPiColors(t *testing.T) {
 	}
 }
 
+func TestHighlightPythonLines(t *testing.T) {
+	line := `result = shell("pwd") # comment`
+	highlighted := highlightedPythonLines(line, 80, piToolSuccessBg)
+	if len(highlighted) != 1 || stripANSI(highlighted[0]) != line || !strings.Contains(highlighted[0], "\x1b[38;2;") {
+		t.Fatalf("highlighted Python = %#v", highlighted)
+	}
+}
+
 func TestRenderREPLToolAsCodeCell(t *testing.T) {
 	msg := message{
 		role: "tool", toolName: "repl", toolCommand: "value = shell(\"pwd\")", toolState: "success",

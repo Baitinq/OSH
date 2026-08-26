@@ -9,6 +9,7 @@ import (
 
 	"charm.land/glamour/v2"
 	"charm.land/glamour/v2/styles"
+	"github.com/alecthomas/chroma/v2/quick"
 	tui "github.com/grindlemire/go-tui"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -315,9 +316,11 @@ func renderedToolMessage(msg message, width int, now time.Time) string {
 	duration := toolDurationLabel(msg, now)
 	if msg.toolCommand != "" {
 		command := sanitizeTerminalText(msg.toolCommand)
+		var commandLines []string
 		bold := true
 		if msg.toolName == "repl" {
 			lines = append(lines, piBoxLine(" python"+duration, width, piGray, bg, true))
+			commandLines = highlightedPythonLines(command, inner, bg)
 			bold = false
 		} else {
 			if duration != "" {
@@ -329,8 +332,9 @@ func renderedToolMessage(msg message, width int, now time.Time) string {
 			if msg.toolName == "web_search" {
 				command = `web_search "` + sanitizeTerminalText(msg.toolCommand) + `"`
 			}
+			commandLines = wrapPlain(command, inner)
 		}
-		for _, line := range wrapPlain(command, inner) {
+		for _, line := range commandLines {
 			lines = append(lines, piBoxLine(" "+line, width, piText, bg, bold))
 		}
 	} else if msg.toolName != "" {
@@ -353,6 +357,16 @@ func renderedToolMessage(msg message, width int, now time.Time) string {
 	}
 	lines = append(lines, piBoxLine("", width, piText, bg, false))
 	return strings.Join(lines, "\n")
+}
+
+func highlightedPythonLines(code string, width int, bg string) []string {
+	lines := wrapPlain(code, width)
+	for i, line := range lines {
+		var highlighted strings.Builder
+		_ = quick.Highlight(&highlighted, line, "python", "terminal16m", "github-dark")
+		lines[i] = strings.ReplaceAll(highlighted.String(), "\x1b[0m", "\x1b[0m\x1b[48;2;"+bg+"m")
+	}
+	return lines
 }
 
 func piBoxLine(text string, width int, fg, bg string, bold bool) string {
