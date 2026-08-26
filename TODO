@@ -11,3 +11,4 @@ other-agent aware (e.g. if other agents are working maybe it can somehow know id
 hardware awareness? where is it running on (specs, os)
 /tree
 scrathpad/progress for human to see what is going on
+dump state to file as saving (binary but then hjard to read for agents, so maybe something else)

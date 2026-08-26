@@ -5,15 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"math"
 	"math/rand/v2"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/openai/openai-go/v3"
@@ -22,20 +18,25 @@ import (
 	"github.com/openai/openai-go/v3/shared"
 )
 
-const systemPrompt = `You are an expert general-purpose assistant operating inside OSH, a terminal agent harness. You help users answer questions and complete tasks by reasoning, inspecting the environment, running shell commands, and modifying files.
+const systemPrompt = `You are an expert general-purpose assistant operating inside OSH, a terminal agent harness. You help users answer questions and complete tasks by reasoning, inspecting the environment, running code, and modifying files.
 
-Available tools:
-- shell: Run a shell command and return its combined stdout and stderr.
-- web_search: Search the web with DuckDuckGo and return result titles, URLs, and snippets.
+Available tool:
+- repl: Execute Python in a persistent REPL. Python variables, imports, functions, and tool results survive across calls.
+
+The REPL has these preloaded host functions:
+- shell(command, timeout=None) -> ShellResult(stdout, exit_code, error): run a shell command and return its combined stdout/stderr.
+- web_search(query, max_results=8) -> list[SearchResult]: search DuckDuckGo for current information.
+
+Use the REPL as a long-lived working environment. Assign tool results and intermediate data to variables, then inspect, filter, or print only what is needed for the next decision. Only printed output and the final expression enter model context; assigned values stay in the REPL. Use Python's standard library for file operations and data processing. Use shell() for project commands and external programs.
 
 MCP:
-- Configured MCP servers can be discovered and invoked through the mcporter CLI using the shell tool.
-- When MCP capabilities may help, run npx -y mcporter@latest list to discover servers and tool signatures, then use npx -y mcporter@latest call <server>.<tool> ... to invoke a tool.
+- Configured MCP servers can be discovered and invoked through the mcporter CLI using shell("...").
+- When MCP capabilities may help, run shell("npx -y mcporter@latest list") to discover servers and tool signatures, then invoke a tool with shell("npx -y mcporter@latest call <server>.<tool> ...").
 - Consult npx -y mcporter@latest <command> --help instead of guessing syntax. Discover tools only as needed; do not load every tool definition into context.
 
 Guidelines:
 - Complete requested tasks directly when possible. Ask for clarification only when a consequential ambiguity cannot be resolved safely.
-- Use the shell to inspect files and gather facts instead of guessing.
+- Inspect files and gather facts instead of guessing.
 - Before modifying a project, inspect the relevant files and follow its existing conventions and project instructions.
 - Prioritize fast, verifiable iteration. When practical, exercise changes end to end in the local environment so you can observe actual behavior and iterate quickly, not just rely on isolated tests. Use the fastest relevant feedback loop while developing, then run broader checks before finishing.
 - Clearly report what changed, what was verified, and any remaining issues. Never claim a command or change succeeded unless it was verified.
@@ -119,26 +120,24 @@ const defaultModelName = "gpt-5.6-sol"
 const defaultReasoningEffort = shared.ReasoningEffortMedium
 
 const (
-	maxLLMRetries       = 10
-	retryBaseDelay      = 2 * time.Second
-	maxRetryDelay       = 30 * time.Second
-	maxShellTimeoutSecs = 2_147_483_647 / 1000.0
+	maxLLMRetries  = 10
+	retryBaseDelay = 2 * time.Second
+	maxRetryDelay  = 30 * time.Second
 )
 
-var shellTool = responses.ToolUnionParam{
+var replTool = responses.ToolUnionParam{
 	OfFunction: &responses.FunctionToolParam{
-		Name:        "shell",
-		Description: openai.String("Run a shell command and return its combined stdout/stderr."),
+		Name:        "repl",
+		Description: openai.String("Execute Python code in a persistent REPL with preloaded shell() and web_search() host functions."),
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"command": map[string]any{"type": "string"},
-				"timeout": map[string]any{
-					"type":        "number",
-					"description": "Timeout in seconds (optional, no default timeout)",
+				"code": map[string]any{
+					"type":        "string",
+					"description": "Python code to execute. Variables and imports persist across calls.",
 				},
 			},
-			"required":             []string{"command"},
+			"required":             []string{"code"},
 			"additionalProperties": false,
 		},
 	},
@@ -162,7 +161,7 @@ const (
 	ToolEventError
 )
 
-// ToolEvent describes streamed text, reasoning, retries, and shell-tool activity during a turn.
+// ToolEvent describes streamed text, reasoning, retries, and REPL activity during a turn.
 type ToolEvent struct {
 	Kind        ToolEventKind
 	Name        string
@@ -195,6 +194,21 @@ type Agent struct {
 	maxRetries      int
 	retryBaseDelay  time.Duration
 	retryJitter     func() float64
+	repl            *pythonREPL
+}
+
+func (a *Agent) pythonREPL() *pythonREPL {
+	if a.repl == nil {
+		a.repl = newPythonREPL()
+	}
+	return a.repl
+}
+
+// Close releases the persistent REPL process, if it was started.
+func (a *Agent) Close() {
+	if a.repl != nil {
+		a.repl.close()
+	}
 }
 
 func envOrDefault(name, fallback string) string {
@@ -289,64 +303,6 @@ func limitToolOutput(output string) string {
 		footer += " Full output: " + path
 	}
 	return strings.TrimSuffix(limited, "\n") + "\n\n[" + footer + "]"
-}
-
-func runShell(ctx context.Context, command string) (string, error) {
-	return runShellStreaming(ctx, command, nil, nil)
-}
-
-func runShellStreaming(ctx context.Context, command string, timeoutSeconds *float64, emit func(string)) (string, error) {
-	if timeoutSeconds != nil {
-		if math.IsNaN(*timeoutSeconds) || math.IsInf(*timeoutSeconds, 0) || *timeoutSeconds <= 0 {
-			return "", errors.New("invalid timeout: must be a finite number of seconds")
-		}
-		if *timeoutSeconds > maxShellTimeoutSecs {
-			return "", fmt.Errorf("invalid timeout: maximum is %g seconds", maxShellTimeoutSecs)
-		}
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, time.Duration(*timeoutSeconds*float64(time.Second)))
-		defer cancel()
-	}
-
-	cmd := exec.CommandContext(ctx, "sh", "-c", command)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
-	reader, writer, err := os.Pipe()
-	if err != nil {
-		return "", err
-	}
-	defer reader.Close()
-	cmd.Stdout, cmd.Stderr = writer, writer
-	if err := cmd.Start(); err != nil {
-		writer.Close()
-		return "", err
-	}
-	_ = writer.Close()
-
-	var output strings.Builder
-	buffer := make([]byte, 4096)
-	for {
-		n, readErr := reader.Read(buffer)
-		if n > 0 {
-			chunk := string(buffer[:n])
-			output.WriteString(chunk)
-			if emit != nil {
-				emit(chunk)
-			}
-		}
-		if readErr != nil {
-			if readErr != io.EOF {
-				_ = cmd.Wait()
-				return output.String(), readErr
-			}
-			break
-		}
-	}
-	err = cmd.Wait()
-	if timeoutSeconds != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		err = fmt.Errorf("timeout:%g", *timeoutSeconds)
-	}
-	return output.String(), err
 }
 
 func (a *Agent) appendUserMessage(msg string) {
@@ -497,7 +453,7 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 			Instructions: openai.String(a.instructions),
 			Input:        responses.ResponseNewParamsInputUnion{OfInputItemList: responses.ResponseInputParam(a.history)},
 			Reasoning:    shared.ReasoningParam{Effort: a.reasoningEffort, Summary: shared.ReasoningSummaryAuto},
-			Tools:        []responses.ToolUnionParam{shellTool, webSearchTool},
+			Tools:        []responses.ToolUnionParam{replTool},
 			Store:        openai.Bool(false),
 		}
 		var resp responses.Response
@@ -568,45 +524,24 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 		for _, call := range toolCalls {
 			output := ""
 			switch call.Name {
-			case "shell":
+			case "repl":
 				var args struct {
-					Command string   `json:"command"`
-					Timeout *float64 `json:"timeout"`
+					Code string `json:"code"`
 				}
 				if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
-					output = "tool error: invalid shell arguments: " + err.Error()
+					output = "tool error: invalid repl arguments: " + err.Error()
 					emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
 					break
 				}
-				emit(ToolEvent{Kind: ToolEventCall, Name: call.Name, ID: call.CallID, Detail: args.Command})
-				var err error
-				output, err = runShellStreaming(ctx, args.Command, args.Timeout, func(chunk string) {
-					emit(ToolEvent{Kind: ToolEventUpdate, Name: call.Name, ID: call.CallID, Detail: chunk})
-				})
+				emit(ToolEvent{Kind: ToolEventCall, Name: call.Name, ID: call.CallID, Detail: args.Code})
+				result, failed, err := a.pythonREPL().execute(ctx, args.Code)
 				if err != nil {
-					output += "\nexit status: " + err.Error()
-				}
-				output = limitToolOutput(output)
-				if err != nil {
-					emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
+					output = formatREPLError(err)
+					failed = true
 				} else {
-					emit(ToolEvent{Kind: ToolEventResult, Name: call.Name, ID: call.CallID, Detail: output})
+					output = limitToolOutput(result)
 				}
-			case "web_search":
-				var args struct {
-					Query      string `json:"query"`
-					MaxResults int    `json:"max_results"`
-				}
-				if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
-					output = "tool error: invalid web_search arguments: " + err.Error()
-					emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
-					break
-				}
-				emit(ToolEvent{Kind: ToolEventCall, Name: call.Name, ID: call.CallID, Detail: args.Query})
-				var err error
-				output, err = searchWeb(ctx, http.DefaultClient, duckDuckGoSearchURL, args.Query, args.MaxResults)
-				if err != nil {
-					output = "web search failed: " + err.Error()
+				if failed {
 					emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
 				} else {
 					emit(ToolEvent{Kind: ToolEventResult, Name: call.Name, ID: call.CallID, Detail: output})

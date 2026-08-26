@@ -1,13 +1,16 @@
 # OSH
 
-**Overly Simple Harness** — a small terminal-based OpenAI agent with shell access.
+**Overly Simple Harness** — a small terminal-based OpenAI agent with a persistent Python control environment.
 
-OSH accepts messages, preserves the conversation, and exposes a shell tool to the
-model without hiding the agent control loop behind a framework.
+OSH accepts messages, preserves the conversation, and exposes one model-facing `repl`
+tool without hiding the agent control loop behind a framework. Python variables,
+imports, and tool results persist across calls, so the model can keep large working
+state outside its context and inspect only what it needs.
 
 ## Requirements
 
 - Go 1.26 or newer
+- Python 3.10 or newer (`python3`), or set `OSH_PYTHON` to a compatible interpreter
 - An OpenAI API key, or an OpenAI-compatible server implementing the Responses API
 
 ## Run
@@ -61,6 +64,25 @@ The configured server must implement the OpenAI **Responses API** (`POST
 /responses`), including function tool calls. Compatibility limited to the Chat
 Completions API is not sufficient.
 
+## Persistent REPL
+
+The model works through a persistent Python REPL with two preloaded host functions:
+
+```python
+status = shell("git status --short")
+status.stdout
+
+hits = web_search("latest Go release")
+[(hit.title, hit.url) for hit in hits]
+```
+
+`shell()` returns a `ShellResult` with `stdout`, `exit_code`, and `error` fields.
+`web_search()` returns `SearchResult` values with `title`, `url`, and `snippet` fields.
+Assignments stay in the REPL; only printed output and the final expression are returned
+to the model. The Python environment performs command execution and web requests directly.
+
+Set `OSH_PYTHON` to override the default `python3` executable.
+
 ## MCP
 
 OSH keeps MCP out of its core, following the same CLI-first approach as Pi. The
@@ -85,14 +107,14 @@ than OSH.
 
 OSH includes a keyless `web_search` tool backed by DuckDuckGo. It returns ranked
 result titles, URLs, and snippets so the agent can research current information;
-full pages can still be inspected with shell tools such as `curl`.
+full pages can still be inspected with `shell("curl ...")`.
 
 ## Controls
 
 - `Enter` — send a message; while responding, steer the active agent after its current tool-call batch
 - `Shift+Enter` — queue a follow-up until the active agent finishes
 - Reasoning summaries stream as italic gray text and remain in the transcript
-- Shell calls stream live in Pi-style cards with elapsed time; cards preview the last five lines and model-visible output is capped at 2,000 lines or 50KB
+- REPL calls appear in Pi-style cards; model-visible output is capped at 2,000 lines or 50KB
 - `Ctrl+J` — insert a newline in the input editor
 - `↑` / `↓` — navigate previously submitted messages and return to the current draft
 - `Ctrl+C` — cancel the active response; press twice within one second to quit
@@ -121,5 +143,6 @@ go vet ./...
 
 ## Safety
 
-OSH allows the model to execute shell commands with the permissions of the user
-running it. Run it only in environments where that access is appropriate.
+OSH allows the model to execute Python and shell commands with the permissions of the
+user running it. The REPL process is not a sandbox. Run OSH only in environments where
+that access is appropriate.

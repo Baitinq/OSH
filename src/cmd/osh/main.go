@@ -63,6 +63,7 @@ func run(args []string, stdout io.Writer) error {
 		return err
 	}
 	a := agent.New()
+	defer a.Close()
 	if printMode {
 		return printResponse(prompt, a.Respond, stdout)
 	}

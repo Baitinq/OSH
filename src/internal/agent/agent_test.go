@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -46,6 +47,14 @@ func TestNewUsesEnvironmentOverrides(t *testing.T) {
 	if request["model"] != "override-model" {
 		t.Fatalf("request model = %v", request["model"])
 	}
+	tools, ok := request["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("request tools = %#v", request["tools"])
+	}
+	tool, ok := tools[0].(map[string]any)
+	if !ok || tool["name"] != "repl" {
+		t.Fatalf("request tool = %#v", tools[0])
+	}
 	reasoning, ok := request["reasoning"].(map[string]any)
 	if !ok || reasoning["effort"] != "high" {
 		t.Fatalf("request reasoning = %#v", request["reasoning"])
@@ -56,8 +65,11 @@ func TestBuildSystemPrompt(t *testing.T) {
 	prompt := buildSystemPrompt("/work/project")
 	for _, want := range []string{
 		"expert general-purpose assistant operating inside OSH",
-		"Available tools:",
-		"web_search: Search the web with DuckDuckGo",
+		"Available tool:",
+		"repl: Execute Python in a persistent REPL",
+		"shell(command, timeout=None) -> ShellResult",
+		"web_search(query, max_results=8) -> list[SearchResult]",
+		"Only printed output and the final expression enter model context",
 		"npx -y mcporter@latest list",
 		"npx -y mcporter@latest call <server>.<tool>",
 		"Prioritize fast, verifiable iteration",
@@ -78,51 +90,6 @@ func TestPrefixUserMessageIncludesCurrentDateAndTime(t *testing.T) {
 	want := "[2026-08-23T19:42:17-07:00]\n\nhello"
 	if got != want {
 		t.Fatalf("prefixed message = %q, want %q", got, want)
-	}
-}
-
-func TestRunShellStreamingEmitsOutputBeforeCompletion(t *testing.T) {
-	var chunks []string
-	out, err := runShellStreaming(t.Context(), "printf first; sleep 0.05; printf second >&2", nil, func(chunk string) {
-		chunks = append(chunks, chunk)
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out != "firstsecond" || strings.Join(chunks, "") != out {
-		t.Fatalf("output = %q, chunks = %#v", out, chunks)
-	}
-	if len(chunks) < 2 {
-		t.Fatalf("output was not emitted while command was running: %#v", chunks)
-	}
-}
-
-func TestRunShellTimeout(t *testing.T) {
-	timeout := 0.05
-	started := time.Now()
-	_, err := runShellStreaming(t.Context(), "sleep 10 | cat", &timeout, nil)
-	if err == nil || err.Error() != "timeout:0.05" {
-		t.Fatalf("timeout error = %v", err)
-	}
-	if elapsed := time.Since(started); elapsed > time.Second {
-		t.Fatalf("timed command took %s", elapsed)
-	}
-}
-
-func TestRunShellHasNoDefaultTimeout(t *testing.T) {
-	out, err := runShellStreaming(t.Context(), "sleep 0.05; printf done", nil, nil)
-	if err != nil || out != "done" {
-		t.Fatalf("untimed command returned output %q, error %v", out, err)
-	}
-}
-
-func TestRunShellReturnsCombinedOutputAndError(t *testing.T) {
-	out, err := runShell(t.Context(), "printf stdout; printf stderr >&2; exit 7")
-	if err == nil {
-		t.Fatal("expected shell error")
-	}
-	if out != "stdoutstderr" {
-		t.Fatalf("combined output = %q", out)
 	}
 }
 
@@ -352,5 +319,80 @@ func TestLoadContextFilesPrefersAgents(t *testing.T) {
 	prompt := buildSystemPrompt(cwd)
 	if !strings.Contains(prompt, "agents guidance") || strings.Contains(prompt, "claude guidance") {
 		t.Fatalf("AGENTS.md selection was not reflected in prompt: %q", prompt)
+	}
+}
+
+func TestPythonREPLPersistsStateAndExposesShell(t *testing.T) {
+	repl := newPythonREPL()
+	t.Cleanup(repl.close)
+
+	output, failed, err := repl.execute(t.Context(), "value = 40")
+	if err != nil || failed || output != "" {
+		t.Fatalf("assignment result = %q, failed=%v, error=%v", output, failed, err)
+	}
+	output, failed, err = repl.execute(t.Context(), "value + 2")
+	if err != nil || failed || output != "42" {
+		t.Fatalf("persistent result = %q, failed=%v, error=%v", output, failed, err)
+	}
+	output, failed, err = repl.execute(t.Context(), `result = shell("printf hello; exit 7"); (result.stdout, result.exit_code, result.error)`)
+	if err != nil || failed || !strings.Contains(output, "('hello', 7, 'exit status 7')") {
+		t.Fatalf("shell result = %q, failed=%v, error=%v", output, failed, err)
+	}
+}
+
+func TestPythonREPLWebSearchReturnsValues(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `<a class="result__a" href="https://example.com">Example</a><div class="result__snippet">A result.</div>`)
+	}))
+	defer server.Close()
+
+	repl := newPythonREPL()
+	t.Cleanup(repl.close)
+	code := fmt.Sprintf(`_web_search_url = %q; hits = web_search("test", 1); (hits[0].title, hits[0].url, hits[0].snippet)`, server.URL)
+	output, failed, err := repl.execute(t.Context(), code)
+	if err != nil || failed || output != "('Example', 'https://example.com', 'A result.')" {
+		t.Fatalf("search result = %q, failed=%v, error=%v", output, failed, err)
+	}
+}
+
+func TestPythonREPLReportsPythonErrorsWithoutLosingState(t *testing.T) {
+	repl := newPythonREPL()
+	t.Cleanup(repl.close)
+	_, _, _ = repl.execute(t.Context(), "saved = 'still here'")
+	output, failed, err := repl.execute(t.Context(), "1 / 0")
+	if err != nil || !failed || !strings.Contains(output, "ZeroDivisionError") {
+		t.Fatalf("error result = %q, failed=%v, error=%v", output, failed, err)
+	}
+	output, failed, err = repl.execute(t.Context(), "saved")
+	if err != nil || failed || output != "'still here'" {
+		t.Fatalf("state after error = %q, failed=%v, error=%v", output, failed, err)
+	}
+}
+
+func TestPythonREPLCancellationRestartsInterpreter(t *testing.T) {
+	repl := newPythonREPL()
+	t.Cleanup(repl.close)
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	_, _, err := repl.execute(ctx, `shell("sleep 10 | cat")`)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("cancellation error = %v", err)
+	}
+	output, failed, err := repl.execute(t.Context(), "6 * 7")
+	if err != nil || failed || output != "42" {
+		t.Fatalf("restarted result = %q, failed=%v, error=%v", output, failed, err)
+	}
+}
+
+func TestPythonREPLShellTimeout(t *testing.T) {
+	repl := newPythonREPL()
+	t.Cleanup(repl.close)
+	started := time.Now()
+	output, failed, err := repl.execute(t.Context(), `result = shell("sleep 10 | cat", 0.05); (result.exit_code, result.error)`)
+	if err != nil || failed || output != "(-1, 'timeout:0.05')" {
+		t.Fatalf("timeout result = %q, failed=%v, error=%v", output, failed, err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("timed command took %s", elapsed)
 	}
 }

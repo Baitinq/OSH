@@ -322,6 +322,8 @@ func renderedToolMessage(msg message, width int, now time.Time) string {
 		command := "$ " + sanitizeTerminalText(msg.toolCommand)
 		if msg.toolName == "web_search" {
 			command = `web_search "` + sanitizeTerminalText(msg.toolCommand) + `"`
+		} else if msg.toolName == "repl" {
+			command = ">>> " + sanitizeTerminalText(msg.toolCommand)
 		}
 		for _, line := range wrapPlain(command, inner) {
 			lines = append(lines, piBoxLine(" "+line, width, piText, bg, true))
