@@ -62,6 +62,48 @@ func TestNewUsesEnvironmentOverrides(t *testing.T) {
 	}
 }
 
+func TestCallOSHUsesFreshAgent(t *testing.T) {
+	var request map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":1,\"response\":{\"id\":\"resp_llm\",\"object\":\"response\",\"model\":\"test\",\"status\":\"completed\",\"output\":[{\"id\":\"msg_llm\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"classified\",\"annotations\":[]}]}]}}\n\n")
+	}))
+	defer server.Close()
+
+	a := &Agent{
+		client:          openai.NewClient(option.WithAPIKey("test-key"), option.WithBaseURL(server.URL+"/"), option.WithMaxRetries(0)),
+		modelName:       "test-model",
+		reasoningEffort: "low",
+		instructions:    systemPrompt,
+	}
+	text, err := a.callOSH(t.Context(), "classify this")
+	if err != nil || text != "classified" {
+		t.Fatalf("callOSH() = %q, %v", text, err)
+	}
+	if len(request["tools"].([]any)) != 1 {
+		t.Fatalf("child OSH tools = %#v", request["tools"])
+	}
+	input := request["input"].([]any)
+	message := input[0].(map[string]any)
+	if !strings.Contains(message["content"].(string), "classify this") {
+		t.Fatalf("child OSH input = %#v", request["input"])
+	}
+	if !strings.Contains(request["instructions"].(string), "operating inside OSH") {
+		t.Fatalf("child OSH instructions = %#v", request["instructions"])
+	}
+}
+
+func TestCallOSHLimitsRecursionToOneChildLevel(t *testing.T) {
+	a := &Agent{depth: 1}
+	_, err := a.callOSH(t.Context(), "delegate again")
+	if err == nil || !strings.Contains(err.Error(), "limited to one child level") {
+		t.Fatalf("callOSH() error = %v", err)
+	}
+}
+
 func TestBuildSystemPrompt(t *testing.T) {
 	prompt := buildSystemPrompt("/work/project")
 	for _, want := range []string{
@@ -70,6 +112,7 @@ func TestBuildSystemPrompt(t *testing.T) {
 		"repl: Execute Python in a persistent REPL",
 		"shell(command, timeout=None) -> ShellResult",
 		"web_search(query, max_results=8) -> list[SearchResult]",
+		"osh(prompt) -> str",
 		"Only printed output and the final expression enter model context",
 		"npx -y mcporter@latest list",
 		"npx -y mcporter@latest call <server>.<tool>",
@@ -430,7 +473,7 @@ func TestLoadContextFilesPrefersAgents(t *testing.T) {
 }
 
 func TestPythonREPLPersistsStateAndExposesShell(t *testing.T) {
-	repl := newPythonREPL()
+	repl := newPythonREPL(nil)
 	t.Cleanup(repl.close)
 
 	output, failed, err := repl.execute(t.Context(), "value = 40")
@@ -447,8 +490,25 @@ func TestPythonREPLPersistsStateAndExposesShell(t *testing.T) {
 	}
 }
 
+func TestPythonREPLExposesOSH(t *testing.T) {
+	var prompts []string
+	repl := newPythonREPL(func(_ context.Context, prompt string) (string, error) {
+		prompts = append(prompts, prompt)
+		return "result for " + prompt, nil
+	})
+	t.Cleanup(repl.close)
+
+	output, failed, err := repl.execute(t.Context(), `[osh(item) for item in ["first", "second"]]`)
+	if err != nil || failed || output != "['result for first', 'result for second']" {
+		t.Fatalf("osh result = %q, failed=%v, error=%v", output, failed, err)
+	}
+	if strings.Join(prompts, ",") != "first,second" {
+		t.Fatalf("osh prompts = %#v", prompts)
+	}
+}
+
 func TestPythonREPLIsolatesRuntimeAndRestoresHostFunctions(t *testing.T) {
-	repl := newPythonREPL()
+	repl := newPythonREPL(nil)
 	t.Cleanup(repl.close)
 
 	_, failed, err := repl.execute(t.Context(), `json = "user value"; _protocol_out = None; shell = "shadowed"`)
@@ -467,7 +527,7 @@ func TestPythonREPLWebSearchReturnsValues(t *testing.T) {
 	}))
 	defer server.Close()
 
-	repl := newPythonREPL()
+	repl := newPythonREPL(nil)
 	t.Cleanup(repl.close)
 	code := fmt.Sprintf(`web_search.__globals__["_web_search_url"] = %q; hits = web_search("test", 1); (hits[0].title, hits[0].url, hits[0].snippet)`, server.URL)
 	output, failed, err := repl.execute(t.Context(), code)
@@ -477,7 +537,7 @@ func TestPythonREPLWebSearchReturnsValues(t *testing.T) {
 }
 
 func TestPythonREPLReportsPythonErrorsWithoutLosingState(t *testing.T) {
-	repl := newPythonREPL()
+	repl := newPythonREPL(nil)
 	t.Cleanup(repl.close)
 	_, _, _ = repl.execute(t.Context(), "saved = 'still here'")
 	output, failed, err := repl.execute(t.Context(), "1 / 0")
@@ -491,7 +551,7 @@ func TestPythonREPLReportsPythonErrorsWithoutLosingState(t *testing.T) {
 }
 
 func TestPythonREPLCancellationPreservesState(t *testing.T) {
-	repl := newPythonREPL()
+	repl := newPythonREPL(nil)
 	t.Cleanup(repl.close)
 	_, _, _ = repl.execute(t.Context(), "saved = 42")
 	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
@@ -507,7 +567,7 @@ func TestPythonREPLCancellationPreservesState(t *testing.T) {
 }
 
 func TestPythonREPLShellDoesNotInheritProtocolInput(t *testing.T) {
-	repl := newPythonREPL()
+	repl := newPythonREPL(nil)
 	t.Cleanup(repl.close)
 	output, failed, err := repl.execute(t.Context(), `result = shell("if read line; then printf data; else printf eof; fi", 0.1); (result.stdout, result.exit_code, result.error)`)
 	if err != nil || failed || output != "('eof', 0, None)" {
@@ -516,7 +576,7 @@ func TestPythonREPLShellDoesNotInheritProtocolInput(t *testing.T) {
 }
 
 func TestPythonREPLShellTimeout(t *testing.T) {
-	repl := newPythonREPL()
+	repl := newPythonREPL(nil)
 	t.Cleanup(repl.close)
 	started := time.Now()
 	output, failed, err := repl.execute(t.Context(), `result = shell("sleep 10 | cat", 0.05); (result.exit_code, result.error)`)

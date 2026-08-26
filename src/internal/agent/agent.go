@@ -26,8 +26,9 @@ Available tool:
 The REPL has these preloaded host functions:
 - shell(command, timeout=None) -> ShellResult(stdout, exit_code, error): run a shell command and return its combined stdout/stderr.
 - web_search(query, max_results=8) -> list[SearchResult]: search DuckDuckGo for current information.
+- osh(prompt) -> str: run a task in a fresh OSH child agent and return its final response.
 
-Use the REPL as a long-lived working environment. Assign tool results and intermediate data to variables, then inspect, filter, or print only what is needed for the next decision. Only printed output and the final expression enter model context; assigned values stay in the REPL. Use Python's standard library for file operations and data processing. Use shell() for project commands and external programs.
+Use osh() to delegate independent, open-ended investigation that benefits from a fresh context and its own tools. Handle small or tightly coupled work directly. Use the REPL as a long-lived working environment. Assign tool results and intermediate data to variables, then inspect, filter, or print only what is needed for the next decision. Only printed output and the final expression enter model context; assigned values stay in the REPL. Use Python's standard library for file operations and data processing. Use shell() for project commands and external programs.
 
 MCP:
 - Configured MCP servers can be discovered and invoked through the mcporter CLI using shell("...").
@@ -129,7 +130,7 @@ const (
 var replTool = responses.ToolUnionParam{
 	OfFunction: &responses.FunctionToolParam{
 		Name:        "repl",
-		Description: openai.String("Execute Python code in a persistent REPL with preloaded shell() and web_search() host functions."),
+		Description: openai.String("Execute Python code in a persistent REPL with preloaded shell(), web_search(), and osh() host functions."),
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -200,11 +201,12 @@ type Agent struct {
 	retryJitter     func() float64
 	summary         string
 	repl            *pythonREPL
+	depth           int
 }
 
 func (a *Agent) pythonREPL() *pythonREPL {
 	if a.repl == nil {
-		a.repl = newPythonREPL()
+		a.repl = newPythonREPL(a.callOSH)
 	}
 	return a.repl
 }
@@ -421,6 +423,25 @@ func waitForRetry(ctx context.Context, delay time.Duration) bool {
 	case <-ctx.Done():
 		return false
 	}
+}
+
+func (a *Agent) callOSH(ctx context.Context, prompt string) (string, error) {
+	if a.depth >= 1 {
+		return "", fmt.Errorf("osh recursion is limited to one child level")
+	}
+	child := &Agent{
+		client:          a.client,
+		modelName:       a.modelName,
+		reasoningEffort: a.reasoningEffort,
+		instructions:    a.instructions + "\n\nYou are a child OSH agent. Complete the delegated task directly; osh() cannot be called recursively.",
+		maxRetries:      a.maxRetries,
+		retryBaseDelay:  a.retryBaseDelay,
+		retryJitter:     a.retryJitter,
+		depth:           a.depth + 1,
+	}
+	defer child.Close()
+	response := child.Respond(prompt, nil, func(ToolEvent) {}, ctx)
+	return response.Text, response.Err
 }
 
 func (a *Agent) streamResponse(ctx context.Context, params responses.ResponseNewParams, emit func(ToolEvent)) (responses.Response, error) {

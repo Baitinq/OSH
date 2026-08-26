@@ -122,6 +122,15 @@ def _result_url(value):
         return None
     return urllib.parse.urlunparse(parsed)
 
+def osh(prompt):
+    """Run a task in a fresh OSH child agent and return its final response."""
+    _protocol_out.write(json.dumps({"host_call": "osh", "prompt": prompt}) + "\n")
+    _protocol_out.flush()
+    response = json.loads(_protocol_in.readline())
+    if "error" in response:
+        raise RuntimeError(response["error"])
+    return response["result"]
+
 def web_search(query, max_results=8):
     """Search DuckDuckGo and return a list of SearchResult values."""
     query = query.strip()
@@ -156,6 +165,7 @@ def _execute(code):
     _user_globals.update(
         shell=shell,
         web_search=web_search,
+        osh=osh,
         ShellResult=ShellResult,
         SearchResult=SearchResult,
     )
@@ -194,6 +204,7 @@ for line in _protocol_in:
 
 type pythonREPL struct {
 	mu     sync.Mutex
+	osh    func(context.Context, string) (string, error)
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	stdout *bufio.Reader
@@ -201,12 +212,14 @@ type pythonREPL struct {
 }
 
 type replResult struct {
-	Output string `json:"output"`
-	Error  bool   `json:"error"`
+	Output   string `json:"output"`
+	Error    bool   `json:"error"`
+	HostCall string `json:"host_call"`
+	Prompt   string `json:"prompt"`
 }
 
-func newPythonREPL() *pythonREPL {
-	return &pythonREPL{}
+func newPythonREPL(osh func(context.Context, string) (string, error)) *pythonREPL {
+	return &pythonREPL{osh: osh}
 }
 
 func (r *pythonREPL) start() error {
@@ -272,46 +285,65 @@ func (r *pythonREPL) execute(ctx context.Context, code string) (string, bool, er
 		r.stop()
 		return "", true, err
 	}
+	return r.readResult(ctx)
+}
+
+func (r *pythonREPL) readResult(ctx context.Context) (string, bool, error) {
 	type readResult struct {
 		line []byte
 		err  error
 	}
-	read := make(chan readResult, 1)
-	go func() {
-		line, err := r.stdout.ReadBytes('\n')
-		read <- readResult{line: line, err: err}
-	}()
-	select {
-	case <-ctx.Done():
-		ticker := time.NewTicker(10 * time.Millisecond)
-		defer ticker.Stop()
-		timeout := time.NewTimer(500 * time.Millisecond)
-		defer timeout.Stop()
-		for {
-			_ = r.cmd.Process.Signal(syscall.SIGINT)
-			select {
-			case <-read:
-				return "", true, ctx.Err()
-			case <-ticker.C:
-			case <-timeout.C:
+	for {
+		read := make(chan readResult, 1)
+		go func() {
+			line, err := r.stdout.ReadBytes('\n')
+			read <- readResult{line: line, err: err}
+		}()
+		select {
+		case <-ctx.Done():
+			ticker := time.NewTicker(10 * time.Millisecond)
+			defer ticker.Stop()
+			timeout := time.NewTimer(500 * time.Millisecond)
+			defer timeout.Stop()
+			for {
+				_ = r.cmd.Process.Signal(syscall.SIGINT)
+				select {
+				case <-read:
+					return "", true, ctx.Err()
+				case <-ticker.C:
+				case <-timeout.C:
+					r.stop()
+					return "", true, ctx.Err()
+				}
+			}
+		case result := <-read:
+			if result.err != nil {
 				r.stop()
-				return "", true, ctx.Err()
+				if stderr := strings.TrimSpace(r.stderr.String()); stderr != "" {
+					return "", true, fmt.Errorf("Python REPL stopped: %s", stderr)
+				}
+				return "", true, fmt.Errorf("Python REPL stopped: %w", result.err)
 			}
-		}
-	case result := <-read:
-		if result.err != nil {
-			r.stop()
-			if stderr := strings.TrimSpace(r.stderr.String()); stderr != "" {
-				return "", true, fmt.Errorf("Python REPL stopped: %s", stderr)
+			var response replResult
+			if err := json.Unmarshal(result.line, &response); err != nil {
+				r.stop()
+				return "", true, fmt.Errorf("invalid Python REPL response: %w", err)
 			}
-			return "", true, fmt.Errorf("Python REPL stopped: %w", result.err)
+			if response.HostCall == "osh" {
+				text, err := r.osh(ctx, response.Prompt)
+				hostResponse := map[string]string{"result": text}
+				if err != nil {
+					hostResponse = map[string]string{"error": err.Error()}
+				}
+				data, _ := json.Marshal(hostResponse)
+				if _, err := r.stdin.Write(append(data, '\n')); err != nil {
+					r.stop()
+					return "", true, err
+				}
+				continue
+			}
+			return response.Output, response.Error, nil
 		}
-		var response replResult
-		if err := json.Unmarshal(result.line, &response); err != nil {
-			r.stop()
-			return "", true, fmt.Errorf("invalid Python REPL response: %w", err)
-		}
-		return response.Output, response.Error, nil
 	}
 }
 
