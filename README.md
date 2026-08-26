@@ -10,7 +10,7 @@ state outside its context and inspect only what it needs.
 ## Requirements
 
 - Go 1.26 or newer
-- Python 3.10 or newer (`python3`), or set `OSH_PYTHON` to a compatible interpreter
+- Python 3.10 or newer (`python3`)
 - An OpenAI API key, or an OpenAI-compatible server implementing the Responses API
 
 ## Run
@@ -46,7 +46,6 @@ overrides:
 | `OSH_BASE_URL` | `https://api.openai.com/v1/` |
 | `OSH_MODEL` | `gpt-5.6-sol` |
 | `OSH_REASONING_EFFORT` | `medium` |
-| `OSH_PYTHON` | `python3` |
 
 For local servers that ignore authentication, use any non-empty API key. The
 configured server must implement the OpenAI **Responses API** (`POST /responses`),

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -185,12 +184,8 @@ func newPythonREPL() *pythonREPL {
 }
 
 func (r *pythonREPL) start() error {
-	python := os.Getenv("OSH_PYTHON")
-	if python == "" {
-		python = "python3"
-	}
 	r.stderr.Reset()
-	r.cmd = exec.Command(python, "-u", "-c", pythonREPLScript)
+	r.cmd = exec.Command("python3", "-u", "-c", pythonREPLScript)
 	stdin, err := r.cmd.StdinPipe()
 	if err != nil {
 		return err
