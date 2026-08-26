@@ -119,7 +119,7 @@ func TestConsumeSteeringDeliversOneMessageAtATime(t *testing.T) {
 	}
 }
 
-func TestPruneTransientHistoryKeepsConversationMessages(t *testing.T) {
+func TestPruneTransientHistoryKeepsConversationAndREPLCalls(t *testing.T) {
 	prior := &responses.ResponseOutputMessageParam{ID: "prior"}
 	intermediate := &responses.ResponseOutputMessageParam{ID: "intermediate"}
 	final := &responses.ResponseOutputMessageParam{ID: "final"}
@@ -136,12 +136,16 @@ func TestPruneTransientHistoryKeepsConversationMessages(t *testing.T) {
 
 	a.pruneTransientHistory(map[*responses.ResponseOutputMessageParam]bool{intermediate: true})
 
-	if len(a.history) != 4 {
+	if len(a.history) != 6 {
 		t.Fatalf("retained history = %#v", a.history)
 	}
 	if a.history[0].OfMessage == nil || a.history[1].OfOutputMessage != prior ||
-		a.history[2].OfMessage == nil || a.history[3].OfOutputMessage != final {
+		a.history[2].OfMessage == nil || a.history[3].OfFunctionCall == nil ||
+		a.history[4].OfFunctionCallOutput == nil || a.history[5].OfOutputMessage != final {
 		t.Fatalf("retained history = %#v", a.history)
+	}
+	if output := a.history[4].OfFunctionCallOutput.Output.OfString.Value; output != omittedREPLResult {
+		t.Fatalf("retained REPL output = %q", output)
 	}
 }
 
@@ -276,7 +280,7 @@ func TestRespondDropsCompletedToolHistoryFromLaterTurns(t *testing.T) {
 		case 1:
 			output = []any{map[string]any{
 				"id": "fc_test", "type": "function_call", "call_id": "call_test",
-				"name": "repl", "arguments": `{"code":"saved = 42; print(saved)"}`, "status": "completed",
+				"name": "repl", "arguments": `{"code":"saved = ''.join(map(chr, [83, 69, 67, 82, 69, 84])); print(saved)"}`, "status": "completed",
 			}}
 		case 2:
 			output = []any{map[string]any{
@@ -318,12 +322,15 @@ func TestRespondDropsCompletedToolHistoryFromLaterTurns(t *testing.T) {
 		t.Fatalf("requests = %d, want 3", len(requests))
 	}
 	activeTurn, _ := json.Marshal(requests[1]["input"])
-	if !strings.Contains(string(activeTurn), "function_call") || !strings.Contains(string(activeTurn), "42") {
-		t.Fatalf("active turn did not include tool history: %s", activeTurn)
+	if !strings.Contains(string(activeTurn), "function_call") || !strings.Contains(string(activeTurn), "SECRET") {
+		t.Fatalf("active turn did not include complete tool history: %s", activeTurn)
 	}
 	laterTurn, _ := json.Marshal(requests[2]["input"])
-	if strings.Contains(string(laterTurn), "function_call") || strings.Contains(string(laterTurn), "42") {
-		t.Fatalf("later turn retained tool history: %s", laterTurn)
+	if !strings.Contains(string(laterTurn), "function_call") || !strings.Contains(string(laterTurn), "saved =") {
+		t.Fatalf("later turn omitted the REPL code cell: %s", laterTurn)
+	}
+	if strings.Contains(string(laterTurn), "SECRET") || !strings.Contains(string(laterTurn), omittedREPLResult) {
+		t.Fatalf("later turn did not replace the REPL result: %s", laterTurn)
 	}
 	for _, text := range []string{"first question", "first answer", "second question"} {
 		if !strings.Contains(string(laterTurn), text) {

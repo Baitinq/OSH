@@ -460,10 +460,22 @@ func (a *Agent) streamResponse(ctx context.Context, params responses.ResponseNew
 	return resp, nil
 }
 
+const omittedREPLResult = "[REPL result omitted after the turn; Python state persists.]"
+
 func (a *Agent) pruneTransientHistory(transientMessages map[*responses.ResponseOutputMessageParam]bool) {
 	kept := a.history[:0]
 	for _, item := range a.history {
-		if item.OfMessage != nil || item.OfOutputMessage != nil && !transientMessages[item.OfOutputMessage] {
+		switch {
+		case item.OfMessage != nil:
+			kept = append(kept, item)
+		case item.OfOutputMessage != nil && !transientMessages[item.OfOutputMessage]:
+			kept = append(kept, item)
+		case item.OfFunctionCall != nil:
+			kept = append(kept, item)
+		case item.OfFunctionCallOutput != nil:
+			item.OfFunctionCallOutput.Output = responses.ResponseInputItemFunctionCallOutputOutputUnionParam{
+				OfString: openai.String(omittedREPLResult),
+			}
 			kept = append(kept, item)
 		}
 	}
