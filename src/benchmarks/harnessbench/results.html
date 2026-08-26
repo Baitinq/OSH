@@ -196,11 +196,11 @@
         <div class="track"><span></span></div>
         <div class="meta"><span>3 perfect</span><span>858.3s</span></div>
       </article>
-      <article class="card" style="--score: 83.85%">
-        <h2>OSH updated</h2>
-        <p class="score">0.8385</p>
+      <article class="card" style="--score: 86.48%">
+        <h2>OSH latest</h2>
+        <p class="score">0.8648</p>
         <div class="track"><span></span></div>
-        <div class="meta"><span>2 perfect</span><span>960.8s</span></div>
+        <div class="meta"><span>1 perfect</span><span>914.1s</span></div>
       </article>
       <article class="card" style="--score: 82.77%">
         <h2>Codex</h2>
@@ -218,41 +218,41 @@
 
     <aside class="finding">
       <span class="label">Rerun note</span>
-      <p>The updated OSH scored <strong>0.8385</strong>: 0.0070 above the first rerun and 0.0286 below the best baseline. Across tasks it tied Pi on nine, won three, and lost three.</p>
+      <p>The latest OSH scored <strong>0.8648</strong>, only 0.0023 below the best baseline and 0.037 ahead of both Codex and Pi. Against Pi it won five tasks, lost three, and tied seven.</p>
     </aside>
 
     <div class="table-wrap">
       <table>
         <caption>Task-level outcome scores</caption>
         <thead>
-          <tr><th>Task</th><th>OSH baseline</th><th>OSH rerun</th><th>OSH updated</th><th>Codex</th><th>Pi</th></tr>
+          <tr><th>Task</th><th>OSH baseline</th><th>OSH rerun</th><th>OSH latest</th><th>Codex</th><th>Pi</th></tr>
         </thead>
         <tbody id="results"></tbody>
       </table>
     </div>
 
     <footer>
-      Sources: <code>results/osh-baseline-20260826</code>, <code>results/osh-quick15-rerun-20260827</code>, <code>results/osh-quick15-updated-20260827</code>, <code>results/codex-quick15-20260826</code>, and <code>results/pi-openai-quick15-20260826</code>.
+      Sources: <code>results/osh-baseline-20260826</code>, <code>results/osh-quick15-rerun-20260827</code>, <code>results/osh-quick15-updated3-20260827</code>, <code>results/codex-quick15-20260826</code>, and <code>results/pi-openai-quick15-20260826</code>.
     </footer>
   </main>
 
   <script>
     const rows = [
       ["027 · contract summary risk", .8571, .7857, .8571, .7857, .8571],
-      ["029 · expense packet review", .9231, .6154, .6154, .6923, .6154],
-      ["031 · cross-doc citation check", .6667, .6667, .6667, .5556, .6667],
-      ["033 · offline knowledge QA", .7667, .6792, .7667, .7667, .6792],
+      ["029 · expense packet review", .9231, .6154, .8462, .6923, .6154],
+      ["031 · cross-doc citation check", .6667, .6667, .5556, .5556, .6667],
+      ["033 · offline knowledge QA", .7667, .6792, .6792, .7667, .6792],
       ["035 · conflicting source resolution", .8400, .8400, .8400, .8100, .8400],
       ["037 · policy clause retrieval", .7400, .7400, .7400, .7400, .7400],
-      ["039 · repo architecture map", .9158, .9232, .9232, .8868, .9343],
+      ["039 · repo architecture map", .9158, .9232, .9368, .8868, .9343],
       ["041 · frontend state bug", 1, .9962, .9962, .9962, .9962],
       ["043 · DB migration safety", .9950, .9950, .9870, .9270, .9870],
-      ["045 · dependency upgrade compat", .5829, .5629, .5629, .5729, .9261],
+      ["045 · dependency upgrade compat", .5829, .5629, .9249, .5729, .9261],
       ["047 · code review risk report", .7202, .7118, .7094, .7199, .7262],
-      ["049 · Excel-like cleaning", 1, 1, 1, 1, .5523],
+      ["049 · Excel-like cleaning", 1, 1, .9593, 1, .5523],
       ["051 · SQL query report", 1, 1, 1, 1, 1],
       ["053 · anomalous transaction detect", 1, 1, .9572, .9786, .9358],
-      ["055 · funnel dropoff analysis", 1, .9563, .9563, .9836, .9563]
+      ["055 · funnel dropoff analysis", 1, .9563, .9836, .9836, .9563]
     ];
 
     const tbody = document.querySelector("#results");

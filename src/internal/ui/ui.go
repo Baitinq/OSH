@@ -49,6 +49,7 @@ const (
 	toolEventReasoningDelta   = agent.ToolEventReasoningDelta
 	toolEventReasoningDone    = agent.ToolEventReasoningDone
 	toolEventSteerConsumed    = agent.ToolEventSteerConsumed
+	toolEventContextTokens    = agent.ToolEventContextTokens
 	toolEventTextDelta        = agent.ToolEventTextDelta
 	toolEventCall             = agent.ToolEventCall
 	toolEventUpdate           = agent.ToolEventUpdate
@@ -222,6 +223,10 @@ func (s *oshUI) handleToolEvent(id int, ev toolEvent) {
 		return
 	}
 	switch ev.Kind {
+	case toolEventContextTokens:
+		s.contextTokens = ev.ContextTokens
+		s.markDirty()
+		return
 	case toolEventCompactionStart:
 		s.addMessage(message{role: "system", text: "Compacting context…"})
 		return

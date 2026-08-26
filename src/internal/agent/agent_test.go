@@ -102,6 +102,7 @@ func TestBuildSystemPrompt(t *testing.T) {
 		"web_search(query, max_results=8) -> list[SearchResult]",
 		"llm(prompt) -> str",
 		"Only printed output and the final expression enter model context",
+		"Old REPL outputs are replaced with [output omitted] after each turn; Python state persists",
 		"npx -y mcporter@latest list",
 		"npx -y mcporter@latest call <server>.<tool>",
 		"Prioritize fast, verifiable iteration",

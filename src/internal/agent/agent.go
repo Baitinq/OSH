@@ -28,7 +28,7 @@ The REPL has these preloaded host functions:
 - web_search(query, max_results=8) -> list[SearchResult]: search DuckDuckGo for current information.
 - llm(prompt) -> str: run one fresh, tool-free model call for bounded semantic work over supplied data.
 
-Use llm() when the same semantic operation must be applied programmatically to supplied data; handle small or one-off reasoning directly. Use the REPL as a long-lived working environment. Assign tool results and intermediate data to variables, then inspect, filter, or print only what is needed for the next decision. Only printed output and the final expression enter model context; assigned values stay in the REPL. Use Python's standard library for file operations and data processing. Use shell() for project commands and external programs.
+Use llm() when the same semantic operation must be applied programmatically to supplied data; handle small or one-off reasoning directly. Use the REPL as a long-lived working environment. Assign tool results and intermediate data to variables, then inspect, filter, or print only what is needed for the next decision. Only printed output and the final expression enter model context; assigned values stay in the REPL. Old REPL outputs are replaced with [output omitted] after each turn; Python state persists. Use Python's standard library for file operations and data processing. Use shell() for project commands and external programs.
 
 MCP:
 - Configured MCP servers can be discovered and invoked through the mcporter CLI using shell("...").
@@ -159,6 +159,7 @@ const (
 	ToolEventReasoningDelta
 	ToolEventReasoningDone
 	ToolEventSteerConsumed
+	ToolEventContextTokens
 	ToolEventTextDelta
 	ToolEventCall
 	ToolEventUpdate
@@ -168,13 +169,14 @@ const (
 
 // ToolEvent describes streamed text, reasoning, retries, and REPL activity during a turn.
 type ToolEvent struct {
-	Kind        ToolEventKind
-	Name        string
-	ID          string
-	Detail      string
-	Attempt     int
-	MaxAttempts int
-	Delay       time.Duration
+	Kind          ToolEventKind
+	Name          string
+	ID            string
+	Detail        string
+	Attempt       int
+	MaxAttempts   int
+	Delay         time.Duration
+	ContextTokens int64
 }
 
 // Response is the completed result of an agent turn.
@@ -462,6 +464,7 @@ func (a *Agent) streamResponse(ctx context.Context, params responses.ResponseNew
 			emit(ToolEvent{Kind: ToolEventTextDelta, Detail: event.AsResponseOutputTextDelta().Delta})
 		case "response.completed":
 			resp = event.AsResponseCompleted().Response
+			emit(ToolEvent{Kind: ToolEventContextTokens, ContextTokens: resp.Usage.TotalTokens})
 		case "response.failed":
 			failure := event.AsResponseFailed().Response
 			failed = &responseFailure{code: string(failure.Error.Code), message: failure.Error.Message}
@@ -484,7 +487,7 @@ func (a *Agent) streamResponse(ctx context.Context, params responses.ResponseNew
 	return resp, nil
 }
 
-const omittedREPLResult = "[REPL result omitted after the turn; Python state persists.]"
+const omittedREPLResult = "[output omitted]"
 
 func (a *Agent) pruneTransientHistory(transientMessages map[*responses.ResponseOutputMessageParam]bool) {
 	kept := a.history[:0]
