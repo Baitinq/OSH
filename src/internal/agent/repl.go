@@ -122,8 +122,10 @@ def _result_url(value):
         return None
     return urllib.parse.urlunparse(parsed)
 
-def llm(prompt):
+def llm(prompt: str) -> str:
     """Run one fresh, tool-free model call and return its response as a string."""
+    if not isinstance(prompt, str):
+        raise TypeError("llm() prompt must be a string")
     _protocol_out.write(json.dumps({"host_call": "llm", "prompt": prompt}) + "\n")
     _protocol_out.flush()
     response = json.loads(_protocol_in.readline())

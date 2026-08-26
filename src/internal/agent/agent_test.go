@@ -495,6 +495,19 @@ func TestPythonREPLExposesLLM(t *testing.T) {
 	}
 }
 
+func TestPythonREPLRequiresStringLLMPrompt(t *testing.T) {
+	repl := newPythonREPL(func(_ context.Context, prompt string) (string, error) {
+		t.Fatalf("llm callback called with %q", prompt)
+		return "", nil
+	})
+	t.Cleanup(repl.close)
+
+	output, failed, err := repl.execute(t.Context(), `llm(42)`)
+	if err != nil || !failed || !strings.Contains(output, "TypeError: llm() prompt must be a string") {
+		t.Fatalf("llm result = %q, failed=%v, error=%v", output, failed, err)
+	}
+}
+
 func TestPythonREPLIsolatesRuntimeAndRestoresHostFunctions(t *testing.T) {
 	repl := newPythonREPL(nil)
 	t.Cleanup(repl.close)
