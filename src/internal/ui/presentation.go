@@ -136,8 +136,8 @@ func renderFooter(model, effort string, contextTokens int64, cwd, sessionID stri
 		{formatTokenCount(contextTokens), piGreen},
 		{" tokens  ·  ", piDim},
 		{cwd, piAccent},
-		{"  ·  session ", piDim},
-		{sessionID, piBlue},
+		{"  ·  ", piDim},
+		{sessionID, piDim},
 	}
 	var out strings.Builder
 	for _, part := range parts {
