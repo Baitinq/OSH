@@ -100,3 +100,17 @@ func fileMode(t *testing.T, path string) os.FileMode {
 	}
 	return info.Mode().Perm()
 }
+
+func TestConversationRestoresDisplayableMessages(t *testing.T) {
+	a := &Agent{history: []responses.ResponseInputItemUnionParam{
+		responses.ResponseInputItemParamOfMessage("[2026-08-27T14:03:01+02:00]\n\nfix session restoring", responses.EasyInputMessageRoleUser),
+		{OfFunctionCall: &responses.ResponseFunctionToolCallParam{Name: "repl", Arguments: `{"code":"pwd"}`}},
+		{OfOutputMessage: &responses.ResponseOutputMessageParam{Content: []responses.ResponseOutputMessageContentUnionParam{
+			{OfOutputText: &responses.ResponseOutputTextParam{Text: "Fixed."}},
+		}}},
+	}}
+	got := a.Conversation()
+	if len(got) != 2 || got[0].Role != "user" || got[0].Text != "fix session restoring" || got[1].Role != "assistant" || got[1].Text != "Fixed." {
+		t.Fatalf("conversation = %#v", got)
+	}
+}

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	tui "github.com/grindlemire/go-tui"
+
+	"fn/internal/agent"
 )
 
 const (
@@ -1260,5 +1262,19 @@ func TestRenderREPLToolAsCodeCell(t *testing.T) {
 	plain := stripANSI(renderedMessage(msg, 80))
 	if !strings.Contains(plain, "python") || !strings.Contains(plain, `value = shell("pwd")`) || strings.Contains(plain, ">>>") {
 		t.Fatalf("REPL tool rendering = %q", plain)
+	}
+}
+
+func TestRestoreConversationPopulatesTranscriptAndInputHistory(t *testing.T) {
+	s := newUI("model", "medium", nil)
+	s.restoreConversation([]agent.ConversationMessage{
+		{Role: "user", Text: "inspect the project"},
+		{Role: "assistant", Text: "It looks good."},
+	})
+	if len(s.messages) != 2 || s.messages[0].role != "you" || s.messages[1].role != "agent" {
+		t.Fatalf("restored messages = %#v", s.messages)
+	}
+	if len(s.inputHistory) != 1 || s.inputHistory[0] != "inspect the project" {
+		t.Fatalf("restored input history = %#v", s.inputHistory)
 	}
 }

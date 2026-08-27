@@ -5,9 +5,47 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/openai/openai-go/v3/responses"
 )
+
+// ConversationMessage is a user or assistant message restored from a session.
+type ConversationMessage struct {
+	Role string
+	Text string
+}
+
+// Conversation returns the displayable messages in the current session.
+func (a *Agent) Conversation() []ConversationMessage {
+	var conversation []ConversationMessage
+	for _, item := range a.history {
+		if item.OfMessage != nil && item.OfMessage.Role == responses.EasyInputMessageRoleUser {
+			text := item.OfMessage.Content.OfString.Value
+			if end := strings.Index(text, "]\n\n"); strings.HasPrefix(text, "[") && end >= 0 {
+				if _, err := time.Parse(time.RFC3339, text[1:end]); err == nil {
+					text = text[end+3:]
+				}
+			}
+			conversation = append(conversation, ConversationMessage{Role: "user", Text: text})
+		}
+		if item.OfOutputMessage != nil {
+			var text strings.Builder
+			for _, content := range item.OfOutputMessage.Content {
+				if content.OfOutputText != nil {
+					text.WriteString(content.OfOutputText.Text)
+				} else if content.OfRefusal != nil {
+					text.WriteString(content.OfRefusal.Refusal)
+				}
+			}
+			if text.Len() > 0 {
+				conversation = append(conversation, ConversationMessage{Role: "assistant", Text: text.String()})
+			}
+		}
+	}
+	return conversation
+}
 
 type sessionFile struct {
 	CWD     string            `json:"cwd"`

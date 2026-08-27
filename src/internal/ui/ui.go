@@ -695,7 +695,18 @@ func (s *fnUI) handleKey(k tui.KeyEvent) bool {
 	return true
 }
 
-func Run(modelName, reasoningEffort, sessionID, cwd string, respond func(string, <-chan string, func(agent.ToolEvent), context.Context) agent.Response) error {
+func (s *fnUI) restoreConversation(conversation []agent.ConversationMessage) {
+	for _, restored := range conversation {
+		role := "agent"
+		if restored.Role == "user" {
+			role = "you"
+			s.inputHistory = append(s.inputHistory, restored.Text)
+		}
+		s.messages = append(s.messages, message{role: role, text: restored.Text})
+	}
+}
+
+func Run(modelName, reasoningEffort, sessionID, cwd string, conversation []agent.ConversationMessage, respond func(string, <-chan string, func(agent.ToolEvent), context.Context) agent.Response) error {
 	term, err := tui.NewANSITerminal(os.Stdout, os.Stdin)
 	if err != nil {
 		return err
@@ -731,6 +742,7 @@ func Run(modelName, reasoningEffort, sessionID, cwd string, respond func(string,
 		return response{Text: result.Text, ContextTokens: result.ContextTokens, Err: result.Err}
 	})
 	root.sessionID = sessionID
+	root.restoreConversation(conversation)
 	root.cwd = cwd
 	root.dispatch = func(fn func()) { updates <- fn }
 	// Run serializes every state mutation below and marks the corresponding

@@ -168,7 +168,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	if printMode {
 		return printResponse(prompt, respond, stdout)
 	}
-	return ui.Run(a.ModelName(), a.ReasoningEffort(), sessionID, cwd, respond)
+	return ui.Run(a.ModelName(), a.ReasoningEffort(), sessionID, cwd, a.Conversation(), respond)
 }
 
 func main() {
