@@ -2,6 +2,10 @@
 
 This directory contains reproducible evaluations for fn agent and other coding harnesses.
 
+## Harbor
+
+The [Harbor adapter](harbor/README.md) runs fn on packaged benchmarks such as Terminal-Bench and SWE-bench, locally or on Harbor-supported cloud sandboxes.
+
 ## HarnessBench
 
 [HarnessBench](harnessbench/README.md) is the maintained lightweight comparison suite. It uses the deterministic task fixtures and programmatic oracles from Qihoo360 HarnessBench, pinned to commit `1025086a446653702b80cfb48babbeec35db6b2c`.
