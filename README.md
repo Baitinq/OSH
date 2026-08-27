@@ -5,10 +5,13 @@
 <p align="center">
   <a href="src/go.mod"><img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.26+"></a>
   <a href="#requirements"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+"></a>
-  <a href="#configuration"><img src="https://img.shields.io/badge/API-OpenAI_Responses-111111?style=flat-square&logo=openai&logoColor=white" alt="OpenAI Responses API"></a>
 </p>
 
-`fn` gives an OpenAI model one persistent Python environment for reasoning, tools,
+<p align="center">
+  <img src="docs/fn-python-repl.png" alt="fn agent using its Python REPL in a terminal" width="900">
+</p>
+
+`fn` gives a model one persistent Python environment for reasoning, tools,
 and working memory. Python variables, imports, and results survive across calls, so
 the agent can keep large state outside model context and inspect only what it needs.
 The agent loop stays explicit: one model-facing REPL tool, a few composable functions,
@@ -18,7 +21,7 @@ and no framework hidden underneath.
 
 - Go 1.26 or newer
 - Python 3.10 or newer (`python3`)
-- An OpenAI API key, or an OpenAI-compatible server implementing the Responses API
+- An API key for the configured model provider
 
 ## Run
 
@@ -47,7 +50,7 @@ cat error.log | fn --print "find the root cause"
 
 ## Configuration
 
-`OPENAI_API_KEY` must be set. fn agent also supports these optional overrides:
+Set the API key with `OPENAI_API_KEY`. fn agent also supports these optional overrides:
 
 | Variable | Default |
 | --- | --- |
@@ -59,9 +62,8 @@ When a model rejects a request because its context limit was reached, fn agent
 summarizes older context, preserves approximately 20,000 recent tokens verbatim,
 and retries once.
 
-For local servers that ignore authentication, use any non-empty API key. The server
-must implement the OpenAI **Responses API** (`POST /responses`), including function
-tool calls. Chat Completions compatibility alone is not sufficient.
+For local servers that ignore authentication, use any non-empty API key. Custom
+endpoints must support `POST /responses`, including function tool calls.
 
 ## Persistent REPL
 
@@ -136,3 +138,4 @@ go vet ./...
 
 fn agent executes Python and shell commands with the permissions of the current user.
 The REPL is not a sandbox. Run it only where that access is appropriate.
+
