@@ -69,7 +69,7 @@ func TestCallLLMUsesFreshToolFreeRequest(t *testing.T) {
 			t.Fatal(err)
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprint(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":1,\"response\":{\"id\":\"resp_llm\",\"object\":\"response\",\"model\":\"test\",\"status\":\"completed\",\"output\":[{\"id\":\"msg_llm\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"classified\",\"annotations\":[]}]}]}}\n\n")
+		fmt.Fprint(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":1,\"response\":{\"id\":\"resp_llm\",\"object\":\"response\",\"model\":\"test\",\"status\":\"completed\",\"output\":[{\"id\":\"msg_llm\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"classified\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":40,\"input_tokens_details\":{\"cached_tokens\":10},\"output_tokens\":2,\"output_tokens_details\":{\"reasoning_tokens\":1},\"total_tokens\":42}}}\n\n")
 	}))
 	defer server.Close()
 
@@ -81,6 +81,9 @@ func TestCallLLMUsesFreshToolFreeRequest(t *testing.T) {
 	text, err := a.callLLM(t.Context(), "classify this")
 	if err != nil || text != "classified" {
 		t.Fatalf("callLLM() = %q, %v", text, err)
+	}
+	if a.TokensUsed() != 42 {
+		t.Fatalf("TokensUsed() = %d, want 42", a.TokensUsed())
 	}
 	if _, ok := request["tools"]; ok {
 		t.Fatalf("llm request included tools: %#v", request["tools"])

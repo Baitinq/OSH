@@ -113,7 +113,7 @@ func publishRunningSession(home, sessionID string) (func(), error) {
 	return func() { os.Remove(path) }, nil
 }
 
-func run(args []string, stdin io.Reader, stdout io.Writer) error {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	prompt, printMode, sessionID, err := parseArgs(args)
 	if err != nil {
 		return err
@@ -166,13 +166,17 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return response
 	}
 	if printMode {
-		return printResponse(prompt, respond, stdout)
+		if err := printResponse(prompt, respond, stdout); err != nil {
+			return err
+		}
+		fmt.Fprintf(stderr, "tokens used\n%d\n", a.TokensUsed())
+		return nil
 	}
 	return ui.Run(a.ModelName(), a.ReasoningEffort(), sessionID, cwd, a.Conversation(), respond)
 }
 
 func main() {
-	if err := run(os.Args[1:], os.Stdin, os.Stdout); err != nil {
+	if err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

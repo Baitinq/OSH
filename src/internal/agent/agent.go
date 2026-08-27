@@ -198,6 +198,9 @@ func (a *Agent) ModelName() string { return a.modelName }
 // ReasoningEffort returns the configured reasoning level.
 func (a *Agent) ReasoningEffort() string { return string(a.reasoningEffort) }
 
+// TokensUsed returns the total tokens used by completed model responses.
+func (a *Agent) TokensUsed() int64 { return a.tokensUsed }
+
 type Agent struct {
 	cwd             string
 	sessionID       string
@@ -211,6 +214,7 @@ type Agent struct {
 	retryBaseDelay  time.Duration
 	retryJitter     func() float64
 	summary         string
+	tokensUsed      int64
 	repl            *pythonREPL
 }
 
@@ -463,6 +467,7 @@ func (a *Agent) streamResponse(ctx context.Context, params responses.ResponseNew
 			emit(ToolEvent{Kind: ToolEventTextDelta, Detail: event.AsResponseOutputTextDelta().Delta})
 		case "response.completed":
 			resp = event.AsResponseCompleted().Response
+			a.tokensUsed += resp.Usage.TotalTokens
 			emit(ToolEvent{Kind: ToolEventContextTokens, ContextTokens: resp.Usage.TotalTokens})
 		case "response.failed":
 			failure := event.AsResponseFailed().Response
