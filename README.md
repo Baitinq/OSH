@@ -25,11 +25,11 @@ score**, compared with **0.8730 for Pi** and **0.8494 for Codex**, using the sam
 model and reasoning level. The paired results place fn and Pi in an effective tie;
 fn was the fastest harness and the most consistent between repetitions.
 
-| Harness | Repetition 1 | Repetition 2 | Combined mean |
-| --- | ---: | ---: | ---: |
-| Pi | 0.8782 | 0.8678 | **0.8730** |
-| fn agent | 0.8697 | 0.8708 | **0.8702** |
-| Codex | 0.8431 | 0.8558 | **0.8494** |
+| Harness | Combined mean | Mean time per 60 tasks |
+| --- | ---: | ---: |
+| **fn agent** | **0.8702** | **45m 39s** |
+| Pi | 0.8730 | 62m 01s |
+| Codex | 0.8494 | 76m 45s |
 
 See the [methodology](src/benchmarks/harnessbench/README.md),
 [detailed results](src/benchmarks/harnessbench/results.html), and
