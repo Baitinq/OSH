@@ -8,8 +8,10 @@ programmatic oracles. It does not use Harbor or rebuild benchmark scoring.
 
 The checked-in [60-task, two-repetition results](results.html) contain 360 agent
 runs using GPT-5.6 Sol with medium reasoning. The accompanying
-[JSON artifact](results-60x2-20260827.json) includes every selected task score and
-duration, aggregate statistics, and paired confidence intervals.
+[JSON artifact](results-60x2-20260827.json) includes every selected task score,
+duration, token count, aggregate statistic, and paired confidence interval. Pi and
+Codex token counts come from the original runs. fn token counts come from a
+score-equivalent rerun after aggregate token reporting was added.
 
 Tasks 078 and 081 required a public tunnel that was unavailable during the run, so
 they were replaced with tasks 087 and 089. Task 088 was also attempted as a

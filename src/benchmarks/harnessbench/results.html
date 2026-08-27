@@ -23,13 +23,13 @@
   <header><div><div class="eyebrow">HarnessBench · 27 Aug 2026</div><h1>Sixty tasks,<br>two repetitions.</h1></div><div class="sample"><strong>360</strong><span>total agent runs</span></div></header>
   <p class="lede">Deterministic outcome scores for fn agent, Pi, and Codex. Every harness ran the same 60 tasks twice with GPT-5.6 Sol at medium reasoning. The two scores for each task are averaged in the table below.</p>
   <section class="cards">
-    <article class="card best" style="--score:87.02%"><h2>fn agent</h2><p class="score">0.8702</p><div class="track"><span></span></div><div class="meta">mean time per 60 tasks · 45m 39s</div></article>
-    <article class="card" style="--score:87.30%"><h2>Pi</h2><p class="score">0.8730</p><div class="track"><span></span></div><div class="meta">mean time per 60 tasks · 62m 01s</div></article>
-    <article class="card" style="--score:84.94%"><h2>Codex</h2><p class="score">0.8494</p><div class="track"><span></span></div><div class="meta">mean time per 60 tasks · 76m 45s</div></article>
+    <article class="card best" style="--score:87.02%"><h2>fn agent</h2><p class="score">0.8702</p><div class="track"><span></span></div><div class="meta">45m 39s · 1.91M tokens</div></article>
+    <article class="card" style="--score:87.30%"><h2>Pi</h2><p class="score">0.8730</p><div class="track"><span></span></div><div class="meta">62m 01s · 4.27M tokens</div></article>
+    <article class="card" style="--score:84.94%"><h2>Codex</h2><p class="score">0.8494</p><div class="track"><span></span></div><div class="meta">76m 45s · 1.32M tokens</div></article>
   </section>
-  <aside class="finding"><strong>fn and Pi are effectively tied.</strong> Pi leads fn by 0.0028 (paired 95% CI −0.0132 to +0.0188). fn leads Codex by 0.0208, though that interval also narrowly crosses zero (−0.0053 to +0.0469). fn was the fastest harness and had the smallest change between repetitions.</aside>
+  <aside class="finding"><strong>fn and Pi are effectively tied.</strong> Pi leads fn by 0.0028 (paired 95% CI −0.0132 to +0.0188). fn leads Codex by 0.0208, though that interval also narrowly crosses zero (−0.0053 to +0.0469). fn was the fastest harness and had the smallest change between repetitions. It used 55% fewer tokens than Pi; Codex used 31% fewer than fn.</aside>
   <div class="table-wrap"><table><caption>Task-level scores averaged across both repetitions</caption><thead><tr><th>Task</th><th>fn agent</th><th>Pi</th><th>Codex</th></tr></thead><tbody id="results"></tbody></table></div>
-  <footer>Tasks 078 and 081 required an unavailable public tunnel and were replaced by 087 and 089. An attempted replacement, 088, required the same tunnel and was not included. See <code>results-60x2-20260827.json</code> for all 360 selected run records, durations, aggregate statistics, and confidence intervals.</footer>
+  <footer>Tasks 078 and 081 required an unavailable public tunnel and were replaced by 087 and 089. An attempted replacement, 088, required the same tunnel and was not included. See <code>results-60x2-20260827.json</code> for all selected scores, durations, token counts, aggregate statistics, and confidence intervals. fn token counts come from a score-equivalent rerun after reporting was added.</footer>
 </main><script>
   const rows = [
       ["027 \u00b7 contract-summary-risk", 0.8571, 0.7857000000000001, 0.6786000000000001],

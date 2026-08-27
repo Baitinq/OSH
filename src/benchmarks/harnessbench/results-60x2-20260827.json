@@ -2702,5 +2702,1490 @@
         }
       ]
     ]
+  },
+  "token_usage": {
+    "definition": "Provider-reported total tokens, including cached input tokens.",
+    "note": "Pi and Codex usage comes from the published benchmark runs. fn usage comes from a score-equivalent 60-task rerun after token reporting was added.",
+    "harnesses": {
+      "fn": {
+        "repetition_totals": [
+          1946707,
+          1865899
+        ],
+        "mean_tokens_per_60_tasks": 1906303,
+        "runs": [
+          [
+            {
+              "task_id": "027-contract-summary-risk",
+              "tokens_used": 15709
+            },
+            {
+              "task_id": "028-email-thread-merge",
+              "tokens_used": 16793
+            },
+            {
+              "task_id": "029-expense-packet-review",
+              "tokens_used": 15414
+            },
+            {
+              "task_id": "030-word-revision-plan",
+              "tokens_used": 14205
+            },
+            {
+              "task_id": "031-cross-doc-citation-check",
+              "tokens_used": 14093
+            },
+            {
+              "task_id": "032-customer-followup-draft",
+              "tokens_used": 9197
+            },
+            {
+              "task_id": "033-offline-knowledge-qa",
+              "tokens_used": 12357
+            },
+            {
+              "task_id": "034-evidence-matrix-claims",
+              "tokens_used": 9295
+            },
+            {
+              "task_id": "035-conflicting-source-resolution",
+              "tokens_used": 37521
+            },
+            {
+              "task_id": "036-citation-consistency-audit",
+              "tokens_used": 35295
+            },
+            {
+              "task_id": "037-policy-clause-retrieval",
+              "tokens_used": 39882
+            },
+            {
+              "task_id": "038-research-brief-synthesis",
+              "tokens_used": 49167
+            },
+            {
+              "task_id": "039-repo-architecture-map",
+              "tokens_used": 129888
+            },
+            {
+              "task_id": "040-test-coverage-fill",
+              "tokens_used": 44363
+            },
+            {
+              "task_id": "041-frontend-state-bug",
+              "tokens_used": 201545
+            },
+            {
+              "task_id": "042-api-schema-migration",
+              "tokens_used": 52870
+            },
+            {
+              "task_id": "043-db-migration-safety",
+              "tokens_used": 41737
+            },
+            {
+              "task_id": "044-ci-config-repair",
+              "tokens_used": 26382
+            },
+            {
+              "task_id": "045-dependency-upgrade-compat",
+              "tokens_used": 31776
+            },
+            {
+              "task_id": "046-performance-regression",
+              "tokens_used": 17711
+            },
+            {
+              "task_id": "047-code-review-risk-report",
+              "tokens_used": 13131
+            },
+            {
+              "task_id": "048-release-note-changelog",
+              "tokens_used": 31422
+            },
+            {
+              "task_id": "049-excel-like-cleaning",
+              "tokens_used": 36860
+            },
+            {
+              "task_id": "050-multitable-join-analysis",
+              "tokens_used": 35727
+            },
+            {
+              "task_id": "051-sql-query-report",
+              "tokens_used": 18598
+            },
+            {
+              "task_id": "052-metric-definition-audit",
+              "tokens_used": 19274
+            },
+            {
+              "task_id": "053-anomalous-transaction-detect",
+              "tokens_used": 21888
+            },
+            {
+              "task_id": "054-budget-variance-analysis",
+              "tokens_used": 28381
+            },
+            {
+              "task_id": "055-funnel-dropoff-analysis",
+              "tokens_used": 39333
+            },
+            {
+              "task_id": "056-inventory-forecast",
+              "tokens_used": 18924
+            },
+            {
+              "task_id": "057-interruption-resume",
+              "tokens_used": 26605
+            },
+            {
+              "task_id": "058-multiday-project-state",
+              "tokens_used": 24897
+            },
+            {
+              "task_id": "059-event-update-replan",
+              "tokens_used": 11182
+            },
+            {
+              "task_id": "060-task-cancellation-cleanup",
+              "tokens_used": 10759
+            },
+            {
+              "task_id": "061-periodic-status-rollup",
+              "tokens_used": 26966
+            },
+            {
+              "task_id": "062-k8s-config-audit",
+              "tokens_used": 14062
+            },
+            {
+              "task_id": "063-alert-dedup-noise",
+              "tokens_used": 18098
+            },
+            {
+              "task_id": "064-service-dependency-triage",
+              "tokens_used": 20431
+            },
+            {
+              "task_id": "065-capacity-planning",
+              "tokens_used": 28432
+            },
+            {
+              "task_id": "066-rollback-readiness",
+              "tokens_used": 12436
+            },
+            {
+              "task_id": "067-canary-release-check",
+              "tokens_used": 26950
+            },
+            {
+              "task_id": "068-product-launch-ops",
+              "tokens_used": 21843
+            },
+            {
+              "task_id": "069-legal-compliance-review",
+              "tokens_used": 34342
+            },
+            {
+              "task_id": "070-hr-resume-screening",
+              "tokens_used": 10274
+            },
+            {
+              "task_id": "071-ecommerce-support-routing",
+              "tokens_used": 28083
+            },
+            {
+              "task_id": "072-logistics-delay-response",
+              "tokens_used": 9600
+            },
+            {
+              "task_id": "073-research-repro-package",
+              "tokens_used": 26584
+            },
+            {
+              "task_id": "074-education-grading-feedback",
+              "tokens_used": 9948
+            },
+            {
+              "task_id": "075-platform-appeal-review",
+              "tokens_used": 25979
+            },
+            {
+              "task_id": "076-medical-admin-claim-check",
+              "tokens_used": 18281
+            },
+            {
+              "task_id": "077-archive-manifest-defense",
+              "tokens_used": 47727
+            },
+            {
+              "task_id": "079-smallfile-batch-reject-ledger",
+              "tokens_used": 35612
+            },
+            {
+              "task_id": "080-schema-roundtrip-conversion",
+              "tokens_used": 68999
+            },
+            {
+              "task_id": "082-compose-config-repair",
+              "tokens_used": 57720
+            },
+            {
+              "task_id": "083-monorepo-interface-repair",
+              "tokens_used": 43301
+            },
+            {
+              "task_id": "084-js-state-type-bug",
+              "tokens_used": 33313
+            },
+            {
+              "task_id": "085-flaky-test-root-cause",
+              "tokens_used": 33615
+            },
+            {
+              "task_id": "086-sql-migration-preflight-rollback",
+              "tokens_used": 48208
+            },
+            {
+              "task_id": "087-cli-parser-bug-tests",
+              "tokens_used": 64205
+            },
+            {
+              "task_id": "089-ab-test-caveat-analysis",
+              "tokens_used": 29517
+            }
+          ],
+          [
+            {
+              "task_id": "027-contract-summary-risk",
+              "tokens_used": 19929
+            },
+            {
+              "task_id": "028-email-thread-merge",
+              "tokens_used": 11670
+            },
+            {
+              "task_id": "029-expense-packet-review",
+              "tokens_used": 10419
+            },
+            {
+              "task_id": "030-word-revision-plan",
+              "tokens_used": 9831
+            },
+            {
+              "task_id": "031-cross-doc-citation-check",
+              "tokens_used": 15885
+            },
+            {
+              "task_id": "032-customer-followup-draft",
+              "tokens_used": 9147
+            },
+            {
+              "task_id": "033-offline-knowledge-qa",
+              "tokens_used": 9535
+            },
+            {
+              "task_id": "034-evidence-matrix-claims",
+              "tokens_used": 12504
+            },
+            {
+              "task_id": "035-conflicting-source-resolution",
+              "tokens_used": 44584
+            },
+            {
+              "task_id": "036-citation-consistency-audit",
+              "tokens_used": 33568
+            },
+            {
+              "task_id": "037-policy-clause-retrieval",
+              "tokens_used": 36916
+            },
+            {
+              "task_id": "038-research-brief-synthesis",
+              "tokens_used": 33960
+            },
+            {
+              "task_id": "039-repo-architecture-map",
+              "tokens_used": 86682
+            },
+            {
+              "task_id": "040-test-coverage-fill",
+              "tokens_used": 40360
+            },
+            {
+              "task_id": "041-frontend-state-bug",
+              "tokens_used": 95992
+            },
+            {
+              "task_id": "042-api-schema-migration",
+              "tokens_used": 66127
+            },
+            {
+              "task_id": "043-db-migration-safety",
+              "tokens_used": 45468
+            },
+            {
+              "task_id": "044-ci-config-repair",
+              "tokens_used": 21757
+            },
+            {
+              "task_id": "045-dependency-upgrade-compat",
+              "tokens_used": 29759
+            },
+            {
+              "task_id": "046-performance-regression",
+              "tokens_used": 21113
+            },
+            {
+              "task_id": "047-code-review-risk-report",
+              "tokens_used": 13307
+            },
+            {
+              "task_id": "048-release-note-changelog",
+              "tokens_used": 27052
+            },
+            {
+              "task_id": "049-excel-like-cleaning",
+              "tokens_used": 24635
+            },
+            {
+              "task_id": "050-multitable-join-analysis",
+              "tokens_used": 45438
+            },
+            {
+              "task_id": "051-sql-query-report",
+              "tokens_used": 22929
+            },
+            {
+              "task_id": "052-metric-definition-audit",
+              "tokens_used": 21244
+            },
+            {
+              "task_id": "053-anomalous-transaction-detect",
+              "tokens_used": 22246
+            },
+            {
+              "task_id": "054-budget-variance-analysis",
+              "tokens_used": 28009
+            },
+            {
+              "task_id": "055-funnel-dropoff-analysis",
+              "tokens_used": 46280
+            },
+            {
+              "task_id": "056-inventory-forecast",
+              "tokens_used": 18417
+            },
+            {
+              "task_id": "057-interruption-resume",
+              "tokens_used": 23788
+            },
+            {
+              "task_id": "058-multiday-project-state",
+              "tokens_used": 24230
+            },
+            {
+              "task_id": "059-event-update-replan",
+              "tokens_used": 10230
+            },
+            {
+              "task_id": "060-task-cancellation-cleanup",
+              "tokens_used": 18690
+            },
+            {
+              "task_id": "061-periodic-status-rollup",
+              "tokens_used": 23952
+            },
+            {
+              "task_id": "062-k8s-config-audit",
+              "tokens_used": 9594
+            },
+            {
+              "task_id": "063-alert-dedup-noise",
+              "tokens_used": 17834
+            },
+            {
+              "task_id": "064-service-dependency-triage",
+              "tokens_used": 26850
+            },
+            {
+              "task_id": "065-capacity-planning",
+              "tokens_used": 27537
+            },
+            {
+              "task_id": "066-rollback-readiness",
+              "tokens_used": 15244
+            },
+            {
+              "task_id": "067-canary-release-check",
+              "tokens_used": 21530
+            },
+            {
+              "task_id": "068-product-launch-ops",
+              "tokens_used": 20906
+            },
+            {
+              "task_id": "069-legal-compliance-review",
+              "tokens_used": 24872
+            },
+            {
+              "task_id": "070-hr-resume-screening",
+              "tokens_used": 24614
+            },
+            {
+              "task_id": "071-ecommerce-support-routing",
+              "tokens_used": 34939
+            },
+            {
+              "task_id": "072-logistics-delay-response",
+              "tokens_used": 14121
+            },
+            {
+              "task_id": "073-research-repro-package",
+              "tokens_used": 33843
+            },
+            {
+              "task_id": "074-education-grading-feedback",
+              "tokens_used": 14636
+            },
+            {
+              "task_id": "075-platform-appeal-review",
+              "tokens_used": 26311
+            },
+            {
+              "task_id": "076-medical-admin-claim-check",
+              "tokens_used": 18391
+            },
+            {
+              "task_id": "077-archive-manifest-defense",
+              "tokens_used": 79621
+            },
+            {
+              "task_id": "079-smallfile-batch-reject-ledger",
+              "tokens_used": 49285
+            },
+            {
+              "task_id": "080-schema-roundtrip-conversion",
+              "tokens_used": 29842
+            },
+            {
+              "task_id": "082-compose-config-repair",
+              "tokens_used": 57118
+            },
+            {
+              "task_id": "083-monorepo-interface-repair",
+              "tokens_used": 32763
+            },
+            {
+              "task_id": "084-js-state-type-bug",
+              "tokens_used": 36253
+            },
+            {
+              "task_id": "085-flaky-test-root-cause",
+              "tokens_used": 43756
+            },
+            {
+              "task_id": "086-sql-migration-preflight-rollback",
+              "tokens_used": 75842
+            },
+            {
+              "task_id": "087-cli-parser-bug-tests",
+              "tokens_used": 82913
+            },
+            {
+              "task_id": "089-ab-test-caveat-analysis",
+              "tokens_used": 21631
+            }
+          ]
+        ]
+      },
+      "pi": {
+        "repetition_totals": [
+          4292225,
+          4245841
+        ],
+        "mean_tokens_per_60_tasks": 4269033,
+        "runs": [
+          [
+            {
+              "task_id": "027-contract-summary-risk",
+              "tokens_used": 33396
+            },
+            {
+              "task_id": "028-email-thread-merge",
+              "tokens_used": 41378
+            },
+            {
+              "task_id": "029-expense-packet-review",
+              "tokens_used": 40825
+            },
+            {
+              "task_id": "030-word-revision-plan",
+              "tokens_used": 31147
+            },
+            {
+              "task_id": "031-cross-doc-citation-check",
+              "tokens_used": 47358
+            },
+            {
+              "task_id": "032-customer-followup-draft",
+              "tokens_used": 23784
+            },
+            {
+              "task_id": "033-offline-knowledge-qa",
+              "tokens_used": 38030
+            },
+            {
+              "task_id": "034-evidence-matrix-claims",
+              "tokens_used": 37721
+            },
+            {
+              "task_id": "035-conflicting-source-resolution",
+              "tokens_used": 105145
+            },
+            {
+              "task_id": "036-citation-consistency-audit",
+              "tokens_used": 100513
+            },
+            {
+              "task_id": "037-policy-clause-retrieval",
+              "tokens_used": 86992
+            },
+            {
+              "task_id": "038-research-brief-synthesis",
+              "tokens_used": 88102
+            },
+            {
+              "task_id": "039-repo-architecture-map",
+              "tokens_used": 130460
+            },
+            {
+              "task_id": "040-test-coverage-fill",
+              "tokens_used": 119708
+            },
+            {
+              "task_id": "041-frontend-state-bug",
+              "tokens_used": 66015
+            },
+            {
+              "task_id": "042-api-schema-migration",
+              "tokens_used": 205635
+            },
+            {
+              "task_id": "043-db-migration-safety",
+              "tokens_used": 80197
+            },
+            {
+              "task_id": "044-ci-config-repair",
+              "tokens_used": 85154
+            },
+            {
+              "task_id": "045-dependency-upgrade-compat",
+              "tokens_used": 174163
+            },
+            {
+              "task_id": "046-performance-regression",
+              "tokens_used": 56743
+            },
+            {
+              "task_id": "047-code-review-risk-report",
+              "tokens_used": 67353
+            },
+            {
+              "task_id": "048-release-note-changelog",
+              "tokens_used": 60534
+            },
+            {
+              "task_id": "049-excel-like-cleaning",
+              "tokens_used": 79604
+            },
+            {
+              "task_id": "050-multitable-join-analysis",
+              "tokens_used": 32788
+            },
+            {
+              "task_id": "051-sql-query-report",
+              "tokens_used": 46609
+            },
+            {
+              "task_id": "052-metric-definition-audit",
+              "tokens_used": 35924
+            },
+            {
+              "task_id": "053-anomalous-transaction-detect",
+              "tokens_used": 40565
+            },
+            {
+              "task_id": "054-budget-variance-analysis",
+              "tokens_used": 38654
+            },
+            {
+              "task_id": "055-funnel-dropoff-analysis",
+              "tokens_used": 54318
+            },
+            {
+              "task_id": "056-inventory-forecast",
+              "tokens_used": 35377
+            },
+            {
+              "task_id": "057-interruption-resume",
+              "tokens_used": 30691
+            },
+            {
+              "task_id": "058-multiday-project-state",
+              "tokens_used": 47640
+            },
+            {
+              "task_id": "059-event-update-replan",
+              "tokens_used": 32097
+            },
+            {
+              "task_id": "060-task-cancellation-cleanup",
+              "tokens_used": 22568
+            },
+            {
+              "task_id": "061-periodic-status-rollup",
+              "tokens_used": 61809
+            },
+            {
+              "task_id": "062-k8s-config-audit",
+              "tokens_used": 32419
+            },
+            {
+              "task_id": "063-alert-dedup-noise",
+              "tokens_used": 43351
+            },
+            {
+              "task_id": "064-service-dependency-triage",
+              "tokens_used": 46864
+            },
+            {
+              "task_id": "065-capacity-planning",
+              "tokens_used": 60519
+            },
+            {
+              "task_id": "066-rollback-readiness",
+              "tokens_used": 43631
+            },
+            {
+              "task_id": "067-canary-release-check",
+              "tokens_used": 38199
+            },
+            {
+              "task_id": "068-product-launch-ops",
+              "tokens_used": 57018
+            },
+            {
+              "task_id": "069-legal-compliance-review",
+              "tokens_used": 54730
+            },
+            {
+              "task_id": "070-hr-resume-screening",
+              "tokens_used": 65368
+            },
+            {
+              "task_id": "071-ecommerce-support-routing",
+              "tokens_used": 41597
+            },
+            {
+              "task_id": "072-logistics-delay-response",
+              "tokens_used": 39147
+            },
+            {
+              "task_id": "073-research-repro-package",
+              "tokens_used": 68672
+            },
+            {
+              "task_id": "074-education-grading-feedback",
+              "tokens_used": 40368
+            },
+            {
+              "task_id": "075-platform-appeal-review",
+              "tokens_used": 61972
+            },
+            {
+              "task_id": "076-medical-admin-claim-check",
+              "tokens_used": 52292
+            },
+            {
+              "task_id": "077-archive-manifest-defense",
+              "tokens_used": 270244
+            },
+            {
+              "task_id": "079-smallfile-batch-reject-ledger",
+              "tokens_used": 112757
+            },
+            {
+              "task_id": "080-schema-roundtrip-conversion",
+              "tokens_used": 81792
+            },
+            {
+              "task_id": "082-compose-config-repair",
+              "tokens_used": 118715
+            },
+            {
+              "task_id": "083-monorepo-interface-repair",
+              "tokens_used": 108215
+            },
+            {
+              "task_id": "084-js-state-type-bug",
+              "tokens_used": 74448
+            },
+            {
+              "task_id": "085-flaky-test-root-cause",
+              "tokens_used": 128219
+            },
+            {
+              "task_id": "086-sql-migration-preflight-rollback",
+              "tokens_used": 193029
+            },
+            {
+              "task_id": "087-cli-parser-bug-tests",
+              "tokens_used": 136801
+            },
+            {
+              "task_id": "089-ab-test-caveat-analysis",
+              "tokens_used": 42861
+            }
+          ],
+          [
+            {
+              "task_id": "027-contract-summary-risk",
+              "tokens_used": 32853
+            },
+            {
+              "task_id": "028-email-thread-merge",
+              "tokens_used": 41752
+            },
+            {
+              "task_id": "029-expense-packet-review",
+              "tokens_used": 49701
+            },
+            {
+              "task_id": "030-word-revision-plan",
+              "tokens_used": 31428
+            },
+            {
+              "task_id": "031-cross-doc-citation-check",
+              "tokens_used": 68054
+            },
+            {
+              "task_id": "032-customer-followup-draft",
+              "tokens_used": 32263
+            },
+            {
+              "task_id": "033-offline-knowledge-qa",
+              "tokens_used": 38375
+            },
+            {
+              "task_id": "034-evidence-matrix-claims",
+              "tokens_used": 37183
+            },
+            {
+              "task_id": "035-conflicting-source-resolution",
+              "tokens_used": 118248
+            },
+            {
+              "task_id": "036-citation-consistency-audit",
+              "tokens_used": 75516
+            },
+            {
+              "task_id": "037-policy-clause-retrieval",
+              "tokens_used": 58392
+            },
+            {
+              "task_id": "038-research-brief-synthesis",
+              "tokens_used": 119771
+            },
+            {
+              "task_id": "039-repo-architecture-map",
+              "tokens_used": 157997
+            },
+            {
+              "task_id": "040-test-coverage-fill",
+              "tokens_used": 102383
+            },
+            {
+              "task_id": "041-frontend-state-bug",
+              "tokens_used": 67869
+            },
+            {
+              "task_id": "042-api-schema-migration",
+              "tokens_used": 158597
+            },
+            {
+              "task_id": "043-db-migration-safety",
+              "tokens_used": 111622
+            },
+            {
+              "task_id": "044-ci-config-repair",
+              "tokens_used": 76431
+            },
+            {
+              "task_id": "045-dependency-upgrade-compat",
+              "tokens_used": 164181
+            },
+            {
+              "task_id": "046-performance-regression",
+              "tokens_used": 48959
+            },
+            {
+              "task_id": "047-code-review-risk-report",
+              "tokens_used": 79330
+            },
+            {
+              "task_id": "048-release-note-changelog",
+              "tokens_used": 103534
+            },
+            {
+              "task_id": "049-excel-like-cleaning",
+              "tokens_used": 66892
+            },
+            {
+              "task_id": "050-multitable-join-analysis",
+              "tokens_used": 51905
+            },
+            {
+              "task_id": "051-sql-query-report",
+              "tokens_used": 47800
+            },
+            {
+              "task_id": "052-metric-definition-audit",
+              "tokens_used": 36457
+            },
+            {
+              "task_id": "053-anomalous-transaction-detect",
+              "tokens_used": 40118
+            },
+            {
+              "task_id": "054-budget-variance-analysis",
+              "tokens_used": 55770
+            },
+            {
+              "task_id": "055-funnel-dropoff-analysis",
+              "tokens_used": 72463
+            },
+            {
+              "task_id": "056-inventory-forecast",
+              "tokens_used": 35780
+            },
+            {
+              "task_id": "057-interruption-resume",
+              "tokens_used": 30655
+            },
+            {
+              "task_id": "058-multiday-project-state",
+              "tokens_used": 75557
+            },
+            {
+              "task_id": "059-event-update-replan",
+              "tokens_used": 35268
+            },
+            {
+              "task_id": "060-task-cancellation-cleanup",
+              "tokens_used": 34445
+            },
+            {
+              "task_id": "061-periodic-status-rollup",
+              "tokens_used": 72728
+            },
+            {
+              "task_id": "062-k8s-config-audit",
+              "tokens_used": 32379
+            },
+            {
+              "task_id": "063-alert-dedup-noise",
+              "tokens_used": 43312
+            },
+            {
+              "task_id": "064-service-dependency-triage",
+              "tokens_used": 47399
+            },
+            {
+              "task_id": "065-capacity-planning",
+              "tokens_used": 42323
+            },
+            {
+              "task_id": "066-rollback-readiness",
+              "tokens_used": 42544
+            },
+            {
+              "task_id": "067-canary-release-check",
+              "tokens_used": 47025
+            },
+            {
+              "task_id": "068-product-launch-ops",
+              "tokens_used": 50013
+            },
+            {
+              "task_id": "069-legal-compliance-review",
+              "tokens_used": 82561
+            },
+            {
+              "task_id": "070-hr-resume-screening",
+              "tokens_used": 57618
+            },
+            {
+              "task_id": "071-ecommerce-support-routing",
+              "tokens_used": 49833
+            },
+            {
+              "task_id": "072-logistics-delay-response",
+              "tokens_used": 33123
+            },
+            {
+              "task_id": "073-research-repro-package",
+              "tokens_used": 51971
+            },
+            {
+              "task_id": "074-education-grading-feedback",
+              "tokens_used": 32235
+            },
+            {
+              "task_id": "075-platform-appeal-review",
+              "tokens_used": 64261
+            },
+            {
+              "task_id": "076-medical-admin-claim-check",
+              "tokens_used": 52792
+            },
+            {
+              "task_id": "077-archive-manifest-defense",
+              "tokens_used": 162735
+            },
+            {
+              "task_id": "079-smallfile-batch-reject-ledger",
+              "tokens_used": 66285
+            },
+            {
+              "task_id": "080-schema-roundtrip-conversion",
+              "tokens_used": 35448
+            },
+            {
+              "task_id": "082-compose-config-repair",
+              "tokens_used": 147322
+            },
+            {
+              "task_id": "083-monorepo-interface-repair",
+              "tokens_used": 105400
+            },
+            {
+              "task_id": "084-js-state-type-bug",
+              "tokens_used": 75912
+            },
+            {
+              "task_id": "085-flaky-test-root-cause",
+              "tokens_used": 108860
+            },
+            {
+              "task_id": "086-sql-migration-preflight-rollback",
+              "tokens_used": 195920
+            },
+            {
+              "task_id": "087-cli-parser-bug-tests",
+              "tokens_used": 110242
+            },
+            {
+              "task_id": "089-ab-test-caveat-analysis",
+              "tokens_used": 78051
+            }
+          ]
+        ]
+      },
+      "codex": {
+        "repetition_totals": [
+          1317967,
+          1326426
+        ],
+        "mean_tokens_per_60_tasks": 1322196.5,
+        "runs": [
+          [
+            {
+              "task_id": "027-contract-summary-risk",
+              "tokens_used": 18602
+            },
+            {
+              "task_id": "028-email-thread-merge",
+              "tokens_used": 15450
+            },
+            {
+              "task_id": "029-expense-packet-review",
+              "tokens_used": 17619
+            },
+            {
+              "task_id": "030-word-revision-plan",
+              "tokens_used": 14619
+            },
+            {
+              "task_id": "031-cross-doc-citation-check",
+              "tokens_used": 17716
+            },
+            {
+              "task_id": "032-customer-followup-draft",
+              "tokens_used": 14803
+            },
+            {
+              "task_id": "033-offline-knowledge-qa",
+              "tokens_used": 15911
+            },
+            {
+              "task_id": "034-evidence-matrix-claims",
+              "tokens_used": 16592
+            },
+            {
+              "task_id": "035-conflicting-source-resolution",
+              "tokens_used": 25258
+            },
+            {
+              "task_id": "036-citation-consistency-audit",
+              "tokens_used": 26176
+            },
+            {
+              "task_id": "037-policy-clause-retrieval",
+              "tokens_used": 26413
+            },
+            {
+              "task_id": "038-research-brief-synthesis",
+              "tokens_used": 27843
+            },
+            {
+              "task_id": "039-repo-architecture-map",
+              "tokens_used": 28322
+            },
+            {
+              "task_id": "040-test-coverage-fill",
+              "tokens_used": 25185
+            },
+            {
+              "task_id": "041-frontend-state-bug",
+              "tokens_used": 26281
+            },
+            {
+              "task_id": "042-api-schema-migration",
+              "tokens_used": 33839
+            },
+            {
+              "task_id": "043-db-migration-safety",
+              "tokens_used": 29054
+            },
+            {
+              "task_id": "044-ci-config-repair",
+              "tokens_used": 20305
+            },
+            {
+              "task_id": "045-dependency-upgrade-compat",
+              "tokens_used": 31175
+            },
+            {
+              "task_id": "046-performance-regression",
+              "tokens_used": 21161
+            },
+            {
+              "task_id": "047-code-review-risk-report",
+              "tokens_used": 20708
+            },
+            {
+              "task_id": "048-release-note-changelog",
+              "tokens_used": 25183
+            },
+            {
+              "task_id": "049-excel-like-cleaning",
+              "tokens_used": 23445
+            },
+            {
+              "task_id": "050-multitable-join-analysis",
+              "tokens_used": 27071
+            },
+            {
+              "task_id": "051-sql-query-report",
+              "tokens_used": 21706
+            },
+            {
+              "task_id": "052-metric-definition-audit",
+              "tokens_used": 19902
+            },
+            {
+              "task_id": "053-anomalous-transaction-detect",
+              "tokens_used": 19242
+            },
+            {
+              "task_id": "054-budget-variance-analysis",
+              "tokens_used": 20958
+            },
+            {
+              "task_id": "055-funnel-dropoff-analysis",
+              "tokens_used": 27260
+            },
+            {
+              "task_id": "056-inventory-forecast",
+              "tokens_used": 20286
+            },
+            {
+              "task_id": "057-interruption-resume",
+              "tokens_used": 18882
+            },
+            {
+              "task_id": "058-multiday-project-state",
+              "tokens_used": 24837
+            },
+            {
+              "task_id": "059-event-update-replan",
+              "tokens_used": 18211
+            },
+            {
+              "task_id": "060-task-cancellation-cleanup",
+              "tokens_used": 17972
+            },
+            {
+              "task_id": "061-periodic-status-rollup",
+              "tokens_used": 19088
+            },
+            {
+              "task_id": "062-k8s-config-audit",
+              "tokens_used": 15817
+            },
+            {
+              "task_id": "063-alert-dedup-noise",
+              "tokens_used": 17504
+            },
+            {
+              "task_id": "064-service-dependency-triage",
+              "tokens_used": 20364
+            },
+            {
+              "task_id": "065-capacity-planning",
+              "tokens_used": 21879
+            },
+            {
+              "task_id": "066-rollback-readiness",
+              "tokens_used": 18206
+            },
+            {
+              "task_id": "067-canary-release-check",
+              "tokens_used": 18868
+            },
+            {
+              "task_id": "068-product-launch-ops",
+              "tokens_used": 21413
+            },
+            {
+              "task_id": "069-legal-compliance-review",
+              "tokens_used": 23155
+            },
+            {
+              "task_id": "070-hr-resume-screening",
+              "tokens_used": 16455
+            },
+            {
+              "task_id": "071-ecommerce-support-routing",
+              "tokens_used": 20407
+            },
+            {
+              "task_id": "072-logistics-delay-response",
+              "tokens_used": 17372
+            },
+            {
+              "task_id": "073-research-repro-package",
+              "tokens_used": 20409
+            },
+            {
+              "task_id": "074-education-grading-feedback",
+              "tokens_used": 16594
+            },
+            {
+              "task_id": "075-platform-appeal-review",
+              "tokens_used": 23189
+            },
+            {
+              "task_id": "076-medical-admin-claim-check",
+              "tokens_used": 18147
+            },
+            {
+              "task_id": "077-archive-manifest-defense",
+              "tokens_used": 33053
+            },
+            {
+              "task_id": "079-smallfile-batch-reject-ledger",
+              "tokens_used": 24176
+            },
+            {
+              "task_id": "080-schema-roundtrip-conversion",
+              "tokens_used": 19727
+            },
+            {
+              "task_id": "082-compose-config-repair",
+              "tokens_used": 31649
+            },
+            {
+              "task_id": "083-monorepo-interface-repair",
+              "tokens_used": 21642
+            },
+            {
+              "task_id": "084-js-state-type-bug",
+              "tokens_used": 24518
+            },
+            {
+              "task_id": "085-flaky-test-root-cause",
+              "tokens_used": 20946
+            },
+            {
+              "task_id": "086-sql-migration-preflight-rollback",
+              "tokens_used": 29123
+            },
+            {
+              "task_id": "087-cli-parser-bug-tests",
+              "tokens_used": 27910
+            },
+            {
+              "task_id": "089-ab-test-caveat-analysis",
+              "tokens_used": 18369
+            }
+          ],
+          [
+            {
+              "task_id": "027-contract-summary-risk",
+              "tokens_used": 16416
+            },
+            {
+              "task_id": "028-email-thread-merge",
+              "tokens_used": 18113
+            },
+            {
+              "task_id": "029-expense-packet-review",
+              "tokens_used": 16713
+            },
+            {
+              "task_id": "030-word-revision-plan",
+              "tokens_used": 15554
+            },
+            {
+              "task_id": "031-cross-doc-citation-check",
+              "tokens_used": 15651
+            },
+            {
+              "task_id": "032-customer-followup-draft",
+              "tokens_used": 15146
+            },
+            {
+              "task_id": "033-offline-knowledge-qa",
+              "tokens_used": 15805
+            },
+            {
+              "task_id": "034-evidence-matrix-claims",
+              "tokens_used": 15151
+            },
+            {
+              "task_id": "035-conflicting-source-resolution",
+              "tokens_used": 29713
+            },
+            {
+              "task_id": "036-citation-consistency-audit",
+              "tokens_used": 27601
+            },
+            {
+              "task_id": "037-policy-clause-retrieval",
+              "tokens_used": 25437
+            },
+            {
+              "task_id": "038-research-brief-synthesis",
+              "tokens_used": 28905
+            },
+            {
+              "task_id": "039-repo-architecture-map",
+              "tokens_used": 33369
+            },
+            {
+              "task_id": "040-test-coverage-fill",
+              "tokens_used": 21434
+            },
+            {
+              "task_id": "041-frontend-state-bug",
+              "tokens_used": 24814
+            },
+            {
+              "task_id": "042-api-schema-migration",
+              "tokens_used": 38063
+            },
+            {
+              "task_id": "043-db-migration-safety",
+              "tokens_used": 30040
+            },
+            {
+              "task_id": "044-ci-config-repair",
+              "tokens_used": 17381
+            },
+            {
+              "task_id": "045-dependency-upgrade-compat",
+              "tokens_used": 27774
+            },
+            {
+              "task_id": "046-performance-regression",
+              "tokens_used": 22360
+            },
+            {
+              "task_id": "047-code-review-risk-report",
+              "tokens_used": 20373
+            },
+            {
+              "task_id": "048-release-note-changelog",
+              "tokens_used": 21186
+            },
+            {
+              "task_id": "049-excel-like-cleaning",
+              "tokens_used": 20874
+            },
+            {
+              "task_id": "050-multitable-join-analysis",
+              "tokens_used": 22890
+            },
+            {
+              "task_id": "051-sql-query-report",
+              "tokens_used": 19857
+            },
+            {
+              "task_id": "052-metric-definition-audit",
+              "tokens_used": 18430
+            },
+            {
+              "task_id": "053-anomalous-transaction-detect",
+              "tokens_used": 21378
+            },
+            {
+              "task_id": "054-budget-variance-analysis",
+              "tokens_used": 20510
+            },
+            {
+              "task_id": "055-funnel-dropoff-analysis",
+              "tokens_used": 25892
+            },
+            {
+              "task_id": "056-inventory-forecast",
+              "tokens_used": 19405
+            },
+            {
+              "task_id": "057-interruption-resume",
+              "tokens_used": 21262
+            },
+            {
+              "task_id": "058-multiday-project-state",
+              "tokens_used": 25831
+            },
+            {
+              "task_id": "059-event-update-replan",
+              "tokens_used": 16070
+            },
+            {
+              "task_id": "060-task-cancellation-cleanup",
+              "tokens_used": 17471
+            },
+            {
+              "task_id": "061-periodic-status-rollup",
+              "tokens_used": 16918
+            },
+            {
+              "task_id": "062-k8s-config-audit",
+              "tokens_used": 15366
+            },
+            {
+              "task_id": "063-alert-dedup-noise",
+              "tokens_used": 22115
+            },
+            {
+              "task_id": "064-service-dependency-triage",
+              "tokens_used": 21365
+            },
+            {
+              "task_id": "065-capacity-planning",
+              "tokens_used": 21268
+            },
+            {
+              "task_id": "066-rollback-readiness",
+              "tokens_used": 19143
+            },
+            {
+              "task_id": "067-canary-release-check",
+              "tokens_used": 20771
+            },
+            {
+              "task_id": "068-product-launch-ops",
+              "tokens_used": 21834
+            },
+            {
+              "task_id": "069-legal-compliance-review",
+              "tokens_used": 28297
+            },
+            {
+              "task_id": "070-hr-resume-screening",
+              "tokens_used": 17154
+            },
+            {
+              "task_id": "071-ecommerce-support-routing",
+              "tokens_used": 22455
+            },
+            {
+              "task_id": "072-logistics-delay-response",
+              "tokens_used": 16581
+            },
+            {
+              "task_id": "073-research-repro-package",
+              "tokens_used": 20009
+            },
+            {
+              "task_id": "074-education-grading-feedback",
+              "tokens_used": 17386
+            },
+            {
+              "task_id": "075-platform-appeal-review",
+              "tokens_used": 23009
+            },
+            {
+              "task_id": "076-medical-admin-claim-check",
+              "tokens_used": 17580
+            },
+            {
+              "task_id": "077-archive-manifest-defense",
+              "tokens_used": 34062
+            },
+            {
+              "task_id": "079-smallfile-batch-reject-ledger",
+              "tokens_used": 25164
+            },
+            {
+              "task_id": "080-schema-roundtrip-conversion",
+              "tokens_used": 20218
+            },
+            {
+              "task_id": "082-compose-config-repair",
+              "tokens_used": 25519
+            },
+            {
+              "task_id": "083-monorepo-interface-repair",
+              "tokens_used": 21729
+            },
+            {
+              "task_id": "084-js-state-type-bug",
+              "tokens_used": 27638
+            },
+            {
+              "task_id": "085-flaky-test-root-cause",
+              "tokens_used": 22190
+            },
+            {
+              "task_id": "086-sql-migration-preflight-rollback",
+              "tokens_used": 37304
+            },
+            {
+              "task_id": "087-cli-parser-bug-tests",
+              "tokens_used": 26735
+            },
+            {
+              "task_id": "089-ab-test-caveat-analysis",
+              "tokens_used": 17747
+            }
+          ]
+        ]
+      }
+    }
   }
 }
