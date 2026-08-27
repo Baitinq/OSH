@@ -454,8 +454,18 @@ func (s *fnUI) cancelRequest() {
 		return
 	}
 	s.cancel()
+	var input []string
+	for _, pending := range s.pendingInputs {
+		input = append(input, pending.text)
+	}
+	if draft := s.textarea.Text(); draft != "" {
+		input = append(input, draft)
+	}
+	s.textarea.SetText(strings.Join(input, "\n"))
+	s.textarea.SetCursorPos(runeToClusterIndex(s.textarea.Text(), len([]rune(s.textarea.Text()))))
+	s.queued = nil
 	s.pendingSteer = nil
-	s.removePendingInputs("steer", -1)
+	s.pendingInputs = nil
 	s.nextRequestID++
 	s.cancel = nil
 	s.steer = nil

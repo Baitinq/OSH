@@ -138,14 +138,24 @@ grep -q 'earlier lines' <<<"$all"
 grep -q 'BURST-60' <<<"$all"
 grep -q 'burst complete' <<<"$all"
 
-# Ctrl+C cancels the active task without exiting.
+# Ctrl+C cancels the active task and returns pending input to the editor.
 "${tmux[@]}" send-keys -t "$session" -l cancel
 "${tmux[@]}" send-keys -t "$session" Enter
 wait_for 'WAITING-FOR-CANCEL'
+"${tmux[@]}" send-keys -t "$session" -l queued-after-cancel
+"${tmux[@]}" send-keys -t "$session" S-Enter
+"${tmux[@]}" send-keys -t "$session" -l steer-after-cancel
+"${tmux[@]}" send-keys -t "$session" Enter
+"${tmux[@]}" send-keys -t "$session" -l draft-after-cancel
 "${tmux[@]}" send-keys -t "$session" C-c
 wait_for 'Cancelled.'
+visible=$("${tmux[@]}" capture-pane -p -t "$session")
+grep -q '│ queued-after-cancel' <<<"$visible"
+grep -q '│ steer-after-cancel' <<<"$visible"
+grep -q '│ draft-after-cancel' <<<"$visible"
 
 # Escape clears the editor without cancelling or exiting.
+"${tmux[@]}" send-keys -t "$session" Escape
 "${tmux[@]}" send-keys -t "$session" -l discard-me
 "${tmux[@]}" send-keys -t "$session" Escape
 sleep .05

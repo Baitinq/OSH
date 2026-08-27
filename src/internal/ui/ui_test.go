@@ -390,6 +390,29 @@ func TestEscapeClearsInputWithoutCancelling(t *testing.T) {
 	cancel()
 }
 
+func TestCancelMovesPendingInputsBackToEditor(t *testing.T) {
+	s, _ := newState(nil)
+	_, cancel := context.WithCancel(context.Background())
+	s.responding = true
+	s.cancel = cancel
+	s.queued = []string{"queued follow-up"}
+	s.pendingSteer = []string{"steer correction"}
+	s.pendingInputs = []pendingInput{
+		{kind: "queued", text: "queued follow-up"},
+		{kind: "steer", text: "steer correction"},
+	}
+	s.textarea.SetText("unfinished draft")
+
+	s.cancelRequest()
+
+	if got, want := s.textarea.Text(), "queued follow-up\nsteer correction\nunfinished draft"; got != want {
+		t.Fatalf("editor = %q, want %q", got, want)
+	}
+	if len(s.queued) != 0 || len(s.pendingSteer) != 0 || len(s.pendingInputs) != 0 {
+		t.Fatalf("pending inputs remain: queued=%#v steer=%#v inputs=%#v", s.queued, s.pendingSteer, s.pendingInputs)
+	}
+}
+
 func TestCancelIgnoresStaleResponse(t *testing.T) {
 	s, _ := newState(func(string, <-chan string, func(toolEvent), context.Context) response { return response{} })
 	ctx, cancel := context.WithCancel(context.Background())
