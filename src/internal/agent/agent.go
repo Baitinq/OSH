@@ -343,9 +343,6 @@ func isRetryableLLMError(err error) bool {
 	}
 	var apiErr *openai.Error
 	if errors.As(err, &apiErr) {
-		if apiErr.StatusCode == http.StatusBadRequest && isMissingToolOutputError(apiErr.Message) {
-			return true
-		}
 		if apiErr.StatusCode == http.StatusTooManyRequests && isQuotaError(apiErr.Code+" "+apiErr.Type+" "+apiErr.Message) {
 			return false
 		}
@@ -356,9 +353,6 @@ func isRetryableLLMError(err error) bool {
 	}
 	var failed *responseFailure
 	if errors.As(err, &failed) {
-		if isMissingToolOutputError(failed.message) {
-			return true
-		}
 		if failed.code == string(responses.ResponseErrorCodeRateLimitExceeded) && isQuotaError(failed.message) {
 			return false
 		}
@@ -370,11 +364,6 @@ func isRetryableLLMError(err error) bool {
 	// Transport and prematurely-ended stream errors are not API errors and are
 	// generally transient (DNS failures, refused connections, socket drops, etc.).
 	return true
-}
-
-func isMissingToolOutputError(message string) bool {
-	message = strings.ToLower(message)
-	return strings.Contains(message, "no tool output found for function call")
 }
 
 func isQuotaError(message string) bool {
@@ -634,6 +623,9 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 			}
 			items = append(items, item)
 		}
+		if len(toolCalls) > 0 && ctx.Err() != nil {
+			return Response{}
+		}
 		a.history = append(a.history, items...)
 		if len(toolCalls) == 0 {
 			emit(ToolEvent{Kind: ToolEventReasoningDone})
@@ -645,9 +637,6 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 			break
 		}
 		markOutputMessages(items, transientMessages)
-		if ctx.Err() != nil {
-			return Response{}
-		}
 
 		emit(ToolEvent{Kind: ToolEventReasoningDone})
 		for _, call := range toolCalls {

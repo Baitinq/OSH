@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/openai/openai-go/v3"
@@ -53,8 +54,18 @@ func isUserHistoryItem(item responses.ResponseInputItemUnionParam) bool {
 	return item.OfMessage != nil && item.OfMessage.Role == responses.EasyInputMessageRoleUser
 }
 
-func isSafeHistoryCut(item responses.ResponseInputItemUnionParam) bool {
-	return item.OfFunctionCallOutput == nil
+func isSafeHistoryCut(history []responses.ResponseInputItemUnionParam, cut int) bool {
+	calls := make(map[string]int)
+	outputs := make(map[string]int)
+	for _, item := range history[cut:] {
+		if item.OfFunctionCall != nil {
+			calls[item.OfFunctionCall.CallID]++
+		}
+		if item.OfFunctionCallOutput != nil {
+			outputs[item.OfFunctionCallOutput.CallID]++
+		}
+	}
+	return maps.Equal(calls, outputs)
 }
 
 func findHistoryCut(history []responses.ResponseInputItemUnionParam, keepTokens int) int {
@@ -85,7 +96,7 @@ func findHistoryCut(history []responses.ResponseInputItemUnionParam, keepTokens 
 
 	for i := len(history) - 1; i >= 0; i-- {
 		accumulated += estimateHistoryItemTokens(history[i])
-		if accumulated >= keepTokens && isSafeHistoryCut(history[i]) {
+		if accumulated >= keepTokens && isSafeHistoryCut(history, i) {
 			return i
 		}
 	}
