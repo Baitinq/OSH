@@ -61,6 +61,7 @@ type pendingInput struct{ kind, text string }
 
 type fnUI struct {
 	modelName              string
+	cwd                    string
 	sessionID              string
 	reasoningEffort        string
 	contextTokens          int64
@@ -684,7 +685,7 @@ func (s *fnUI) handleKey(k tui.KeyEvent) bool {
 	return true
 }
 
-func Run(modelName, reasoningEffort, sessionID string, respond func(string, <-chan string, func(agent.ToolEvent), context.Context) agent.Response) error {
+func Run(modelName, reasoningEffort, sessionID, cwd string, respond func(string, <-chan string, func(agent.ToolEvent), context.Context) agent.Response) error {
 	term, err := tui.NewANSITerminal(os.Stdout, os.Stdin)
 	if err != nil {
 		return err
@@ -720,6 +721,7 @@ func Run(modelName, reasoningEffort, sessionID string, respond func(string, <-ch
 		return response{Text: result.Text, ContextTokens: result.ContextTokens, Err: result.Err}
 	})
 	root.sessionID = sessionID
+	root.cwd = cwd
 	root.dispatch = func(fn func()) { updates <- fn }
 	// Run serializes every state mutation below and marks the corresponding
 	// branch dirty, so state-level invalidation does not need a second wakeup.

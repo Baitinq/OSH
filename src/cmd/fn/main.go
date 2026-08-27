@@ -129,6 +129,10 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	a := agent.New()
 	defer a.Close()
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -164,7 +168,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	if printMode {
 		return printResponse(prompt, respond, stdout)
 	}
-	return ui.Run(a.ModelName(), a.ReasoningEffort(), sessionID, respond)
+	return ui.Run(a.ModelName(), a.ReasoningEffort(), sessionID, cwd, respond)
 }
 
 func main() {

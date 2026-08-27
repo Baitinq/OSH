@@ -51,7 +51,7 @@ func (s *fnUI) render(width int, viewportHeight ...int) ([]string, int, int) {
 	editor, crow, ccol := renderEditor(s.textarea.Text(), s.textarea.CursorPos(), width)
 	cursorRow := len(lines) + crow
 	lines = append(lines, editor...)
-	info := fmt.Sprintf("%s (%s)  ·  context %s tokens  ·  session %s", s.modelName, s.reasoningEffort, formatTokenCount(s.contextTokens), s.sessionID)
+	info := fmt.Sprintf("%s (%s)  ·  context %s tokens  ·  %s  ·  session %s", s.modelName, s.reasoningEffort, formatTokenCount(s.contextTokens), s.cwd, s.sessionID)
 	lines = append(lines, ansi256FG(242, truncateCells(info, max(width-2, 0))))
 	if len(viewportHeight) > 0 {
 		filler := max(viewportHeight[0]-len(lines), 0)
