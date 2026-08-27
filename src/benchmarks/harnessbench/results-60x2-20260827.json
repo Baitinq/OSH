@@ -2704,8 +2704,8 @@
     ]
   },
   "token_usage": {
-    "definition": "Provider-reported total tokens, including cached input tokens.",
-    "note": "Pi and Codex usage comes from the published benchmark runs. fn usage comes from a score-equivalent 60-task rerun after token reporting was added.",
+    "definition": "fn and Pi report provider total tokens, including cached input. Codex CLI reports non-cached input plus output only.",
+    "note": "Pi usage comes from the published runs. fn usage comes from a score-equivalent 60-task rerun after token reporting was added. Codex usage is retained but is not directly comparable because its CLI footer excludes cached input.",
     "harnesses": {
       "fn": {
         "repetition_totals": [
@@ -3198,7 +3198,8 @@
               "tokens_used": 21631
             }
           ]
-        ]
+        ],
+        "metric": "provider_total_tokens"
       },
       "pi": {
         "repetition_totals": [
@@ -3691,7 +3692,8 @@
               "tokens_used": 78051
             }
           ]
-        ]
+        ],
+        "metric": "provider_total_tokens"
       },
       "codex": {
         "repetition_totals": [
@@ -4184,7 +4186,8 @@
               "tokens_used": 17747
             }
           ]
-        ]
+        ],
+        "metric": "non_cached_input_plus_output_tokens"
       }
     }
   }
