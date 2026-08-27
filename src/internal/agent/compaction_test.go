@@ -45,6 +45,22 @@ func TestFindHistoryCutDoesNotStartAtToolOutput(t *testing.T) {
 	}
 }
 
+func TestFindHistoryCutKeepsBatchedToolCallsPaired(t *testing.T) {
+	history := []responses.ResponseInputItemUnionParam{
+		historyMessage(responses.EasyInputMessageRoleUser, "request"),
+		responses.ResponseInputItemParamOfFunctionCall(`{"code":"first()"}`, "call_1", "repl"),
+		responses.ResponseInputItemParamOfFunctionCall(`{"code":"second()"}`, "call_2", "repl"),
+		responses.ResponseInputItemParamOfFunctionCallOutput("call_1", "first result"),
+		responses.ResponseInputItemParamOfFunctionCallOutput("call_2", "second result"),
+	}
+	if isSafeHistoryCut(history, 2) {
+		t.Fatal("cut between batched function calls leaves an orphaned output")
+	}
+	if !isSafeHistoryCut(history, 1) {
+		t.Fatal("cut before the complete tool-call batch was unsafe")
+	}
+}
+
 func TestSerializeHistoryTruncatesToolResults(t *testing.T) {
 	history := []responses.ResponseInputItemUnionParam{
 		responses.ResponseInputItemParamOfFunctionCallOutput("call_1", strings.Repeat("x", summaryToolOutputLimit+100)),
