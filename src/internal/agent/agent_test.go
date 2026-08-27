@@ -227,8 +227,8 @@ func TestIsRetryableLLMError(t *testing.T) {
 		StatusCode: http.StatusBadRequest,
 		Message:    "No tool output found for function call call_test.",
 	}
-	if !isRetryableLLMError(missingToolOutput) {
-		t.Fatal("missing tool output error was not retryable")
+	if isRetryableLLMError(missingToolOutput) {
+		t.Fatal("missing tool output error was retryable")
 	}
 	if isRetryableLLMError(&openai.Error{StatusCode: 429, Code: "insufficient_quota"}) {
 		t.Fatal("quota exhaustion was retryable")
@@ -294,6 +294,61 @@ func TestRespondRetriesTransientFailures(t *testing.T) {
 	}
 	if len(retries) != 2 || retries[0].Attempt != 1 || retries[0].Delay != time.Millisecond || retries[1].Attempt != 2 || retries[1].Delay != 2*time.Millisecond {
 		t.Fatalf("retry events = %#v", retries)
+	}
+}
+
+func TestRespondCancellationDoesNotLeaveFunctionCallWithoutOutput(t *testing.T) {
+	var requests []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		requests = append(requests, request)
+
+		var output []any
+		if len(requests) == 1 {
+			output = []any{map[string]any{
+				"id": "fc_test", "type": "function_call", "call_id": "call_test",
+				"name": "repl", "arguments": `{"code":"print('test')"}`, "status": "completed",
+			}}
+		} else {
+			output = []any{map[string]any{
+				"id": "msg_test", "type": "message", "role": "assistant", "status": "completed",
+				"content": []any{map[string]any{"type": "output_text", "text": "recovered", "annotations": []any{}}},
+			}}
+		}
+		payload, _ := json.Marshal(map[string]any{
+			"type": "response.completed", "sequence_number": 1,
+			"response": map[string]any{
+				"id": "resp_test", "object": "response", "model": "test", "status": "completed", "output": output,
+			},
+		})
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "event: response.completed\ndata: %s\n\n", payload)
+	}))
+	defer server.Close()
+
+	a := &Agent{
+		client:       openai.NewClient(option.WithAPIKey("test"), option.WithBaseURL(server.URL+"/"), option.WithMaxRetries(0)),
+		modelName:    "test",
+		instructions: "test",
+		maxRetries:   0,
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	a.Respond("cancelled question", nil, func(event ToolEvent) {
+		if event.Kind == ToolEventContextTokens {
+			cancel()
+		}
+	}, ctx)
+
+	response := a.Respond("next question", nil, func(ToolEvent) {}, t.Context())
+	if response.Err != nil || response.Text != "recovered" {
+		t.Fatalf("response = %#v", response)
+	}
+	input, _ := json.Marshal(requests[1]["input"])
+	if strings.Contains(string(input), "function_call") {
+		t.Fatalf("cancelled function call remained in history: %s", input)
 	}
 }
 
