@@ -30,7 +30,7 @@
           meta = with pkgs.lib; {
             description = "A small terminal-based LLM agent with shell access";
             homepage = "https://github.com/Baitinq/fn-agent";
-            license = licenses.mit;
+            license = licenses.bsd2;
             maintainers = [];
             platforms = platforms.unix;
             mainProgram = "fn";
