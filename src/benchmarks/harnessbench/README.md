@@ -4,6 +4,18 @@ This is a lightweight, paired comparison of fn agent and Pi using the upstream
 [HarnessBench](https://github.com/Qihoo360/harness-bench) task fixtures and
 programmatic oracles. It does not use Harbor or rebuild benchmark scoring.
 
+## Published results
+
+The checked-in [60-task, two-repetition results](results.html) contain 360 agent
+runs using GPT-5.6 Sol with medium reasoning. The accompanying
+[JSON artifact](results-60x2-20260827.json) includes every selected task score and
+duration, aggregate statistics, and paired confidence intervals.
+
+Tasks 078 and 081 required a public tunnel that was unavailable during the run, so
+they were replaced with tasks 087 and 089. Task 088 was also attempted as a
+replacement but required the same tunnel and was excluded. Each reported
+repetition contains the same 60 successfully scored tasks.
+
 The default suite contains tasks 027–056: 30 deterministic office, retrieval,
 software-engineering, and data-analysis workspaces. Each task runs once through
 each harness, for 60 agent runs total. The order alternates by task to reduce

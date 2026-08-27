@@ -20,11 +20,20 @@ and no framework hidden underneath.
 
 ## Benchmarks
 
-On the 15-task HarnessBench quick suite, fn agent achieved a **0.8648 mean
-outcome score**, compared with **0.8277 for Codex** and **0.8275 for Pi** using
-the same model and reasoning level, with no adapter failures. See the
-[methodology](src/benchmarks/harnessbench/README.md) and
-[detailed results](src/benchmarks/harnessbench/results.html).
+On 60 HarnessBench tasks run twice, fn agent achieved a **0.8702 mean outcome
+score**, compared with **0.8730 for Pi** and **0.8494 for Codex**, using the same
+model and reasoning level. The paired results place fn and Pi in an effective tie;
+fn was the fastest harness and the most consistent between repetitions.
+
+| Harness | Repetition 1 | Repetition 2 | Combined mean |
+| --- | ---: | ---: | ---: |
+| Pi | 0.8782 | 0.8678 | **0.8730** |
+| fn agent | 0.8697 | 0.8708 | **0.8702** |
+| Codex | 0.8431 | 0.8558 | **0.8494** |
+
+See the [methodology](src/benchmarks/harnessbench/README.md),
+[detailed results](src/benchmarks/harnessbench/results.html), and
+[run data](src/benchmarks/harnessbench/results-60x2-20260827.json).
 
 ## Requirements
 

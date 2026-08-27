@@ -1,0 +1,2706 @@
+{
+  "benchmark": "HarnessBench",
+  "date": "2026-08-27",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "design": {
+    "tasks": 60,
+    "repetitions": 2,
+    "harnesses": [
+      "fn",
+      "pi",
+      "codex"
+    ],
+    "task_ids": [
+      "027-contract-summary-risk",
+      "028-email-thread-merge",
+      "029-expense-packet-review",
+      "030-word-revision-plan",
+      "031-cross-doc-citation-check",
+      "032-customer-followup-draft",
+      "033-offline-knowledge-qa",
+      "034-evidence-matrix-claims",
+      "035-conflicting-source-resolution",
+      "036-citation-consistency-audit",
+      "037-policy-clause-retrieval",
+      "038-research-brief-synthesis",
+      "039-repo-architecture-map",
+      "040-test-coverage-fill",
+      "041-frontend-state-bug",
+      "042-api-schema-migration",
+      "043-db-migration-safety",
+      "044-ci-config-repair",
+      "045-dependency-upgrade-compat",
+      "046-performance-regression",
+      "047-code-review-risk-report",
+      "048-release-note-changelog",
+      "049-excel-like-cleaning",
+      "050-multitable-join-analysis",
+      "051-sql-query-report",
+      "052-metric-definition-audit",
+      "053-anomalous-transaction-detect",
+      "054-budget-variance-analysis",
+      "055-funnel-dropoff-analysis",
+      "056-inventory-forecast",
+      "057-interruption-resume",
+      "058-multiday-project-state",
+      "059-event-update-replan",
+      "060-task-cancellation-cleanup",
+      "061-periodic-status-rollup",
+      "062-k8s-config-audit",
+      "063-alert-dedup-noise",
+      "064-service-dependency-triage",
+      "065-capacity-planning",
+      "066-rollback-readiness",
+      "067-canary-release-check",
+      "068-product-launch-ops",
+      "069-legal-compliance-review",
+      "070-hr-resume-screening",
+      "071-ecommerce-support-routing",
+      "072-logistics-delay-response",
+      "073-research-repro-package",
+      "074-education-grading-feedback",
+      "075-platform-appeal-review",
+      "076-medical-admin-claim-check",
+      "077-archive-manifest-defense",
+      "079-smallfile-batch-reject-ledger",
+      "080-schema-roundtrip-conversion",
+      "082-compose-config-repair",
+      "083-monorepo-interface-repair",
+      "084-js-state-type-bug",
+      "085-flaky-test-root-cause",
+      "086-sql-migration-preflight-rollback",
+      "087-cli-parser-bug-tests",
+      "089-ab-test-caveat-analysis"
+    ],
+    "selection_note": "Tasks 078, 081, and 088 require an unavailable public tunnel; used tasks 087 and 089 so each repetition contains 60 scored tasks."
+  },
+  "summary": {
+    "fn": {
+      "repetitions": [
+        {
+          "mean_outcome_score": 0.8696623913043479,
+          "perfect": 18,
+          "total_seconds": 2767.8,
+          "tasks": 60
+        },
+        {
+          "mean_outcome_score": 0.8707757246376812,
+          "perfect": 20,
+          "total_seconds": 2709.9,
+          "tasks": 60
+        }
+      ],
+      "combined_mean": 0.8702190579710145,
+      "combined_perfect": 38
+    },
+    "pi": {
+      "repetitions": [
+        {
+          "mean_outcome_score": 0.8782007246376812,
+          "perfect": 21,
+          "total_seconds": 3608.5,
+          "tasks": 60
+        },
+        {
+          "mean_outcome_score": 0.8678240579710145,
+          "perfect": 17,
+          "total_seconds": 3834.2,
+          "tasks": 60
+        }
+      ],
+      "combined_mean": 0.8730123913043478,
+      "combined_perfect": 38
+    },
+    "codex": {
+      "repetitions": [
+        {
+          "mean_outcome_score": 0.8431126816412633,
+          "perfect": 18,
+          "total_seconds": 4615.2,
+          "tasks": 60
+        },
+        {
+          "mean_outcome_score": 0.8557553571564053,
+          "perfect": 17,
+          "total_seconds": 4595.1,
+          "tasks": 60
+        }
+      ],
+      "combined_mean": 0.8494340193988343,
+      "combined_perfect": 35
+    }
+  },
+  "paired_task_average": {
+    "fn_minus_pi": {
+      "mean_difference": -0.0027933333333333365,
+      "approx_95pct_ci": [
+        -0.01878382109267657,
+        0.013197154426009898
+      ],
+      "wins": 16,
+      "losses": 13,
+      "ties": 31
+    },
+    "fn_minus_codex": {
+      "mean_difference": 0.020785038572180194,
+      "approx_95pct_ci": [
+        -0.005317004101016761,
+        0.046887081245377146
+      ],
+      "wins": 22,
+      "losses": 12,
+      "ties": 26
+    },
+    "pi_minus_codex": {
+      "mean_difference": 0.02357837190551353,
+      "approx_95pct_ci": [
+        -0.0025192216820893176,
+        0.04967596549311638
+      ],
+      "wins": 19,
+      "losses": 14,
+      "ties": 27
+    }
+  },
+  "runs": {
+    "fn": [
+      [
+        {
+          "task_id": "027-contract-summary-risk",
+          "score": 0.8571,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 22.3
+        },
+        {
+          "task_id": "028-email-thread-merge",
+          "score": 0.8182,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 19.2
+        },
+        {
+          "task_id": "029-expense-packet-review",
+          "score": 0.6154,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 23.2
+        },
+        {
+          "task_id": "030-word-revision-plan",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 16.2
+        },
+        {
+          "task_id": "031-cross-doc-citation-check",
+          "score": 0.5556,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 29.9
+        },
+        {
+          "task_id": "032-customer-followup-draft",
+          "score": 0.7143,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 16.7
+        },
+        {
+          "task_id": "033-offline-knowledge-qa",
+          "score": 0.6792,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 13.2
+        },
+        {
+          "task_id": "034-evidence-matrix-claims",
+          "score": 0.92,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 15.2
+        },
+        {
+          "task_id": "035-conflicting-source-resolution",
+          "score": 0.84,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 45.8
+        },
+        {
+          "task_id": "036-citation-consistency-audit",
+          "score": 0.78,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 67.0
+        },
+        {
+          "task_id": "037-policy-clause-retrieval",
+          "score": 0.74,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 67.8
+        },
+        {
+          "task_id": "038-research-brief-synthesis",
+          "score": 0.9363,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 67.9
+        },
+        {
+          "task_id": "039-repo-architecture-map",
+          "score": 0.9343,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 100.0
+        },
+        {
+          "task_id": "040-test-coverage-fill",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 72.5
+        },
+        {
+          "task_id": "041-frontend-state-bug",
+          "score": 0.9962,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 61.5
+        },
+        {
+          "task_id": "042-api-schema-migration",
+          "score": 0.74,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 117.0
+        },
+        {
+          "task_id": "043-db-migration-safety",
+          "score": 0.995,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 88.4
+        },
+        {
+          "task_id": "044-ci-config-repair",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 26.6
+        },
+        {
+          "task_id": "045-dependency-upgrade-compat",
+          "score": 0.9549,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 56.6
+        },
+        {
+          "task_id": "046-performance-regression",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 34.7
+        },
+        {
+          "task_id": "047-code-review-risk-report",
+          "score": 0.7122,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 48.3
+        },
+        {
+          "task_id": "048-release-note-changelog",
+          "score": 0.9532,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 37.3
+        },
+        {
+          "task_id": "049-excel-like-cleaning",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 34.7
+        },
+        {
+          "task_id": "050-multitable-join-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 52.8
+        },
+        {
+          "task_id": "051-sql-query-report",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 29.3
+        },
+        {
+          "task_id": "052-metric-definition-audit",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 27.3
+        },
+        {
+          "task_id": "053-anomalous-transaction-detect",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 23.7
+        },
+        {
+          "task_id": "054-budget-variance-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 35.8
+        },
+        {
+          "task_id": "055-funnel-dropoff-analysis",
+          "score": 0.9727,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 59.9
+        },
+        {
+          "task_id": "056-inventory-forecast",
+          "score": 0.69,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 27.8
+        },
+        {
+          "task_id": "057-interruption-resume",
+          "score": 0.8077,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 55.3
+        },
+        {
+          "task_id": "058-multiday-project-state",
+          "score": 0.9219,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 143.0
+        },
+        {
+          "task_id": "059-event-update-replan",
+          "score": 0.5,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 38.8
+        },
+        {
+          "task_id": "060-task-cancellation-cleanup",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 41.3
+        },
+        {
+          "task_id": "061-periodic-status-rollup",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 50.8
+        },
+        {
+          "task_id": "062-k8s-config-audit",
+          "score": 0.8699,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 28.8
+        },
+        {
+          "task_id": "063-alert-dedup-noise",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 22.8
+        },
+        {
+          "task_id": "064-service-dependency-triage",
+          "score": 0.8222,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 36.3
+        },
+        {
+          "task_id": "065-capacity-planning",
+          "score": 0.8181,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 52.0
+        },
+        {
+          "task_id": "066-rollback-readiness",
+          "score": 0.8048,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 20.2
+        },
+        {
+          "task_id": "067-canary-release-check",
+          "score": 0.9263,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 35.3
+        },
+        {
+          "task_id": "068-product-launch-ops",
+          "score": 0.9153,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 52.3
+        },
+        {
+          "task_id": "069-legal-compliance-review",
+          "score": 0.95,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 42.8
+        },
+        {
+          "task_id": "070-hr-resume-screening",
+          "score": 0.82,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 24.2
+        },
+        {
+          "task_id": "071-ecommerce-support-routing",
+          "score": 0.83,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 40.8
+        },
+        {
+          "task_id": "072-logistics-delay-response",
+          "score": 0.88,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 32.3
+        },
+        {
+          "task_id": "073-research-repro-package",
+          "score": 0.82,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 35.8
+        },
+        {
+          "task_id": "074-education-grading-feedback",
+          "score": 0.52,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 14.2
+        },
+        {
+          "task_id": "075-platform-appeal-review",
+          "score": 0.8,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 41.3
+        },
+        {
+          "task_id": "076-medical-admin-claim-check",
+          "score": 0.83,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 21.2
+        },
+        {
+          "task_id": "077-archive-manifest-defense",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 70.3
+        },
+        {
+          "task_id": "079-smallfile-batch-reject-ledger",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 60.4
+        },
+        {
+          "task_id": "080-schema-roundtrip-conversion",
+          "score": 0.9130434782608695,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 39.3
+        },
+        {
+          "task_id": "082-compose-config-repair",
+          "score": 0.7,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 103.4
+        },
+        {
+          "task_id": "083-monorepo-interface-repair",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 28.6
+        },
+        {
+          "task_id": "084-js-state-type-bug",
+          "score": 0.9938,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 44.4
+        },
+        {
+          "task_id": "085-flaky-test-root-cause",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 54.4
+        },
+        {
+          "task_id": "086-sql-migration-preflight-rollback",
+          "score": 0.7,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 83.9
+        },
+        {
+          "task_id": "087-cli-parser-bug-tests",
+          "score": 0.6321,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 82.6
+        },
+        {
+          "task_id": "089-ab-test-caveat-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 32.4
+        }
+      ],
+      [
+        {
+          "task_id": "027-contract-summary-risk",
+          "score": 0.8571,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 27.3
+        },
+        {
+          "task_id": "028-email-thread-merge",
+          "score": 0.7273,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 20.3
+        },
+        {
+          "task_id": "029-expense-packet-review",
+          "score": 0.8462,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 26.7
+        },
+        {
+          "task_id": "030-word-revision-plan",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 19.2
+        },
+        {
+          "task_id": "031-cross-doc-citation-check",
+          "score": 0.6667,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 22.8
+        },
+        {
+          "task_id": "032-customer-followup-draft",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 11.9
+        },
+        {
+          "task_id": "033-offline-knowledge-qa",
+          "score": 0.6792,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 11.2
+        },
+        {
+          "task_id": "034-evidence-matrix-claims",
+          "score": 0.92,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 14.2
+        },
+        {
+          "task_id": "035-conflicting-source-resolution",
+          "score": 0.84,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 52.3
+        },
+        {
+          "task_id": "036-citation-consistency-audit",
+          "score": 0.78,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 63.8
+        },
+        {
+          "task_id": "037-policy-clause-retrieval",
+          "score": 0.74,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 55.8
+        },
+        {
+          "task_id": "038-research-brief-synthesis",
+          "score": 0.8842,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 65.8
+        },
+        {
+          "task_id": "039-repo-architecture-map",
+          "score": 0.9284,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 97.4
+        },
+        {
+          "task_id": "040-test-coverage-fill",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 78.4
+        },
+        {
+          "task_id": "041-frontend-state-bug",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 79.1
+        },
+        {
+          "task_id": "042-api-schema-migration",
+          "score": 0.74,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 65.3
+        },
+        {
+          "task_id": "043-db-migration-safety",
+          "score": 0.922,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 72.0
+        },
+        {
+          "task_id": "044-ci-config-repair",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 34.1
+        },
+        {
+          "task_id": "045-dependency-upgrade-compat",
+          "score": 0.9449,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 88.8
+        },
+        {
+          "task_id": "046-performance-regression",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 33.6
+        },
+        {
+          "task_id": "047-code-review-risk-report",
+          "score": 0.7297,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 35.8
+        },
+        {
+          "task_id": "048-release-note-changelog",
+          "score": 0.9597,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 48.3
+        },
+        {
+          "task_id": "049-excel-like-cleaning",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 47.3
+        },
+        {
+          "task_id": "050-multitable-join-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 46.3
+        },
+        {
+          "task_id": "051-sql-query-report",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 25.2
+        },
+        {
+          "task_id": "052-metric-definition-audit",
+          "score": 0.69,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 27.7
+        },
+        {
+          "task_id": "053-anomalous-transaction-detect",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 41.3
+        },
+        {
+          "task_id": "054-budget-variance-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 29.8
+        },
+        {
+          "task_id": "055-funnel-dropoff-analysis",
+          "score": 0.9836,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 45.3
+        },
+        {
+          "task_id": "056-inventory-forecast",
+          "score": 0.69,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 53.8
+        },
+        {
+          "task_id": "057-interruption-resume",
+          "score": 0.7308,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 50.8
+        },
+        {
+          "task_id": "058-multiday-project-state",
+          "score": 0.8594,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 102.4
+        },
+        {
+          "task_id": "059-event-update-replan",
+          "score": 0.5,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 47.4
+        },
+        {
+          "task_id": "060-task-cancellation-cleanup",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 42.3
+        },
+        {
+          "task_id": "061-periodic-status-rollup",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 61.3
+        },
+        {
+          "task_id": "062-k8s-config-audit",
+          "score": 0.8936,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 13.2
+        },
+        {
+          "task_id": "063-alert-dedup-noise",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 21.2
+        },
+        {
+          "task_id": "064-service-dependency-triage",
+          "score": 0.8222,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 34.3
+        },
+        {
+          "task_id": "065-capacity-planning",
+          "score": 0.6617,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 47.3
+        },
+        {
+          "task_id": "066-rollback-readiness",
+          "score": 0.8242,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 24.3
+        },
+        {
+          "task_id": "067-canary-release-check",
+          "score": 0.9263,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 37.8
+        },
+        {
+          "task_id": "068-product-launch-ops",
+          "score": 0.9153,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 45.8
+        },
+        {
+          "task_id": "069-legal-compliance-review",
+          "score": 0.815,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 66.4
+        },
+        {
+          "task_id": "070-hr-resume-screening",
+          "score": 0.7,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 25.8
+        },
+        {
+          "task_id": "071-ecommerce-support-routing",
+          "score": 0.83,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 31.2
+        },
+        {
+          "task_id": "072-logistics-delay-response",
+          "score": 0.88,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 16.2
+        },
+        {
+          "task_id": "073-research-repro-package",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 33.3
+        },
+        {
+          "task_id": "074-education-grading-feedback",
+          "score": 0.52,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 15.8
+        },
+        {
+          "task_id": "075-platform-appeal-review",
+          "score": 0.8,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 41.3
+        },
+        {
+          "task_id": "076-medical-admin-claim-check",
+          "score": 0.83,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 20.2
+        },
+        {
+          "task_id": "077-archive-manifest-defense",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 73.9
+        },
+        {
+          "task_id": "079-smallfile-batch-reject-ledger",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 64.8
+        },
+        {
+          "task_id": "080-schema-roundtrip-conversion",
+          "score": 0.9130434782608695,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 47.8
+        },
+        {
+          "task_id": "082-compose-config-repair",
+          "score": 0.7,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 53.4
+        },
+        {
+          "task_id": "083-monorepo-interface-repair",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 65.1
+        },
+        {
+          "task_id": "084-js-state-type-bug",
+          "score": 0.975,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 64.6
+        },
+        {
+          "task_id": "085-flaky-test-root-cause",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 41.3
+        },
+        {
+          "task_id": "086-sql-migration-preflight-rollback",
+          "score": 0.9889,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 81.5
+        },
+        {
+          "task_id": "087-cli-parser-bug-tests",
+          "score": 0.6321,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 71.6
+        },
+        {
+          "task_id": "089-ab-test-caveat-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 26.8
+        }
+      ]
+    ],
+    "pi": [
+      [
+        {
+          "task_id": "027-contract-summary-risk",
+          "score": 0.8571,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 29.3
+        },
+        {
+          "task_id": "028-email-thread-merge",
+          "score": 0.8182,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 34.3
+        },
+        {
+          "task_id": "029-expense-packet-review",
+          "score": 0.7692,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 28.7
+        },
+        {
+          "task_id": "030-word-revision-plan",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 24.8
+        },
+        {
+          "task_id": "031-cross-doc-citation-check",
+          "score": 0.6667,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 35.4
+        },
+        {
+          "task_id": "032-customer-followup-draft",
+          "score": 0.8571,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 20.2
+        },
+        {
+          "task_id": "033-offline-knowledge-qa",
+          "score": 0.6792,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 25.4
+        },
+        {
+          "task_id": "034-evidence-matrix-claims",
+          "score": 0.92,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 22.8
+        },
+        {
+          "task_id": "035-conflicting-source-resolution",
+          "score": 0.84,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 83.4
+        },
+        {
+          "task_id": "036-citation-consistency-audit",
+          "score": 0.78,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 81.5
+        },
+        {
+          "task_id": "037-policy-clause-retrieval",
+          "score": 0.74,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 69.4
+        },
+        {
+          "task_id": "038-research-brief-synthesis",
+          "score": 0.9617,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 89.9
+        },
+        {
+          "task_id": "039-repo-architecture-map",
+          "score": 0.9026,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 115.0
+        },
+        {
+          "task_id": "040-test-coverage-fill",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 96.0
+        },
+        {
+          "task_id": "041-frontend-state-bug",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 78.7
+        },
+        {
+          "task_id": "042-api-schema-migration",
+          "score": 0.74,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 153.2
+        },
+        {
+          "task_id": "043-db-migration-safety",
+          "score": 0.917,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 81.9
+        },
+        {
+          "task_id": "044-ci-config-repair",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 61.3
+        },
+        {
+          "task_id": "045-dependency-upgrade-compat",
+          "score": 0.8129,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 97.8
+        },
+        {
+          "task_id": "046-performance-regression",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 51.6
+        },
+        {
+          "task_id": "047-code-review-risk-report",
+          "score": 0.7346,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 77.4
+        },
+        {
+          "task_id": "048-release-note-changelog",
+          "score": 0.9654,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 50.8
+        },
+        {
+          "task_id": "049-excel-like-cleaning",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 52.3
+        },
+        {
+          "task_id": "050-multitable-join-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 47.8
+        },
+        {
+          "task_id": "051-sql-query-report",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 39.8
+        },
+        {
+          "task_id": "052-metric-definition-audit",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 32.8
+        },
+        {
+          "task_id": "053-anomalous-transaction-detect",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 43.8
+        },
+        {
+          "task_id": "054-budget-variance-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 46.3
+        },
+        {
+          "task_id": "055-funnel-dropoff-analysis",
+          "score": 0.9563,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 57.3
+        },
+        {
+          "task_id": "056-inventory-forecast",
+          "score": 0.69,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 27.3
+        },
+        {
+          "task_id": "057-interruption-resume",
+          "score": 0.6923,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 57.3
+        },
+        {
+          "task_id": "058-multiday-project-state",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 139.5
+        },
+        {
+          "task_id": "059-event-update-replan",
+          "score": 0.5,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 56.3
+        },
+        {
+          "task_id": "060-task-cancellation-cleanup",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 49.8
+        },
+        {
+          "task_id": "061-periodic-status-rollup",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 71.9
+        },
+        {
+          "task_id": "062-k8s-config-audit",
+          "score": 0.8463,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 24.3
+        },
+        {
+          "task_id": "063-alert-dedup-noise",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 30.8
+        },
+        {
+          "task_id": "064-service-dependency-triage",
+          "score": 0.8222,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 45.8
+        },
+        {
+          "task_id": "065-capacity-planning",
+          "score": 0.9873,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 63.3
+        },
+        {
+          "task_id": "066-rollback-readiness",
+          "score": 0.7718,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 35.8
+        },
+        {
+          "task_id": "067-canary-release-check",
+          "score": 0.9263,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 43.8
+        },
+        {
+          "task_id": "068-product-launch-ops",
+          "score": 0.9153,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 50.8
+        },
+        {
+          "task_id": "069-legal-compliance-review",
+          "score": 0.865,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 61.8
+        },
+        {
+          "task_id": "070-hr-resume-screening",
+          "score": 0.82,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 51.3
+        },
+        {
+          "task_id": "071-ecommerce-support-routing",
+          "score": 0.83,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 41.8
+        },
+        {
+          "task_id": "072-logistics-delay-response",
+          "score": 0.88,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 32.3
+        },
+        {
+          "task_id": "073-research-repro-package",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 51.8
+        },
+        {
+          "task_id": "074-education-grading-feedback",
+          "score": 0.52,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 27.7
+        },
+        {
+          "task_id": "075-platform-appeal-review",
+          "score": 0.91,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 52.8
+        },
+        {
+          "task_id": "076-medical-admin-claim-check",
+          "score": 0.83,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 29.3
+        },
+        {
+          "task_id": "077-archive-manifest-defense",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 129.9
+        },
+        {
+          "task_id": "079-smallfile-batch-reject-ledger",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 75.4
+        },
+        {
+          "task_id": "080-schema-roundtrip-conversion",
+          "score": 0.9130434782608695,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 58.8
+        },
+        {
+          "task_id": "082-compose-config-repair",
+          "score": 0.7,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 105.0
+        },
+        {
+          "task_id": "083-monorepo-interface-repair",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 55.4
+        },
+        {
+          "task_id": "084-js-state-type-bug",
+          "score": 0.9938,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 56.4
+        },
+        {
+          "task_id": "085-flaky-test-root-cause",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 79.9
+        },
+        {
+          "task_id": "086-sql-migration-preflight-rollback",
+          "score": 0.7,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 129.5
+        },
+        {
+          "task_id": "087-cli-parser-bug-tests",
+          "score": 0.6607,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 87.5
+        },
+        {
+          "task_id": "089-ab-test-caveat-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 56.3
+        }
+      ],
+      [
+        {
+          "task_id": "027-contract-summary-risk",
+          "score": 0.7143,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 27.7
+        },
+        {
+          "task_id": "028-email-thread-merge",
+          "score": 0.7273,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 24.3
+        },
+        {
+          "task_id": "029-expense-packet-review",
+          "score": 0.6923,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 41.3
+        },
+        {
+          "task_id": "030-word-revision-plan",
+          "score": 0.875,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 26.7
+        },
+        {
+          "task_id": "031-cross-doc-citation-check",
+          "score": 0.6667,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 43.8
+        },
+        {
+          "task_id": "032-customer-followup-draft",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 25.7
+        },
+        {
+          "task_id": "033-offline-knowledge-qa",
+          "score": 0.6792,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 25.8
+        },
+        {
+          "task_id": "034-evidence-matrix-claims",
+          "score": 0.88,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 24.7
+        },
+        {
+          "task_id": "035-conflicting-source-resolution",
+          "score": 0.84,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 82.9
+        },
+        {
+          "task_id": "036-citation-consistency-audit",
+          "score": 0.78,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 77.0
+        },
+        {
+          "task_id": "037-policy-clause-retrieval",
+          "score": 0.74,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 71.4
+        },
+        {
+          "task_id": "038-research-brief-synthesis",
+          "score": 0.9412,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 123.0
+        },
+        {
+          "task_id": "039-repo-architecture-map",
+          "score": 0.9022,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 137.8
+        },
+        {
+          "task_id": "040-test-coverage-fill",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 80.1
+        },
+        {
+          "task_id": "041-frontend-state-bug",
+          "score": 0.9962,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 81.7
+        },
+        {
+          "task_id": "042-api-schema-migration",
+          "score": 0.74,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 103.9
+        },
+        {
+          "task_id": "043-db-migration-safety",
+          "score": 0.98,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 88.9
+        },
+        {
+          "task_id": "044-ci-config-repair",
+          "score": 0.72,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 45.7
+        },
+        {
+          "task_id": "045-dependency-upgrade-compat",
+          "score": 0.8029,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 111.0
+        },
+        {
+          "task_id": "046-performance-regression",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 46.6
+        },
+        {
+          "task_id": "047-code-review-risk-report",
+          "score": 0.7118,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 85.9
+        },
+        {
+          "task_id": "048-release-note-changelog",
+          "score": 0.9654,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 63.3
+        },
+        {
+          "task_id": "049-excel-like-cleaning",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 66.9
+        },
+        {
+          "task_id": "050-multitable-join-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 56.3
+        },
+        {
+          "task_id": "051-sql-query-report",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 36.8
+        },
+        {
+          "task_id": "052-metric-definition-audit",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 28.8
+        },
+        {
+          "task_id": "053-anomalous-transaction-detect",
+          "score": 0.9358,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 43.8
+        },
+        {
+          "task_id": "054-budget-variance-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 60.3
+        },
+        {
+          "task_id": "055-funnel-dropoff-analysis",
+          "score": 0.9563,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 56.8
+        },
+        {
+          "task_id": "056-inventory-forecast",
+          "score": 0.69,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 28.7
+        },
+        {
+          "task_id": "057-interruption-resume",
+          "score": 0.7308,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 58.8
+        },
+        {
+          "task_id": "058-multiday-project-state",
+          "score": 0.9219,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 161.6
+        },
+        {
+          "task_id": "059-event-update-replan",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 73.5
+        },
+        {
+          "task_id": "060-task-cancellation-cleanup",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 50.3
+        },
+        {
+          "task_id": "061-periodic-status-rollup",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 73.9
+        },
+        {
+          "task_id": "062-k8s-config-audit",
+          "score": 0.8699,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 24.8
+        },
+        {
+          "task_id": "063-alert-dedup-noise",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 34.3
+        },
+        {
+          "task_id": "064-service-dependency-triage",
+          "score": 0.8222,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 39.9
+        },
+        {
+          "task_id": "065-capacity-planning",
+          "score": 0.8181,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 60.9
+        },
+        {
+          "task_id": "066-rollback-readiness",
+          "score": 0.8242,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 32.8
+        },
+        {
+          "task_id": "067-canary-release-check",
+          "score": 0.9263,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 53.8
+        },
+        {
+          "task_id": "068-product-launch-ops",
+          "score": 0.8475,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 49.8
+        },
+        {
+          "task_id": "069-legal-compliance-review",
+          "score": 0.815,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 75.8
+        },
+        {
+          "task_id": "070-hr-resume-screening",
+          "score": 0.7,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 41.3
+        },
+        {
+          "task_id": "071-ecommerce-support-routing",
+          "score": 0.83,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 44.4
+        },
+        {
+          "task_id": "072-logistics-delay-response",
+          "score": 0.88,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 27.7
+        },
+        {
+          "task_id": "073-research-repro-package",
+          "score": 0.9,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 50.8
+        },
+        {
+          "task_id": "074-education-grading-feedback",
+          "score": 0.52,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 25.2
+        },
+        {
+          "task_id": "075-platform-appeal-review",
+          "score": 0.95,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 63.4
+        },
+        {
+          "task_id": "076-medical-admin-claim-check",
+          "score": 0.83,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 33.8
+        },
+        {
+          "task_id": "077-archive-manifest-defense",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 92.4
+        },
+        {
+          "task_id": "079-smallfile-batch-reject-ledger",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 64.9
+        },
+        {
+          "task_id": "080-schema-roundtrip-conversion",
+          "score": 0.9130434782608695,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 28.8
+        },
+        {
+          "task_id": "082-compose-config-repair",
+          "score": 0.7,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 216.7
+        },
+        {
+          "task_id": "083-monorepo-interface-repair",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 63.1
+        },
+        {
+          "task_id": "084-js-state-type-bug",
+          "score": 0.9875,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 61.8
+        },
+        {
+          "task_id": "085-flaky-test-root-cause",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 75.7
+        },
+        {
+          "task_id": "086-sql-migration-preflight-rollback",
+          "score": 0.7,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 118.9
+        },
+        {
+          "task_id": "087-cli-parser-bug-tests",
+          "score": 0.6464,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 88.0
+        },
+        {
+          "task_id": "089-ab-test-caveat-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 129.5
+        }
+      ]
+    ],
+    "codex": [
+      [
+        {
+          "task_id": "027-contract-summary-risk",
+          "score": 0.6429,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 52.8
+        },
+        {
+          "task_id": "028-email-thread-merge",
+          "score": 0.8182,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 19.3
+        },
+        {
+          "task_id": "029-expense-packet-review",
+          "score": 0.8462,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 46.8
+        },
+        {
+          "task_id": "030-word-revision-plan",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 19.3
+        },
+        {
+          "task_id": "031-cross-doc-citation-check",
+          "score": 0.5556,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 56.3
+        },
+        {
+          "task_id": "032-customer-followup-draft",
+          "score": 0.8571,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 21.7
+        },
+        {
+          "task_id": "033-offline-knowledge-qa",
+          "score": 0.6792,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 20.7
+        },
+        {
+          "task_id": "034-evidence-matrix-claims",
+          "score": 0.92,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 49.8
+        },
+        {
+          "task_id": "035-conflicting-source-resolution",
+          "score": 0.84,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 79.0
+        },
+        {
+          "task_id": "036-citation-consistency-audit",
+          "score": 0.78,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 113.9
+        },
+        {
+          "task_id": "037-policy-clause-retrieval",
+          "score": 0.74,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 86.4
+        },
+        {
+          "task_id": "038-research-brief-synthesis",
+          "score": 0.8669,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 94.0
+        },
+        {
+          "task_id": "039-repo-architecture-map",
+          "score": 0.9028,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 99.6
+        },
+        {
+          "task_id": "040-test-coverage-fill",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 127.2
+        },
+        {
+          "task_id": "041-frontend-state-bug",
+          "score": 0.9962,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 75.0
+        },
+        {
+          "task_id": "042-api-schema-migration",
+          "score": 0.74,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 159.0
+        },
+        {
+          "task_id": "043-db-migration-safety",
+          "score": 0.987,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 136.0
+        },
+        {
+          "task_id": "044-ci-config-repair",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 153.9
+        },
+        {
+          "task_id": "045-dependency-upgrade-compat",
+          "score": 0.8129,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 147.5
+        },
+        {
+          "task_id": "046-performance-regression",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 81.6
+        },
+        {
+          "task_id": "047-code-review-risk-report",
+          "score": 0.7297,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 61.8
+        },
+        {
+          "task_id": "048-release-note-changelog",
+          "score": 0.9356,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 95.4
+        },
+        {
+          "task_id": "049-excel-like-cleaning",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 101.4
+        },
+        {
+          "task_id": "050-multitable-join-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 83.4
+        },
+        {
+          "task_id": "051-sql-query-report",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 78.1
+        },
+        {
+          "task_id": "052-metric-definition-audit",
+          "score": 0.69,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 70.3
+        },
+        {
+          "task_id": "053-anomalous-transaction-detect",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 34.3
+        },
+        {
+          "task_id": "054-budget-variance-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 89.0
+        },
+        {
+          "task_id": "055-funnel-dropoff-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 99.4
+        },
+        {
+          "task_id": "056-inventory-forecast",
+          "score": 0.69,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 58.3
+        },
+        {
+          "task_id": "057-interruption-resume",
+          "score": 0.8077,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 51.8
+        },
+        {
+          "task_id": "058-multiday-project-state",
+          "score": 0.8594,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 190.0
+        },
+        {
+          "task_id": "059-event-update-replan",
+          "score": 0.5,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 99.8
+        },
+        {
+          "task_id": "060-task-cancellation-cleanup",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 77.9
+        },
+        {
+          "task_id": "061-periodic-status-rollup",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 87.4
+        },
+        {
+          "task_id": "062-k8s-config-audit",
+          "score": 0.9054,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 23.7
+        },
+        {
+          "task_id": "063-alert-dedup-noise",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 27.7
+        },
+        {
+          "task_id": "064-service-dependency-triage",
+          "score": 0.8072,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 41.3
+        },
+        {
+          "task_id": "065-capacity-planning",
+          "score": 0.9873,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 63.8
+        },
+        {
+          "task_id": "066-rollback-readiness",
+          "score": 0.7912,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 43.3
+        },
+        {
+          "task_id": "067-canary-release-check",
+          "score": 0.9263,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 45.8
+        },
+        {
+          "task_id": "068-product-launch-ops",
+          "score": 0.9153,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 76.3
+        },
+        {
+          "task_id": "069-legal-compliance-review",
+          "score": 0.815,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 72.9
+        },
+        {
+          "task_id": "070-hr-resume-screening",
+          "score": 0.7,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 31.8
+        },
+        {
+          "task_id": "071-ecommerce-support-routing",
+          "score": 0.83,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 52.8
+        },
+        {
+          "task_id": "072-logistics-delay-response",
+          "score": 0.88,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 35.8
+        },
+        {
+          "task_id": "073-research-repro-package",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 48.8
+        },
+        {
+          "task_id": "074-education-grading-feedback",
+          "score": 0.52,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 30.8
+        },
+        {
+          "task_id": "075-platform-appeal-review",
+          "score": 0.85,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 72.9
+        },
+        {
+          "task_id": "076-medical-admin-claim-check",
+          "score": 0.83,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 37.9
+        },
+        {
+          "task_id": "077-archive-manifest-defense",
+          "score": 0.27586206896551724,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 113.3
+        },
+        {
+          "task_id": "079-smallfile-batch-reject-ledger",
+          "score": 0.41065535124941066,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 83.8
+        },
+        {
+          "task_id": "080-schema-roundtrip-conversion",
+          "score": 0.9130434782608695,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 37.3
+        },
+        {
+          "task_id": "082-compose-config-repair",
+          "score": 0.7,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 169.6
+        },
+        {
+          "task_id": "083-monorepo-interface-repair",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 83.3
+        },
+        {
+          "task_id": "084-js-state-type-bug",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 108.2
+        },
+        {
+          "task_id": "085-flaky-test-root-cause",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 77.9
+        },
+        {
+          "task_id": "086-sql-migration-preflight-rollback",
+          "score": 0.7,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 96.9
+        },
+        {
+          "task_id": "087-cli-parser-bug-tests",
+          "score": 0.6321,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 155.8
+        },
+        {
+          "task_id": "089-ab-test-caveat-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 65.4
+        }
+      ],
+      [
+        {
+          "task_id": "027-contract-summary-risk",
+          "score": 0.7143,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 26.7
+        },
+        {
+          "task_id": "028-email-thread-merge",
+          "score": 0.8182,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 46.8
+        },
+        {
+          "task_id": "029-expense-packet-review",
+          "score": 0.7692,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 41.8
+        },
+        {
+          "task_id": "030-word-revision-plan",
+          "score": 0.875,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 46.4
+        },
+        {
+          "task_id": "031-cross-doc-citation-check",
+          "score": 0.4444,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 21.7
+        },
+        {
+          "task_id": "032-customer-followup-draft",
+          "score": 0.8571,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 34.8
+        },
+        {
+          "task_id": "033-offline-knowledge-qa",
+          "score": 0.6792,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 31.2
+        },
+        {
+          "task_id": "034-evidence-matrix-claims",
+          "score": 0.92,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 20.7
+        },
+        {
+          "task_id": "035-conflicting-source-resolution",
+          "score": 0.84,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 130.6
+        },
+        {
+          "task_id": "036-citation-consistency-audit",
+          "score": 0.78,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 83.9
+        },
+        {
+          "task_id": "037-policy-clause-retrieval",
+          "score": 0.74,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 61.3
+        },
+        {
+          "task_id": "038-research-brief-synthesis",
+          "score": 0.9229,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 126.2
+        },
+        {
+          "task_id": "039-repo-architecture-map",
+          "score": 0.9232,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 126.1
+        },
+        {
+          "task_id": "040-test-coverage-fill",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 85.0
+        },
+        {
+          "task_id": "041-frontend-state-bug",
+          "score": 0.9962,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 102.3
+        },
+        {
+          "task_id": "042-api-schema-migration",
+          "score": 0.74,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 157.5
+        },
+        {
+          "task_id": "043-db-migration-safety",
+          "score": 0.857,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 110.4
+        },
+        {
+          "task_id": "044-ci-config-repair",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 83.2
+        },
+        {
+          "task_id": "045-dependency-upgrade-compat",
+          "score": 0.7929,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 107.0
+        },
+        {
+          "task_id": "046-performance-regression",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 72.8
+        },
+        {
+          "task_id": "047-code-review-risk-report",
+          "score": 0.7094,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 40.9
+        },
+        {
+          "task_id": "048-release-note-changelog",
+          "score": 0.9474,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 46.8
+        },
+        {
+          "task_id": "049-excel-like-cleaning",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 54.3
+        },
+        {
+          "task_id": "050-multitable-join-analysis",
+          "score": 0.6791,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 74.9
+        },
+        {
+          "task_id": "051-sql-query-report",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 46.4
+        },
+        {
+          "task_id": "052-metric-definition-audit",
+          "score": 0.69,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 49.0
+        },
+        {
+          "task_id": "053-anomalous-transaction-detect",
+          "score": 0.9786,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 52.8
+        },
+        {
+          "task_id": "054-budget-variance-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 64.9
+        },
+        {
+          "task_id": "055-funnel-dropoff-analysis",
+          "score": 0.9563,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 89.9
+        },
+        {
+          "task_id": "056-inventory-forecast",
+          "score": 0.69,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 57.3
+        },
+        {
+          "task_id": "057-interruption-resume",
+          "score": 0.8077,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 80.4
+        },
+        {
+          "task_id": "058-multiday-project-state",
+          "score": 0.8594,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 158.0
+        },
+        {
+          "task_id": "059-event-update-replan",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 54.9
+        },
+        {
+          "task_id": "060-task-cancellation-cleanup",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 78.9
+        },
+        {
+          "task_id": "061-periodic-status-rollup",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 61.8
+        },
+        {
+          "task_id": "062-k8s-config-audit",
+          "score": 0.8936,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 22.2
+        },
+        {
+          "task_id": "063-alert-dedup-noise",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 35.8
+        },
+        {
+          "task_id": "064-service-dependency-triage",
+          "score": 0.8072,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 88.6
+        },
+        {
+          "task_id": "065-capacity-planning",
+          "score": 0.6617,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 89.9
+        },
+        {
+          "task_id": "066-rollback-readiness",
+          "score": 0.8242,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 54.4
+        },
+        {
+          "task_id": "067-canary-release-check",
+          "score": 0.9041,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 67.5
+        },
+        {
+          "task_id": "068-product-launch-ops",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 80.3
+        },
+        {
+          "task_id": "069-legal-compliance-review",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 115.9
+        },
+        {
+          "task_id": "070-hr-resume-screening",
+          "score": 0.82,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 30.3
+        },
+        {
+          "task_id": "071-ecommerce-support-routing",
+          "score": 0.83,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 101.9
+        },
+        {
+          "task_id": "072-logistics-delay-response",
+          "score": 0.88,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 29.1
+        },
+        {
+          "task_id": "073-research-repro-package",
+          "score": 0.9,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 49.3
+        },
+        {
+          "task_id": "074-education-grading-feedback",
+          "score": 0.52,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 66.4
+        },
+        {
+          "task_id": "075-platform-appeal-review",
+          "score": 0.91,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 70.1
+        },
+        {
+          "task_id": "076-medical-admin-claim-check",
+          "score": 0.83,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 38.3
+        },
+        {
+          "task_id": "077-archive-manifest-defense",
+          "score": 0.7241379310344828,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 135.5
+        },
+        {
+          "task_id": "079-smallfile-batch-reject-ledger",
+          "score": 0.834983498349835,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 97.4
+        },
+        {
+          "task_id": "080-schema-roundtrip-conversion",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 54.4
+        },
+        {
+          "task_id": "082-compose-config-repair",
+          "score": 0.7,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 122.0
+        },
+        {
+          "task_id": "083-monorepo-interface-repair",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 80.0
+        },
+        {
+          "task_id": "084-js-state-type-bug",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 147.2
+        },
+        {
+          "task_id": "085-flaky-test-root-cause",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 105.8
+        },
+        {
+          "task_id": "086-sql-migration-preflight-rollback",
+          "score": 0.7,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 173.1
+        },
+        {
+          "task_id": "087-cli-parser-bug-tests",
+          "score": 0.6179,
+          "passed": false,
+          "adapter_ok": true,
+          "seconds": 148.7
+        },
+        {
+          "task_id": "089-ab-test-caveat-analysis",
+          "score": 1.0,
+          "passed": true,
+          "adapter_ok": true,
+          "seconds": 63.4
+        }
+      ]
+    ]
+  }
+}

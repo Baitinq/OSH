@@ -3,267 +3,96 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>HarnessBench quick-15 results</title>
+  <title>HarnessBench 60 × 2 results</title>
   <style>
-    :root {
-      color-scheme: light;
-      --ink: #172033;
-      --muted: #687087;
-      --paper: #f6f8fc;
-      --panel: #ffffff;
-      --line: #dbe1ec;
-      --blue: #2855d9;
-      --blue-soft: #e7edff;
-      --green: #087f5b;
-      --amber: #a65d00;
-    }
-
-    * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      background: var(--paper);
-      color: var(--ink);
-      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      line-height: 1.5;
-    }
-
-    main {
-      width: min(1120px, calc(100% - 32px));
-      margin: 0 auto;
-      padding: 56px 0 72px;
-    }
-
-    header {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 32px;
-      align-items: end;
-      padding-bottom: 28px;
-      border-bottom: 2px solid var(--ink);
-    }
-
-    .eyebrow, th, .label, code {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    }
-
-    .eyebrow {
-      margin: 0 0 10px;
-      color: var(--blue);
-      font-size: 0.78rem;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-    }
-
-    h1 {
-      max-width: 760px;
-      margin: 0;
-      font-size: clamp(2.2rem, 6vw, 5rem);
-      line-height: 0.96;
-      letter-spacing: -0.055em;
-    }
-
-    .sample {
-      min-width: 132px;
-      text-align: right;
-    }
-
-    .sample strong {
-      display: block;
-      color: var(--blue);
-      font: 700 3.4rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-    }
-
-    .sample span { color: var(--muted); font-size: 0.85rem; }
-
-    .lede {
-      max-width: 760px;
-      margin: 24px 0 38px;
-      color: var(--muted);
-      font-size: 1.05rem;
-    }
-
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
-      gap: 12px;
-    }
-
-    .card {
-      position: relative;
-      overflow: hidden;
-      min-height: 188px;
-      padding: 20px;
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 10px;
-    }
-
-    .card.best { border-color: var(--blue); box-shadow: inset 0 4px 0 var(--blue); }
-    .card.best::after {
-      content: "best observed";
-      position: absolute;
-      top: 16px;
-      right: -33px;
-      width: 120px;
-      padding: 3px 0;
-      transform: rotate(38deg);
-      background: var(--blue);
-      color: white;
-      font: 700 0.6rem/1.3 ui-monospace, monospace;
-      letter-spacing: 0.05em;
-      text-align: center;
-      text-transform: uppercase;
-    }
-
-    .card h2 { margin: 0 0 18px; font-size: 1rem; }
-    .score { margin: 0; font: 700 2.3rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -0.06em; }
-    .track { height: 5px; margin: 14px 0 18px; overflow: hidden; background: var(--blue-soft); border-radius: 99px; }
-    .track span { display: block; width: var(--score); height: 100%; background: var(--blue); }
-    .meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 0.8rem; }
-
-    .finding {
-      display: grid;
-      grid-template-columns: 140px minmax(0, 1fr);
-      gap: 22px;
-      margin: 36px 0;
-      padding: 24px;
-      background: var(--ink);
-      color: white;
-      border-radius: 10px;
-    }
-
-    .finding .label { color: #aebce9; font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; }
-    .finding p { margin: 0; font-size: 1.05rem; }
-    .finding strong { color: #8fb0ff; }
-
-    .table-wrap {
-      overflow-x: auto;
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 10px;
-    }
-
-    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-    caption { padding: 20px; text-align: left; font-size: 1.2rem; font-weight: 700; }
-    th, td { padding: 11px 16px; border-top: 1px solid var(--line); text-align: right; white-space: nowrap; }
-    th { color: var(--muted); font-size: 0.68rem; letter-spacing: 0.05em; text-transform: uppercase; }
-    th:first-child, td:first-child { text-align: left; }
-    td:first-child { max-width: 310px; overflow: hidden; text-overflow: ellipsis; }
-    td.best-score { color: var(--green); font-weight: 750; }
-    td.drop { color: var(--amber); }
-
-    footer { margin-top: 22px; color: var(--muted); font-size: 0.78rem; }
-    code { color: var(--ink); }
-
-    @media (max-width: 820px) {
-      main { padding-top: 32px; }
-      header { grid-template-columns: 1fr; }
-      .sample { text-align: left; }
-      .cards { grid-template-columns: repeat(2, 1fr); }
-      .finding { grid-template-columns: 1fr; gap: 8px; }
-    }
-
-    @media (max-width: 500px) {
-      .cards { grid-template-columns: 1fr; }
-      h1 { font-size: 2.55rem; }
-    }
+    :root { color-scheme: light; --ink:#172033; --muted:#687087; --paper:#f6f8fc; --panel:#fff; --line:#dbe1ec; --blue:#2855d9; --soft:#e7edff; --green:#087f5b; }
+    * { box-sizing:border-box } body { margin:0; background:var(--paper); color:var(--ink); font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; line-height:1.5 }
+    main { width:min(1080px,calc(100% - 32px)); margin:auto; padding:52px 0 72px }
+    header { display:flex; justify-content:space-between; align-items:end; gap:24px; padding-bottom:26px; border-bottom:2px solid var(--ink) }
+    .eyebrow,th,code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace } .eyebrow { color:var(--blue); font-size:.78rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase }
+    h1 { margin:8px 0 0; font-size:clamp(2.3rem,6vw,4.8rem); line-height:.98; letter-spacing:-.05em } .sample { text-align:right } .sample strong { display:block; color:var(--blue); font:700 3rem/1 ui-monospace,monospace }
+    .lede { max-width:800px; margin:24px 0 34px; color:var(--muted); font-size:1.05rem }
+    .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:12px } .card { padding:20px; background:var(--panel); border:1px solid var(--line); border-radius:10px } .card.best { border-color:var(--blue); box-shadow:inset 0 4px var(--blue) }
+    .card h2 { margin:0 0 16px; font-size:1rem } .score { margin:0; font:700 2.3rem/1 ui-monospace,monospace; letter-spacing:-.06em } .track { height:5px; margin:14px 0; background:var(--soft); border-radius:99px } .track span { display:block; width:var(--score); height:100%; background:var(--blue) } .meta { color:var(--muted); font-size:.8rem }
+    .finding { margin:30px 0; padding:22px 24px; background:var(--ink); color:#fff; border-radius:10px } .finding strong { color:#8fb0ff }
+    .table-wrap { overflow-x:auto; background:var(--panel); border:1px solid var(--line); border-radius:10px } table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums } caption { padding:18px; text-align:left; font-size:1.15rem; font-weight:700 } th,td { padding:9px 16px; border-top:1px solid var(--line); text-align:right; white-space:nowrap } th { color:var(--muted); font-size:.68rem; text-transform:uppercase } th:first-child,td:first-child { text-align:left } td.best { color:var(--green); font-weight:750 }
+    footer { margin-top:22px; color:var(--muted); font-size:.82rem } @media(max-width:650px) { header { display:block } .sample { text-align:left; margin-top:20px } .cards { grid-template-columns:1fr } }
   </style>
 </head>
-<body>
-  <main>
-    <header>
-      <div>
-        <p class="eyebrow">HarnessBench · 27 Aug 2026</p>
-        <h1>Three harnesses,<br>one quick slice.</h1>
-      </div>
-      <div class="sample"><strong>15</strong><span>odd tasks · 027–055</span></div>
-    </header>
-
-    <p class="lede">Outcome scores from the deterministic HarnessBench oracles. All runs used GPT-5.6 Sol with medium reasoning and completed without adapter failures.</p>
-
-    <section class="cards" aria-label="Run summaries">
-      <article class="card best" style="--score: 86.72%">
-        <h2>fn agent baseline</h2>
-        <p class="score">0.8672</p>
-        <div class="track"><span></span></div>
-        <div class="meta"><span>5 perfect</span><span>860.4s</span></div>
-      </article>
-      <article class="card" style="--score: 83.15%">
-        <h2>fn agent rerun</h2>
-        <p class="score">0.8315</p>
-        <div class="track"><span></span></div>
-        <div class="meta"><span>3 perfect</span><span>858.3s</span></div>
-      </article>
-      <article class="card" style="--score: 86.48%">
-        <h2>fn agent latest</h2>
-        <p class="score">0.8648</p>
-        <div class="track"><span></span></div>
-        <div class="meta"><span>1 perfect</span><span>914.1s</span></div>
-      </article>
-      <article class="card" style="--score: 82.77%">
-        <h2>Codex</h2>
-        <p class="score">0.8277</p>
-        <div class="track"><span></span></div>
-        <div class="meta"><span>2 perfect</span><span>1603.3s</span></div>
-      </article>
-      <article class="card" style="--score: 82.75%">
-        <h2>Pi</h2>
-        <p class="score">0.8275</p>
-        <div class="track"><span></span></div>
-        <div class="meta"><span>1 perfect</span><span>1080.7s</span></div>
-      </article>
-    </section>
-
-    <aside class="finding">
-      <span class="label">Rerun note</span>
-      <p>The latest fn agent scored <strong>0.8648</strong>, only 0.0023 below the best baseline and 0.037 ahead of both Codex and Pi. Against Pi it won five tasks, lost three, and tied seven.</p>
-    </aside>
-
-    <div class="table-wrap">
-      <table>
-        <caption>Task-level outcome scores</caption>
-        <thead>
-          <tr><th>Task</th><th>fn agent baseline</th><th>fn agent rerun</th><th>fn agent latest</th><th>Codex</th><th>Pi</th></tr>
-        </thead>
-        <tbody id="results"></tbody>
-      </table>
-    </div>
-
-    <footer>
-      Sources: <code>results/fn-baseline-20260826</code>, <code>results/fn-quick15-rerun-20260827</code>, <code>results/fn-quick15-updated3-20260827</code>, <code>results/codex-quick15-20260826</code>, and <code>results/pi-openai-quick15-20260826</code>.
-    </footer>
-  </main>
-
-  <script>
-    const rows = [
-      ["027 · contract summary risk", .8571, .7857, .8571, .7857, .8571],
-      ["029 · expense packet review", .9231, .6154, .8462, .6923, .6154],
-      ["031 · cross-doc citation check", .6667, .6667, .5556, .5556, .6667],
-      ["033 · offline knowledge QA", .7667, .6792, .6792, .7667, .6792],
-      ["035 · conflicting source resolution", .8400, .8400, .8400, .8100, .8400],
-      ["037 · policy clause retrieval", .7400, .7400, .7400, .7400, .7400],
-      ["039 · repo architecture map", .9158, .9232, .9368, .8868, .9343],
-      ["041 · frontend state bug", 1, .9962, .9962, .9962, .9962],
-      ["043 · DB migration safety", .9950, .9950, .9870, .9270, .9870],
-      ["045 · dependency upgrade compat", .5829, .5629, .9249, .5729, .9261],
-      ["047 · code review risk report", .7202, .7118, .7094, .7199, .7262],
-      ["049 · Excel-like cleaning", 1, 1, .9593, 1, .5523],
-      ["051 · SQL query report", 1, 1, 1, 1, 1],
-      ["053 · anomalous transaction detect", 1, 1, .9572, .9786, .9358],
-      ["055 · funnel dropoff analysis", 1, .9563, .9836, .9836, .9563]
-    ];
-
-    const tbody = document.querySelector("#results");
-    for (const [name, ...scores] of rows) {
-      const best = Math.max(...scores);
-      const cells = scores.map((score, index) => {
-        const classes = [score === best ? "best-score" : "", (index === 1 || index === 2) && score < scores[0] ? "drop" : ""].filter(Boolean).join(" ");
-        return `<td class="${classes}">${score.toFixed(4)}</td>`;
-      }).join("");
-      tbody.insertAdjacentHTML("beforeend", `<tr><td>${name}</td>${cells}</tr>`);
-    }
-  </script>
-</body>
-</html>
+<body><main>
+  <header><div><div class="eyebrow">HarnessBench · 27 Aug 2026</div><h1>Sixty tasks,<br>two repetitions.</h1></div><div class="sample"><strong>360</strong><span>total agent runs</span></div></header>
+  <p class="lede">Deterministic outcome scores for fn agent, Pi, and Codex. Every harness ran the same 60 tasks twice with GPT-5.6 Sol at medium reasoning. The two scores for each task are averaged in the table below.</p>
+  <section class="cards">
+    <article class="card best" style="--score:87.30%"><h2>Pi</h2><p class="score">0.8730</p><div class="track"><span></span></div><div class="meta">reps 0.8782 / 0.8678 · 38 perfect</div></article>
+    <article class="card" style="--score:87.02%"><h2>fn agent</h2><p class="score">0.8702</p><div class="track"><span></span></div><div class="meta">reps 0.8697 / 0.8708 · 38 perfect</div></article>
+    <article class="card" style="--score:84.94%"><h2>Codex</h2><p class="score">0.8494</p><div class="track"><span></span></div><div class="meta">reps 0.8431 / 0.8558 · 35 perfect</div></article>
+  </section>
+  <aside class="finding"><strong>fn and Pi are effectively tied.</strong> Pi leads fn by 0.0028 (paired 95% CI −0.0132 to +0.0188). fn leads Codex by 0.0208, though that interval also narrowly crosses zero (−0.0053 to +0.0469). fn was the fastest harness and had the smallest change between repetitions.</aside>
+  <div class="table-wrap"><table><caption>Task-level scores averaged across both repetitions</caption><thead><tr><th>Task</th><th>fn agent</th><th>Pi</th><th>Codex</th></tr></thead><tbody id="results"></tbody></table></div>
+  <footer>Tasks 078 and 081 required an unavailable public tunnel and were replaced by 087 and 089. An attempted replacement, 088, required the same tunnel and was not included. See <code>results-60x2-20260827.json</code> for all 360 selected run records, durations, aggregate statistics, and confidence intervals.</footer>
+</main><script>
+  const rows = [
+      ["027 \u00b7 contract-summary-risk", 0.8571, 0.7857000000000001, 0.6786000000000001],
+      ["028 \u00b7 email-thread-merge", 0.77275, 0.77275, 0.8182],
+      ["029 \u00b7 expense-packet-review", 0.7307999999999999, 0.73075, 0.8077],
+      ["030 \u00b7 word-revision-plan", 1.0, 0.9375, 0.9375],
+      ["031 \u00b7 cross-doc-citation-check", 0.61115, 0.6667, 0.5],
+      ["032 \u00b7 customer-followup-draft", 0.8571500000000001, 0.92855, 0.8571],
+      ["033 \u00b7 offline-knowledge-qa", 0.6792, 0.6792, 0.6792],
+      ["034 \u00b7 evidence-matrix-claims", 0.92, 0.9, 0.92],
+      ["035 \u00b7 conflicting-source-resolution", 0.84, 0.84, 0.84],
+      ["036 \u00b7 citation-consistency-audit", 0.78, 0.78, 0.78],
+      ["037 \u00b7 policy-clause-retrieval", 0.74, 0.74, 0.74],
+      ["038 \u00b7 research-brief-synthesis", 0.91025, 0.95145, 0.8949],
+      ["039 \u00b7 repo-architecture-map", 0.93135, 0.9024, 0.913],
+      ["040 \u00b7 test-coverage-fill", 1.0, 1.0, 1.0],
+      ["041 \u00b7 frontend-state-bug", 0.9981, 0.9981, 0.9962],
+      ["042 \u00b7 api-schema-migration", 0.74, 0.74, 0.74],
+      ["043 \u00b7 db-migration-safety", 0.9585, 0.9485, 0.9219999999999999],
+      ["044 \u00b7 ci-config-repair", 1.0, 0.86, 1.0],
+      ["045 \u00b7 dependency-upgrade-compat", 0.9499, 0.8079, 0.8029],
+      ["046 \u00b7 performance-regression", 1.0, 1.0, 1.0],
+      ["047 \u00b7 code-review-risk-report", 0.72095, 0.7232000000000001, 0.71955],
+      ["048 \u00b7 release-note-changelog", 0.95645, 0.9654, 0.9415],
+      ["049 \u00b7 excel-like-cleaning", 1.0, 1.0, 1.0],
+      ["050 \u00b7 multitable-join-analysis", 1.0, 1.0, 0.83955],
+      ["051 \u00b7 sql-query-report", 1.0, 1.0, 1.0],
+      ["052 \u00b7 metric-definition-audit", 0.845, 1.0, 0.69],
+      ["053 \u00b7 anomalous-transaction-detect", 1.0, 0.9679, 0.9893000000000001],
+      ["054 \u00b7 budget-variance-analysis", 1.0, 1.0, 1.0],
+      ["055 \u00b7 funnel-dropoff-analysis", 0.9781500000000001, 0.9563, 0.9781500000000001],
+      ["056 \u00b7 inventory-forecast", 0.69, 0.69, 0.69],
+      ["057 \u00b7 interruption-resume", 0.76925, 0.71155, 0.8077],
+      ["058 \u00b7 multiday-project-state", 0.89065, 0.96095, 0.8594],
+      ["059 \u00b7 event-update-replan", 0.5, 0.75, 0.75],
+      ["060 \u00b7 task-cancellation-cleanup", 1.0, 1.0, 1.0],
+      ["061 \u00b7 periodic-status-rollup", 1.0, 1.0, 1.0],
+      ["062 \u00b7 k8s-config-audit", 0.88175, 0.8581000000000001, 0.8995],
+      ["063 \u00b7 alert-dedup-noise", 1.0, 1.0, 1.0],
+      ["064 \u00b7 service-dependency-triage", 0.8222, 0.8222, 0.8072],
+      ["065 \u00b7 capacity-planning", 0.7399, 0.9027000000000001, 0.8245],
+      ["066 \u00b7 rollback-readiness", 0.8145, 0.798, 0.8077000000000001],
+      ["067 \u00b7 canary-release-check", 0.9263, 0.9263, 0.9152],
+      ["068 \u00b7 product-launch-ops", 0.9153, 0.8814, 0.95765],
+      ["069 \u00b7 legal-compliance-review", 0.8825, 0.84, 0.9075],
+      ["070 \u00b7 hr-resume-screening", 0.76, 0.76, 0.76],
+      ["071 \u00b7 ecommerce-support-routing", 0.83, 0.83, 0.83],
+      ["072 \u00b7 logistics-delay-response", 0.88, 0.88, 0.88],
+      ["073 \u00b7 research-repro-package", 0.9099999999999999, 0.95, 0.95],
+      ["074 \u00b7 education-grading-feedback", 0.52, 0.52, 0.52],
+      ["075 \u00b7 platform-appeal-review", 0.8, 0.9299999999999999, 0.88],
+      ["076 \u00b7 medical-admin-claim-check", 0.83, 0.83, 0.83],
+      ["077 \u00b7 archive-manifest-defense", 1.0, 1.0, 0.5],
+      ["079 \u00b7 smallfile-batch-reject-ledger", 1.0, 1.0, 0.6228194247996228],
+      ["080 \u00b7 schema-roundtrip-conversion", 0.9130434782608695, 0.9130434782608695, 0.9565217391304348],
+      ["082 \u00b7 compose-config-repair", 0.7, 0.7, 0.7],
+      ["083 \u00b7 monorepo-interface-repair", 1.0, 1.0, 1.0],
+      ["084 \u00b7 js-state-type-bug", 0.9843999999999999, 0.99065, 1.0],
+      ["085 \u00b7 flaky-test-root-cause", 1.0, 1.0, 1.0],
+      ["086 \u00b7 sql-migration-preflight-rollback", 0.8444499999999999, 0.7, 0.7],
+      ["087 \u00b7 cli-parser-bug-tests", 0.6321, 0.65355, 0.625],
+      ["089 \u00b7 ab-test-caveat-analysis", 1.0, 1.0, 1.0]
+  ];
+  const tbody=document.querySelector("#results");
+  for (const [name,...scores] of rows) { const best=Math.max(...scores); tbody.insertAdjacentHTML("beforeend",`<tr><td>${name}</td>${scores.map(s=>`<td class="${s===best?'best':''}">${s.toFixed(4)}</td>`).join('')}</tr>`); }
+</script></body></html>
