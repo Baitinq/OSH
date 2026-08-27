@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/fn-python-repl.png" alt="fn agent using its Python REPL in a terminal" width="900">
+  <img src="docs/fn-python-repl-v4.png" alt="fn agent using its Python REPL in a terminal" width="900">
 </p>
 
 `fn` gives a model one persistent Python environment for reasoning, tools,
