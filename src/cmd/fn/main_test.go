@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -62,6 +65,27 @@ func TestSessionIDs(t *testing.T) {
 		if validSessionID(invalid) {
 			t.Fatalf("accepted invalid session ID %q", invalid)
 		}
+	}
+}
+
+func TestPublishRunningSession(t *testing.T) {
+	home := t.TempDir()
+	id := "550e8400-e29b-41d4-a716-446655440000"
+	remove, err := publishRunningSession(home, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, ".fn", "running", strconv.Itoa(os.Getpid()))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != id {
+		t.Fatalf("running session = %q", data)
+	}
+	remove()
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("running session still exists: %v", err)
 	}
 }
 

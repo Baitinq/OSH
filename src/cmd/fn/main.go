@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 
 	"fn/internal/agent"
@@ -99,6 +101,18 @@ func validSessionID(id string) bool {
 	return true
 }
 
+func publishRunningSession(home, sessionID string) (func(), error) {
+	dir := filepath.Join(home, ".fn", "running")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(dir, strconv.Itoa(os.Getpid()))
+	if err := os.WriteFile(path, []byte(sessionID), 0o600); err != nil {
+		return nil, err
+	}
+	return func() { os.Remove(path) }, nil
+}
+
 func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	prompt, printMode, sessionID, err := parseArgs(args)
 	if err != nil {
@@ -135,6 +149,11 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	removeRunningSession, err := publishRunningSession(home, sessionID)
+	if err != nil {
+		return err
+	}
+	defer removeRunningSession()
 	respond := func(input string, steer <-chan string, emit func(agent.ToolEvent), ctx context.Context) agent.Response {
 		response := a.Respond(input, steer, emit, ctx)
 		if err := a.SaveSession(); err != nil && response.Err == nil {
