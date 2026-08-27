@@ -1,6 +1,6 @@
 <h1 align="center">fn agent</h1>
 
-<p align="center"><strong>A programmable terminal agent.</strong></p>
+<p align="center"><strong>A minimal agent harness where Python is the tool protocol and durable working memory.</strong></p>
 
 <p align="center">
   <a href="src/go.mod"><img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.26+"></a>
