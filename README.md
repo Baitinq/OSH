@@ -18,6 +18,14 @@ the agent can keep large state outside model context and inspect only what it ne
 The agent loop stays explicit: one model-facing REPL tool, a few composable functions,
 and no framework hidden underneath.
 
+## Benchmarks
+
+On the 15-task HarnessBench quick suite, fn agent achieved a **0.8648 mean
+outcome score**, compared with **0.8277 for Codex** and **0.8275 for Pi** using
+the same model and reasoning level, with no adapter failures. See the
+[methodology](src/benchmarks/harnessbench/README.md) and
+[detailed results](src/benchmarks/harnessbench/results.html).
+
 ## Requirements
 
 - Go 1.26 or newer
