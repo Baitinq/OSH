@@ -10,10 +10,9 @@ The checked-in [60-task, two-repetition results](results.html) contain 360 agent
 runs using GPT-5.6 Sol with medium reasoning. The accompanying
 [JSON artifact](results-60x2-20260827.json) includes every selected task score,
 duration, token count, aggregate statistic, and paired confidence interval. Pi
-token counts come from the original runs; fn counts come from a score-equivalent
-rerun after aggregate token reporting was added. Both are provider total tokens,
-including cached input. Codex's original CLI footer excludes cached input, so its
-count is retained in the artifact but not compared as a total.
+token counts come from the original runs; fn and Codex counts come from
+score-equivalent reruns after comparable token reporting was enabled. All reported
+counts are provider total tokens—input plus output—including cached input.
 
 Tasks 078 and 081 required a public tunnel that was unavailable during the run, so
 they were replaced with tasks 087 and 089. Task 088 was also attempted as a

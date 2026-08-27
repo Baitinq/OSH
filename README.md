@@ -24,17 +24,13 @@ On 60 HarnessBench tasks run twice, fn agent achieved a **0.8702 mean outcome
 score**, compared with **0.8730 for Pi** and **0.8494 for Codex**, using the same
 model and reasoning level. The paired results place fn and Pi in an effective tie;
 fn was the fastest harness and the most consistent between repetitions. It
-processed 55% fewer total tokens than Pi. Codex's CLI reports only non-cached
-input plus output, so its token count is not directly comparable.
+processed 55% fewer total tokens than Pi and 74% fewer than Codex.
 
 | Harness | Combined mean | Mean time | Mean total tokens |
 | --- | ---: | ---: | ---: |
 | **fn agent** | **0.8702** | **45m 39s** | **1.91M** |
 | Pi | 0.8730 | 62m 01s | 4.27M |
-| Codex | 0.8494 | 76m 45s | n/a¹ |
-
-¹ Codex printed 1.32M non-cached input plus output tokens; its CLI footer excludes
-cached input, unlike the provider totals exposed by fn and Pi.
+| Codex | 0.8494 | 76m 45s | 7.38M |
 
 See the [methodology](src/benchmarks/harnessbench/README.md),
 [detailed results](src/benchmarks/harnessbench/results.html), and

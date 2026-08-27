@@ -2704,8 +2704,8 @@
     ]
   },
   "token_usage": {
-    "definition": "fn and Pi report provider total tokens, including cached input. Codex CLI reports non-cached input plus output only.",
-    "note": "Pi usage comes from the published runs. fn usage comes from a score-equivalent 60-task rerun after token reporting was added. Codex usage is retained but is not directly comparable because its CLI footer excludes cached input.",
+    "definition": "Provider-reported total tokens (input plus output), including cached input.",
+    "note": "Pi usage comes from the published runs. fn and Codex usage comes from score-equivalent 60-task reruns after comparable token reporting was enabled.",
     "harnesses": {
       "fn": {
         "repetition_totals": [
@@ -3697,497 +3697,977 @@
       },
       "codex": {
         "repetition_totals": [
-          1317967,
-          1326426
+          7610668,
+          7154882
         ],
-        "mean_tokens_per_60_tasks": 1322196.5,
+        "mean_tokens_per_60_tasks": 7382775,
         "runs": [
           [
             {
               "task_id": "027-contract-summary-risk",
-              "tokens_used": 18602
+              "tokens_used": 68162,
+              "input_tokens": 66121,
+              "cached_input_tokens": 51194,
+              "output_tokens": 2041,
+              "reasoning_output_tokens": 458
             },
             {
               "task_id": "028-email-thread-merge",
-              "tokens_used": 15450
+              "tokens_used": 85377,
+              "input_tokens": 82549,
+              "cached_input_tokens": 67429,
+              "output_tokens": 2828,
+              "reasoning_output_tokens": 658
             },
             {
               "task_id": "029-expense-packet-review",
-              "tokens_used": 17619
+              "tokens_used": 67638,
+              "input_tokens": 65456,
+              "cached_input_tokens": 50941,
+              "output_tokens": 2182,
+              "reasoning_output_tokens": 838
             },
             {
               "task_id": "030-word-revision-plan",
-              "tokens_used": 14619
+              "tokens_used": 69124,
+              "input_tokens": 66842,
+              "cached_input_tokens": 52117,
+              "output_tokens": 2282,
+              "reasoning_output_tokens": 568
             },
             {
               "task_id": "031-cross-doc-citation-check",
-              "tokens_used": 17716
+              "tokens_used": 82521,
+              "input_tokens": 79958,
+              "cached_input_tokens": 64727,
+              "output_tokens": 2563,
+              "reasoning_output_tokens": 1220
             },
             {
               "task_id": "032-customer-followup-draft",
-              "tokens_used": 14803
+              "tokens_used": 81402,
+              "input_tokens": 79673,
+              "cached_input_tokens": 65150,
+              "output_tokens": 1729,
+              "reasoning_output_tokens": 379
             },
             {
               "task_id": "033-offline-knowledge-qa",
-              "tokens_used": 15911
+              "tokens_used": 65974,
+              "input_tokens": 64436,
+              "cached_input_tokens": 50540,
+              "output_tokens": 1538,
+              "reasoning_output_tokens": 170
             },
             {
               "task_id": "034-evidence-matrix-claims",
-              "tokens_used": 16592
+              "tokens_used": 79120,
+              "input_tokens": 77597,
+              "cached_input_tokens": 63396,
+              "output_tokens": 1523,
+              "reasoning_output_tokens": 186
             },
             {
               "task_id": "035-conflicting-source-resolution",
-              "tokens_used": 25258
+              "tokens_used": 117762,
+              "input_tokens": 111850,
+              "cached_input_tokens": 92844,
+              "output_tokens": 5912,
+              "reasoning_output_tokens": 794
             },
             {
               "task_id": "036-citation-consistency-audit",
-              "tokens_used": 26176
+              "tokens_used": 80119,
+              "input_tokens": 75513,
+              "cached_input_tokens": 58129,
+              "output_tokens": 4606,
+              "reasoning_output_tokens": 902
             },
             {
               "task_id": "037-policy-clause-retrieval",
-              "tokens_used": 26413
+              "tokens_used": 104846,
+              "input_tokens": 99423,
+              "cached_input_tokens": 79857,
+              "output_tokens": 5423,
+              "reasoning_output_tokens": 1389
             },
             {
               "task_id": "038-research-brief-synthesis",
-              "tokens_used": 27843
+              "tokens_used": 101095,
+              "input_tokens": 94686,
+              "cached_input_tokens": 74794,
+              "output_tokens": 6409,
+              "reasoning_output_tokens": 643
             },
             {
               "task_id": "039-repo-architecture-map",
-              "tokens_used": 28322
+              "tokens_used": 104766,
+              "input_tokens": 96942,
+              "cached_input_tokens": 75459,
+              "output_tokens": 7824,
+              "reasoning_output_tokens": 658
             },
             {
               "task_id": "040-test-coverage-fill",
-              "tokens_used": 25185
+              "tokens_used": 227502,
+              "input_tokens": 221414,
+              "cached_input_tokens": 198397,
+              "output_tokens": 6088,
+              "reasoning_output_tokens": 2040
             },
             {
               "task_id": "041-frontend-state-bug",
-              "tokens_used": 26281
+              "tokens_used": 151001,
+              "input_tokens": 143482,
+              "cached_input_tokens": 119896,
+              "output_tokens": 7519,
+              "reasoning_output_tokens": 3559
             },
             {
               "task_id": "042-api-schema-migration",
-              "tokens_used": 33839
+              "tokens_used": 281566,
+              "input_tokens": 270987,
+              "cached_input_tokens": 241218,
+              "output_tokens": 10579,
+              "reasoning_output_tokens": 3274
             },
             {
               "task_id": "043-db-migration-safety",
-              "tokens_used": 29054
+              "tokens_used": 124766,
+              "input_tokens": 117761,
+              "cached_input_tokens": 96578,
+              "output_tokens": 7005,
+              "reasoning_output_tokens": 2289
             },
             {
               "task_id": "044-ci-config-repair",
-              "tokens_used": 20305
+              "tokens_used": 121565,
+              "input_tokens": 117997,
+              "cached_input_tokens": 100767,
+              "output_tokens": 3568,
+              "reasoning_output_tokens": 948
             },
             {
               "task_id": "045-dependency-upgrade-compat",
-              "tokens_used": 31175
+              "tokens_used": 270166,
+              "input_tokens": 263342,
+              "cached_input_tokens": 239298,
+              "output_tokens": 6824,
+              "reasoning_output_tokens": 1725
             },
             {
               "task_id": "046-performance-regression",
-              "tokens_used": 21161
+              "tokens_used": 150194,
+              "input_tokens": 146118,
+              "cached_input_tokens": 128245,
+              "output_tokens": 4076,
+              "reasoning_output_tokens": 1461
             },
             {
               "task_id": "047-code-review-risk-report",
-              "tokens_used": 20708
+              "tokens_used": 71778,
+              "input_tokens": 68689,
+              "cached_input_tokens": 52990,
+              "output_tokens": 3089,
+              "reasoning_output_tokens": 360
             },
             {
               "task_id": "048-release-note-changelog",
-              "tokens_used": 25183
+              "tokens_used": 102359,
+              "input_tokens": 97786,
+              "cached_input_tokens": 78856,
+              "output_tokens": 4573,
+              "reasoning_output_tokens": 843
             },
             {
               "task_id": "049-excel-like-cleaning",
-              "tokens_used": 23445
+              "tokens_used": 93565,
+              "input_tokens": 89217,
+              "cached_input_tokens": 71751,
+              "output_tokens": 4348,
+              "reasoning_output_tokens": 889
             },
             {
               "task_id": "050-multitable-join-analysis",
-              "tokens_used": 27071
+              "tokens_used": 101019,
+              "input_tokens": 96889,
+              "cached_input_tokens": 77971,
+              "output_tokens": 4130,
+              "reasoning_output_tokens": 827
             },
             {
               "task_id": "051-sql-query-report",
-              "tokens_used": 21706
+              "tokens_used": 106742,
+              "input_tokens": 103010,
+              "cached_input_tokens": 85980,
+              "output_tokens": 3732,
+              "reasoning_output_tokens": 794
             },
             {
               "task_id": "052-metric-definition-audit",
-              "tokens_used": 19902
+              "tokens_used": 74458,
+              "input_tokens": 71472,
+              "cached_input_tokens": 55505,
+              "output_tokens": 2986,
+              "reasoning_output_tokens": 783
             },
             {
               "task_id": "053-anomalous-transaction-detect",
-              "tokens_used": 19242
+              "tokens_used": 60727,
+              "input_tokens": 57733,
+              "cached_input_tokens": 41350,
+              "output_tokens": 2994,
+              "reasoning_output_tokens": 622
             },
             {
               "task_id": "054-budget-variance-analysis",
-              "tokens_used": 20958
+              "tokens_used": 109406,
+              "input_tokens": 104651,
+              "cached_input_tokens": 87168,
+              "output_tokens": 4755,
+              "reasoning_output_tokens": 1072
             },
             {
               "task_id": "055-funnel-dropoff-analysis",
-              "tokens_used": 27260
+              "tokens_used": 145867,
+              "input_tokens": 140322,
+              "cached_input_tokens": 119144,
+              "output_tokens": 5545,
+              "reasoning_output_tokens": 1799
             },
             {
               "task_id": "056-inventory-forecast",
-              "tokens_used": 20286
+              "tokens_used": 139292,
+              "input_tokens": 135960,
+              "cached_input_tokens": 118839,
+              "output_tokens": 3332,
+              "reasoning_output_tokens": 738
             },
             {
               "task_id": "057-interruption-resume",
-              "tokens_used": 18882
+              "tokens_used": 92841,
+              "input_tokens": 88657,
+              "cached_input_tokens": 71437,
+              "output_tokens": 4184,
+              "reasoning_output_tokens": 703
             },
             {
               "task_id": "058-multiday-project-state",
-              "tokens_used": 24837
+              "tokens_used": 82808,
+              "input_tokens": 77696,
+              "cached_input_tokens": 58804,
+              "output_tokens": 5112,
+              "reasoning_output_tokens": 375
             },
             {
               "task_id": "059-event-update-replan",
-              "tokens_used": 18211
+              "tokens_used": 85781,
+              "input_tokens": 82891,
+              "cached_input_tokens": 67332,
+              "output_tokens": 2890,
+              "reasoning_output_tokens": 372
             },
             {
               "task_id": "060-task-cancellation-cleanup",
-              "tokens_used": 17972
+              "tokens_used": 98995,
+              "input_tokens": 96750,
+              "cached_input_tokens": 81253,
+              "output_tokens": 2245,
+              "reasoning_output_tokens": 279
             },
             {
               "task_id": "061-periodic-status-rollup",
-              "tokens_used": 19088
+              "tokens_used": 175594,
+              "input_tokens": 172802,
+              "cached_input_tokens": 152831,
+              "output_tokens": 2792,
+              "reasoning_output_tokens": 685
             },
             {
               "task_id": "062-k8s-config-audit",
-              "tokens_used": 15817
+              "tokens_used": 65533,
+              "input_tokens": 64111,
+              "cached_input_tokens": 50433,
+              "output_tokens": 1422,
+              "reasoning_output_tokens": 91
             },
             {
               "task_id": "063-alert-dedup-noise",
-              "tokens_used": 17504
+              "tokens_used": 72192,
+              "input_tokens": 69990,
+              "cached_input_tokens": 54676,
+              "output_tokens": 2202,
+              "reasoning_output_tokens": 399
             },
             {
               "task_id": "064-service-dependency-triage",
-              "tokens_used": 20364
+              "tokens_used": 106253,
+              "input_tokens": 102783,
+              "cached_input_tokens": 85097,
+              "output_tokens": 3470,
+              "reasoning_output_tokens": 328
             },
             {
               "task_id": "065-capacity-planning",
-              "tokens_used": 21879
+              "tokens_used": 91976,
+              "input_tokens": 87454,
+              "cached_input_tokens": 70266,
+              "output_tokens": 4522,
+              "reasoning_output_tokens": 1549
             },
             {
               "task_id": "066-rollback-readiness",
-              "tokens_used": 18206
+              "tokens_used": 57102,
+              "input_tokens": 54968,
+              "cached_input_tokens": 39377,
+              "output_tokens": 2134,
+              "reasoning_output_tokens": 258
             },
             {
               "task_id": "067-canary-release-check",
-              "tokens_used": 18868
+              "tokens_used": 92760,
+              "input_tokens": 89145,
+              "cached_input_tokens": 71560,
+              "output_tokens": 3615,
+              "reasoning_output_tokens": 1009
             },
             {
               "task_id": "068-product-launch-ops",
-              "tokens_used": 21413
+              "tokens_used": 115784,
+              "input_tokens": 110790,
+              "cached_input_tokens": 92572,
+              "output_tokens": 4994,
+              "reasoning_output_tokens": 656
             },
             {
               "task_id": "069-legal-compliance-review",
-              "tokens_used": 23155
+              "tokens_used": 142890,
+              "input_tokens": 136091,
+              "cached_input_tokens": 115084,
+              "output_tokens": 6799,
+              "reasoning_output_tokens": 1355
             },
             {
               "task_id": "070-hr-resume-screening",
-              "tokens_used": 16455
+              "tokens_used": 53794,
+              "input_tokens": 52183,
+              "cached_input_tokens": 37967,
+              "output_tokens": 1611,
+              "reasoning_output_tokens": 317
             },
             {
               "task_id": "071-ecommerce-support-routing",
-              "tokens_used": 20407
+              "tokens_used": 61932,
+              "input_tokens": 58266,
+              "cached_input_tokens": 41672,
+              "output_tokens": 3666,
+              "reasoning_output_tokens": 584
             },
             {
               "task_id": "072-logistics-delay-response",
-              "tokens_used": 17372
+              "tokens_used": 54657,
+              "input_tokens": 52421,
+              "cached_input_tokens": 37877,
+              "output_tokens": 2236,
+              "reasoning_output_tokens": 626
             },
             {
               "task_id": "073-research-repro-package",
-              "tokens_used": 20409
+              "tokens_used": 86629,
+              "input_tokens": 83612,
+              "cached_input_tokens": 67194,
+              "output_tokens": 3017,
+              "reasoning_output_tokens": 623
             },
             {
               "task_id": "074-education-grading-feedback",
-              "tokens_used": 16594
+              "tokens_used": 54629,
+              "input_tokens": 52839,
+              "cached_input_tokens": 38533,
+              "output_tokens": 1790,
+              "reasoning_output_tokens": 252
             },
             {
               "task_id": "075-platform-appeal-review",
-              "tokens_used": 23189
+              "tokens_used": 119390,
+              "input_tokens": 114936,
+              "cached_input_tokens": 95803,
+              "output_tokens": 4454,
+              "reasoning_output_tokens": 1534
             },
             {
               "task_id": "076-medical-admin-claim-check",
-              "tokens_used": 18147
+              "tokens_used": 87788,
+              "input_tokens": 85384,
+              "cached_input_tokens": 69561,
+              "output_tokens": 2404,
+              "reasoning_output_tokens": 361
             },
             {
               "task_id": "077-archive-manifest-defense",
-              "tokens_used": 33053
+              "tokens_used": 203037,
+              "input_tokens": 195299,
+              "cached_input_tokens": 168462,
+              "output_tokens": 7738,
+              "reasoning_output_tokens": 2778
             },
             {
               "task_id": "079-smallfile-batch-reject-ledger",
-              "tokens_used": 24176
+              "tokens_used": 227888,
+              "input_tokens": 218197,
+              "cached_input_tokens": 191589,
+              "output_tokens": 9691,
+              "reasoning_output_tokens": 2910
             },
             {
               "task_id": "080-schema-roundtrip-conversion",
-              "tokens_used": 19727
+              "tokens_used": 211979,
+              "input_tokens": 207325,
+              "cached_input_tokens": 188462,
+              "output_tokens": 4654,
+              "reasoning_output_tokens": 1259
             },
             {
               "task_id": "082-compose-config-repair",
-              "tokens_used": 31649
+              "tokens_used": 397331,
+              "input_tokens": 391954,
+              "cached_input_tokens": 368829,
+              "output_tokens": 5377,
+              "reasoning_output_tokens": 1463
             },
             {
               "task_id": "083-monorepo-interface-repair",
-              "tokens_used": 21642
+              "tokens_used": 266843,
+              "input_tokens": 262340,
+              "cached_input_tokens": 195192,
+              "output_tokens": 4503,
+              "reasoning_output_tokens": 1018
             },
             {
               "task_id": "084-js-state-type-bug",
-              "tokens_used": 24518
+              "tokens_used": 284211,
+              "input_tokens": 278408,
+              "cached_input_tokens": 257057,
+              "output_tokens": 5803,
+              "reasoning_output_tokens": 1486
             },
             {
               "task_id": "085-flaky-test-root-cause",
-              "tokens_used": 20946
+              "tokens_used": 140188,
+              "input_tokens": 137236,
+              "cached_input_tokens": 119275,
+              "output_tokens": 2952,
+              "reasoning_output_tokens": 533
             },
             {
               "task_id": "086-sql-migration-preflight-rollback",
-              "tokens_used": 29123
+              "tokens_used": 244197,
+              "input_tokens": 234660,
+              "cached_input_tokens": 210735,
+              "output_tokens": 9537,
+              "reasoning_output_tokens": 3498
             },
             {
               "task_id": "087-cli-parser-bug-tests",
-              "tokens_used": 27910
+              "tokens_used": 192883,
+              "input_tokens": 187160,
+              "cached_input_tokens": 165942,
+              "output_tokens": 5723,
+              "reasoning_output_tokens": 1363
             },
             {
               "task_id": "089-ab-test-caveat-analysis",
-              "tokens_used": 18369
+              "tokens_used": 202904,
+              "input_tokens": 195818,
+              "cached_input_tokens": 174476,
+              "output_tokens": 7086,
+              "reasoning_output_tokens": 1897
             }
           ],
           [
             {
               "task_id": "027-contract-summary-risk",
-              "tokens_used": 16416
+              "tokens_used": 66965,
+              "input_tokens": 64961,
+              "cached_input_tokens": 50874,
+              "output_tokens": 2004,
+              "reasoning_output_tokens": 352
             },
             {
               "task_id": "028-email-thread-merge",
-              "tokens_used": 18113
+              "tokens_used": 101483,
+              "input_tokens": 98750,
+              "cached_input_tokens": 82442,
+              "output_tokens": 2733,
+              "reasoning_output_tokens": 570
             },
             {
               "task_id": "029-expense-packet-review",
-              "tokens_used": 16713
+              "tokens_used": 54132,
+              "input_tokens": 52216,
+              "cached_input_tokens": 38166,
+              "output_tokens": 1916,
+              "reasoning_output_tokens": 657
             },
             {
               "task_id": "030-word-revision-plan",
-              "tokens_used": 15554
+              "tokens_used": 84655,
+              "input_tokens": 82016,
+              "cached_input_tokens": 66768,
+              "output_tokens": 2639,
+              "reasoning_output_tokens": 431
             },
             {
               "task_id": "031-cross-doc-citation-check",
-              "tokens_used": 15651
+              "tokens_used": 115148,
+              "input_tokens": 112066,
+              "cached_input_tokens": 82150,
+              "output_tokens": 3082,
+              "reasoning_output_tokens": 1223
             },
             {
               "task_id": "032-customer-followup-draft",
-              "tokens_used": 15146
+              "tokens_used": 65799,
+              "input_tokens": 64384,
+              "cached_input_tokens": 50501,
+              "output_tokens": 1415,
+              "reasoning_output_tokens": 194
             },
             {
               "task_id": "033-offline-knowledge-qa",
-              "tokens_used": 15805
+              "tokens_used": 93130,
+              "input_tokens": 91346,
+              "cached_input_tokens": 77173,
+              "output_tokens": 1784,
+              "reasoning_output_tokens": 216
             },
             {
               "task_id": "034-evidence-matrix-claims",
-              "tokens_used": 15151
+              "tokens_used": 93519,
+              "input_tokens": 91710,
+              "cached_input_tokens": 77217,
+              "output_tokens": 1809,
+              "reasoning_output_tokens": 243
             },
             {
               "task_id": "035-conflicting-source-resolution",
-              "tokens_used": 29713
+              "tokens_used": 196495,
+              "input_tokens": 189793,
+              "cached_input_tokens": 168467,
+              "output_tokens": 6702,
+              "reasoning_output_tokens": 1238
             },
             {
               "task_id": "036-citation-consistency-audit",
-              "tokens_used": 27601
+              "tokens_used": 101752,
+              "input_tokens": 95192,
+              "cached_input_tokens": 76225,
+              "output_tokens": 6560,
+              "reasoning_output_tokens": 2023
             },
             {
               "task_id": "037-policy-clause-retrieval",
-              "tokens_used": 25437
+              "tokens_used": 123008,
+              "input_tokens": 117348,
+              "cached_input_tokens": 97634,
+              "output_tokens": 5660,
+              "reasoning_output_tokens": 1544
             },
             {
               "task_id": "038-research-brief-synthesis",
-              "tokens_used": 28905
+              "tokens_used": 124016,
+              "input_tokens": 116447,
+              "cached_input_tokens": 95642,
+              "output_tokens": 7569,
+              "reasoning_output_tokens": 785
             },
             {
               "task_id": "039-repo-architecture-map",
-              "tokens_used": 33369
+              "tokens_used": 135767,
+              "input_tokens": 125735,
+              "cached_input_tokens": 101844,
+              "output_tokens": 10032,
+              "reasoning_output_tokens": 1370
             },
             {
               "task_id": "040-test-coverage-fill",
-              "tokens_used": 21434
+              "tokens_used": 167630,
+              "input_tokens": 161632,
+              "cached_input_tokens": 141747,
+              "output_tokens": 5998,
+              "reasoning_output_tokens": 2102
             },
             {
               "task_id": "041-frontend-state-bug",
-              "tokens_used": 24814
+              "tokens_used": 101883,
+              "input_tokens": 95528,
+              "cached_input_tokens": 75256,
+              "output_tokens": 6355,
+              "reasoning_output_tokens": 2805
             },
             {
               "task_id": "042-api-schema-migration",
-              "tokens_used": 38063
+              "tokens_used": 204640,
+              "input_tokens": 197049,
+              "cached_input_tokens": 170762,
+              "output_tokens": 7591,
+              "reasoning_output_tokens": 2327
             },
             {
               "task_id": "043-db-migration-safety",
-              "tokens_used": 30040
+              "tokens_used": 149353,
+              "input_tokens": 142433,
+              "cached_input_tokens": 120810,
+              "output_tokens": 6920,
+              "reasoning_output_tokens": 2044
             },
             {
               "task_id": "044-ci-config-repair",
-              "tokens_used": 17381
+              "tokens_used": 55276,
+              "input_tokens": 52806,
+              "cached_input_tokens": 38110,
+              "output_tokens": 2470,
+              "reasoning_output_tokens": 618
             },
             {
               "task_id": "045-dependency-upgrade-compat",
-              "tokens_used": 27774
+              "tokens_used": 239427,
+              "input_tokens": 231899,
+              "cached_input_tokens": 207612,
+              "output_tokens": 7528,
+              "reasoning_output_tokens": 1488
             },
             {
               "task_id": "046-performance-regression",
-              "tokens_used": 22360
+              "tokens_used": 148528,
+              "input_tokens": 144770,
+              "cached_input_tokens": 127651,
+              "output_tokens": 3758,
+              "reasoning_output_tokens": 1403
             },
             {
               "task_id": "047-code-review-risk-report",
-              "tokens_used": 20373
+              "tokens_used": 71820,
+              "input_tokens": 68772,
+              "cached_input_tokens": 53037,
+              "output_tokens": 3048,
+              "reasoning_output_tokens": 349
             },
             {
               "task_id": "048-release-note-changelog",
-              "tokens_used": 21186
+              "tokens_used": 103816,
+              "input_tokens": 99467,
+              "cached_input_tokens": 79847,
+              "output_tokens": 4349,
+              "reasoning_output_tokens": 746
             },
             {
               "task_id": "049-excel-like-cleaning",
-              "tokens_used": 20874
+              "tokens_used": 81646,
+              "input_tokens": 77247,
+              "cached_input_tokens": 58946,
+              "output_tokens": 4399,
+              "reasoning_output_tokens": 1029
             },
             {
               "task_id": "050-multitable-join-analysis",
-              "tokens_used": 22890
+              "tokens_used": 124336,
+              "input_tokens": 118664,
+              "cached_input_tokens": 98037,
+              "output_tokens": 5672,
+              "reasoning_output_tokens": 1531
             },
             {
               "task_id": "051-sql-query-report",
-              "tokens_used": 19857
+              "tokens_used": 92104,
+              "input_tokens": 88328,
+              "cached_input_tokens": 71400,
+              "output_tokens": 3776,
+              "reasoning_output_tokens": 742
             },
             {
               "task_id": "052-metric-definition-audit",
-              "tokens_used": 18430
+              "tokens_used": 58364,
+              "input_tokens": 55654,
+              "cached_input_tokens": 40122,
+              "output_tokens": 2710,
+              "reasoning_output_tokens": 833
             },
             {
               "task_id": "053-anomalous-transaction-detect",
-              "tokens_used": 21378
+              "tokens_used": 77128,
+              "input_tokens": 73879,
+              "cached_input_tokens": 56961,
+              "output_tokens": 3249,
+              "reasoning_output_tokens": 885
             },
             {
               "task_id": "054-budget-variance-analysis",
-              "tokens_used": 20510
+              "tokens_used": 77525,
+              "input_tokens": 72937,
+              "cached_input_tokens": 55803,
+              "output_tokens": 4588,
+              "reasoning_output_tokens": 608
             },
             {
               "task_id": "055-funnel-dropoff-analysis",
-              "tokens_used": 25892
+              "tokens_used": 129075,
+              "input_tokens": 123389,
+              "cached_input_tokens": 101371,
+              "output_tokens": 5686,
+              "reasoning_output_tokens": 2067
             },
             {
               "task_id": "056-inventory-forecast",
-              "tokens_used": 19405
+              "tokens_used": 146456,
+              "input_tokens": 141285,
+              "cached_input_tokens": 122704,
+              "output_tokens": 5171,
+              "reasoning_output_tokens": 945
             },
             {
               "task_id": "057-interruption-resume",
-              "tokens_used": 21262
+              "tokens_used": 93047,
+              "input_tokens": 88968,
+              "cached_input_tokens": 71025,
+              "output_tokens": 4079,
+              "reasoning_output_tokens": 820
             },
             {
               "task_id": "058-multiday-project-state",
-              "tokens_used": 25831
+              "tokens_used": 80980,
+              "input_tokens": 76324,
+              "cached_input_tokens": 57993,
+              "output_tokens": 4656,
+              "reasoning_output_tokens": 542
             },
             {
               "task_id": "059-event-update-replan",
-              "tokens_used": 16070
+              "tokens_used": 119650,
+              "input_tokens": 116114,
+              "cached_input_tokens": 99483,
+              "output_tokens": 3536,
+              "reasoning_output_tokens": 587
             },
             {
               "task_id": "060-task-cancellation-cleanup",
-              "tokens_used": 17471
+              "tokens_used": 115493,
+              "input_tokens": 112859,
+              "cached_input_tokens": 96957,
+              "output_tokens": 2634,
+              "reasoning_output_tokens": 946
             },
             {
               "task_id": "061-periodic-status-rollup",
-              "tokens_used": 16918
+              "tokens_used": 166019,
+              "input_tokens": 162053,
+              "cached_input_tokens": 144318,
+              "output_tokens": 3966,
+              "reasoning_output_tokens": 1184
             },
             {
               "task_id": "062-k8s-config-audit",
-              "tokens_used": 15366
+              "tokens_used": 52921,
+              "input_tokens": 51413,
+              "cached_input_tokens": 37718,
+              "output_tokens": 1508,
+              "reasoning_output_tokens": 223
             },
             {
               "task_id": "063-alert-dedup-noise",
-              "tokens_used": 22115
+              "tokens_used": 89150,
+              "input_tokens": 86224,
+              "cached_input_tokens": 70389,
+              "output_tokens": 2926,
+              "reasoning_output_tokens": 442
             },
             {
               "task_id": "064-service-dependency-triage",
-              "tokens_used": 21365
+              "tokens_used": 90113,
+              "input_tokens": 86575,
+              "cached_input_tokens": 69707,
+              "output_tokens": 3538,
+              "reasoning_output_tokens": 400
             },
             {
               "task_id": "065-capacity-planning",
-              "tokens_used": 21268
+              "tokens_used": 95260,
+              "input_tokens": 90431,
+              "cached_input_tokens": 72643,
+              "output_tokens": 4829,
+              "reasoning_output_tokens": 1711
             },
             {
               "task_id": "066-rollback-readiness",
-              "tokens_used": 19143
+              "tokens_used": 86265,
+              "input_tokens": 83788,
+              "cached_input_tokens": 67908,
+              "output_tokens": 2477,
+              "reasoning_output_tokens": 395
             },
             {
               "task_id": "067-canary-release-check",
-              "tokens_used": 20771
+              "tokens_used": 60568,
+              "input_tokens": 57225,
+              "cached_input_tokens": 40955,
+              "output_tokens": 3343,
+              "reasoning_output_tokens": 1275
             },
             {
               "task_id": "068-product-launch-ops",
-              "tokens_used": 21834
+              "tokens_used": 91109,
+              "input_tokens": 87250,
+              "cached_input_tokens": 70712,
+              "output_tokens": 3859,
+              "reasoning_output_tokens": 573
             },
             {
               "task_id": "069-legal-compliance-review",
-              "tokens_used": 28297
+              "tokens_used": 178617,
+              "input_tokens": 172307,
+              "cached_input_tokens": 151743,
+              "output_tokens": 6310,
+              "reasoning_output_tokens": 1889
             },
             {
               "task_id": "070-hr-resume-screening",
-              "tokens_used": 17154
+              "tokens_used": 82462,
+              "input_tokens": 80572,
+              "cached_input_tokens": 66015,
+              "output_tokens": 1890,
+              "reasoning_output_tokens": 431
             },
             {
               "task_id": "071-ecommerce-support-routing",
-              "tokens_used": 22455
+              "tokens_used": 79418,
+              "input_tokens": 75629,
+              "cached_input_tokens": 58482,
+              "output_tokens": 3789,
+              "reasoning_output_tokens": 358
             },
             {
               "task_id": "072-logistics-delay-response",
-              "tokens_used": 16581
+              "tokens_used": 96845,
+              "input_tokens": 94383,
+              "cached_input_tokens": 79301,
+              "output_tokens": 2462,
+              "reasoning_output_tokens": 543
             },
             {
               "task_id": "073-research-repro-package",
-              "tokens_used": 20009
+              "tokens_used": 117580,
+              "input_tokens": 114192,
+              "cached_input_tokens": 97353,
+              "output_tokens": 3388,
+              "reasoning_output_tokens": 736
             },
             {
               "task_id": "074-education-grading-feedback",
-              "tokens_used": 17386
+              "tokens_used": 53219,
+              "input_tokens": 51872,
+              "cached_input_tokens": 37985,
+              "output_tokens": 1347,
+              "reasoning_output_tokens": 233
             },
             {
               "task_id": "075-platform-appeal-review",
-              "tokens_used": 23009
+              "tokens_used": 96943,
+              "input_tokens": 92398,
+              "cached_input_tokens": 73484,
+              "output_tokens": 4545,
+              "reasoning_output_tokens": 1692
             },
             {
               "task_id": "076-medical-admin-claim-check",
-              "tokens_used": 17580
+              "tokens_used": 72451,
+              "input_tokens": 70006,
+              "cached_input_tokens": 54228,
+              "output_tokens": 2445,
+              "reasoning_output_tokens": 492
             },
             {
               "task_id": "077-archive-manifest-defense",
-              "tokens_used": 34062
+              "tokens_used": 153069,
+              "input_tokens": 144569,
+              "cached_input_tokens": 119471,
+              "output_tokens": 8500,
+              "reasoning_output_tokens": 3141
             },
             {
               "task_id": "079-smallfile-batch-reject-ledger",
-              "tokens_used": 25164
+              "tokens_used": 249645,
+              "input_tokens": 241735,
+              "cached_input_tokens": 218726,
+              "output_tokens": 7910,
+              "reasoning_output_tokens": 2739
             },
             {
               "task_id": "080-schema-roundtrip-conversion",
-              "tokens_used": 20218
+              "tokens_used": 90008,
+              "input_tokens": 86203,
+              "cached_input_tokens": 69996,
+              "output_tokens": 3805,
+              "reasoning_output_tokens": 1243
             },
             {
               "task_id": "082-compose-config-repair",
-              "tokens_used": 25519
+              "tokens_used": 204387,
+              "input_tokens": 199871,
+              "cached_input_tokens": 179721,
+              "output_tokens": 4516,
+              "reasoning_output_tokens": 1231
             },
             {
               "task_id": "083-monorepo-interface-repair",
-              "tokens_used": 21729
+              "tokens_used": 211702,
+              "input_tokens": 207727,
+              "cached_input_tokens": 186883,
+              "output_tokens": 3975,
+              "reasoning_output_tokens": 833
             },
             {
               "task_id": "084-js-state-type-bug",
-              "tokens_used": 27638
+              "tokens_used": 188107,
+              "input_tokens": 183035,
+              "cached_input_tokens": 153008,
+              "output_tokens": 5072,
+              "reasoning_output_tokens": 1957
             },
             {
               "task_id": "085-flaky-test-root-cause",
-              "tokens_used": 22190
+              "tokens_used": 177995,
+              "input_tokens": 174279,
+              "cached_input_tokens": 154803,
+              "output_tokens": 3716,
+              "reasoning_output_tokens": 499
             },
             {
               "task_id": "086-sql-migration-preflight-rollback",
-              "tokens_used": 37304
+              "tokens_used": 260037,
+              "input_tokens": 250569,
+              "cached_input_tokens": 225134,
+              "output_tokens": 9468,
+              "reasoning_output_tokens": 3111
             },
             {
               "task_id": "087-cli-parser-bug-tests",
-              "tokens_used": 26735
+              "tokens_used": 214793,
+              "input_tokens": 208627,
+              "cached_input_tokens": 186713,
+              "output_tokens": 6166,
+              "reasoning_output_tokens": 1785
             },
             {
               "task_id": "089-ab-test-caveat-analysis",
-              "tokens_used": 17747
+              "tokens_used": 102153,
+              "input_tokens": 98919,
+              "cached_input_tokens": 83185,
+              "output_tokens": 3234,
+              "reasoning_output_tokens": 964
             }
           ]
         ],
-        "metric": "non_cached_input_plus_output_tokens"
+        "metric": "provider_total_tokens"
       }
     }
   }
