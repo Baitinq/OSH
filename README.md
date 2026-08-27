@@ -5,6 +5,7 @@
 <p align="center">
   <a href="src/go.mod"><img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.26+"></a>
   <a href="#requirements"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-BSD--2--Clause-555555?style=flat-square" alt="BSD 2-Clause License"></a>
 </p>
 
 <p align="center">
@@ -138,4 +139,6 @@ go vet ./...
 
 fn agent executes Python and shell commands with the permissions of the current user.
 The REPL is not a sandbox. Run it only where that access is appropriate.
+## License
 
+[BSD 2-Clause](LICENSE)
