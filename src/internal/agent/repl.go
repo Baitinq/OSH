@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import io
 import json
 import math
 import os
+import pickle
 import re
 import signal
 import subprocess
@@ -162,6 +164,31 @@ def web_search(query, max_results=8):
     return results
 
 _user_globals = {}
+_builtin_names = {"shell", "web_search", "llm", "ShellResult", "SearchResult", "__builtins__"}
+
+def _snapshot(path):
+    values = {}
+    for name, value in _user_globals.items():
+        if name in _builtin_names:
+            continue
+        try:
+            values[name] = pickle.dumps(value)
+        except Exception:
+            pass
+    with open(path, "wb") as state:
+        pickle.dump(values, state)
+    os.chmod(path, 0o600)
+    return {"output": ""}
+
+def _restore(path):
+    with open(path, "rb") as state:
+        values = pickle.load(state)
+    for name, value in values.items():
+        try:
+            _user_globals[name] = pickle.loads(value)
+        except Exception:
+            pass
+    return {"output": ""}
 
 def _execute(code):
     _user_globals.update(
@@ -195,7 +222,13 @@ for line in _protocol_in:
     try:
         request = json.loads(line)
         _executing = True
-        response = _execute(request.get("code", ""))
+        operation = request.get("op", "execute")
+        if operation == "snapshot":
+            response = _snapshot(request["path"])
+        elif operation == "restore":
+            response = _restore(request["path"])
+        else:
+            response = _execute(request.get("code", ""))
     except BaseException:
         response = {"output": traceback.format_exc(), "error": True}
     finally:
@@ -288,6 +321,38 @@ func (r *pythonREPL) execute(ctx context.Context, code string) (string, bool, er
 		return "", true, err
 	}
 	return r.readResult(ctx)
+}
+
+func (r *pythonREPL) snapshot(path string) error {
+	tmp := path + ".tmp"
+	if err := r.operation(map[string]string{"op": "snapshot", "path": tmp}); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+func (r *pythonREPL) restore(path string) error {
+	return r.operation(map[string]string{"op": "restore", "path": path})
+}
+
+func (r *pythonREPL) operation(request map[string]string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.cmd == nil {
+		if err := r.start(); err != nil {
+			return err
+		}
+	}
+	data, err := json.Marshal(request)
+	if err != nil {
+		return err
+	}
+	if _, err := r.stdin.Write(append(data, '\n')); err != nil {
+		r.stop()
+		return err
+	}
+	_, _, err = r.readResult(context.Background())
+	return err
 }
 
 func (r *pythonREPL) readResult(ctx context.Context) (string, bool, error) {

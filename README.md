@@ -57,6 +57,16 @@ git diff | fn -p "review this diff"
 cat error.log | fn --print "find the root cause"
 ```
 
+## Sessions
+
+`fn` starts a new session by default and shows its UUID in the status line. Sessions are saved under `~/.fn/sessions` after each response. Resume one explicitly with:
+
+```sh
+fn --session <UUID>
+```
+
+Conversation context is restored exactly. Python REPL variables are restored on a best-effort basis using Python's standard `pickle` support; values that cannot be pickled are skipped. Sessions must be resumed from the directory where they were created.
+
 ## Configuration
 
 Set the API key with `OPENAI_API_KEY`. fn agent also supports these optional overrides:

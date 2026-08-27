@@ -193,6 +193,9 @@ func (a *Agent) ModelName() string { return a.modelName }
 func (a *Agent) ReasoningEffort() string { return string(a.reasoningEffort) }
 
 type Agent struct {
+	cwd             string
+	sessionID       string
+	sessionDir      string
 	client          openai.Client
 	modelName       string
 	reasoningEffort shared.ReasoningEffort
@@ -231,6 +234,7 @@ func New() *Agent {
 	home, _ := os.UserHomeDir()
 	skills := loadSkills(cwd, home)
 	return &Agent{
+		cwd: cwd,
 		// Keep retries at the visible agent layer. The SDK otherwise retries
 		// silently, making a disconnected network look like a hung request.
 		client:          openai.NewClient(option.WithBaseURL(envOrDefault("FN_BASE_URL", defaultBaseURL)), option.WithMaxRetries(0)),
@@ -528,6 +532,25 @@ func (a *Agent) input() []responses.ResponseInputItemUnionParam {
 	return append([]responses.ResponseInputItemUnionParam{summary}, a.history...)
 }
 
+func outputMessageParam(message responses.ResponseOutputMessage) responses.ResponseOutputMessageParam {
+	param := responses.ResponseOutputMessageParam{
+		ID: message.ID, Status: message.Status, Phase: message.Phase,
+	}
+	for _, content := range message.Content {
+		var item responses.ResponseOutputMessageContentUnionParam
+		switch content.Type {
+		case "output_text":
+			text := content.AsOutputText()
+			item.OfOutputText = &responses.ResponseOutputTextParam{Text: text.Text}
+		case "refusal":
+			refusal := content.AsRefusal()
+			item.OfRefusal = &responses.ResponseOutputRefusalParam{Refusal: refusal.Refusal}
+		}
+		param.Content = append(param.Content, item)
+	}
+	return param
+}
+
 func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), ctx context.Context) Response {
 	a.appendUserMessage(msg)
 	transientMessages := make(map[*responses.ResponseOutputMessageParam]bool)
@@ -596,7 +619,7 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 			var item responses.ResponseInputItemUnionParam
 			switch output.Type {
 			case "message":
-				msg := output.AsMessage().ToParam()
+				msg := outputMessageParam(output.AsMessage())
 				item.OfOutputMessage = &msg
 			case "reasoning":
 				r := output.AsReasoning().ToParam()

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"io"
@@ -19,21 +20,22 @@ func requireOpenAIAPIKey() error {
 	return nil
 }
 
-func parseArgs(args []string) (string, bool, error) {
+func parseArgs(args []string) (string, bool, string, error) {
 	flags := flag.NewFlagSet("fn", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	printMode := flags.Bool("p", false, "print the response without starting the UI")
 	flags.BoolVar(printMode, "print", false, "print the response without starting the UI")
+	sessionID := flags.String("session", "", "restore a session by UUID")
 	if err := flags.Parse(args); err != nil {
-		return "", false, err
+		return "", false, "", err
 	}
 	if !*printMode {
 		if flags.NArg() > 0 {
-			return "", false, fmt.Errorf("unexpected arguments; use -p to run in print mode")
+			return "", false, "", fmt.Errorf("unexpected arguments; use -p to run in print mode")
 		}
-		return "", false, nil
+		return "", false, *sessionID, nil
 	}
-	return strings.Join(flags.Args(), " "), true, nil
+	return strings.Join(flags.Args(), " "), true, *sessionID, nil
 }
 
 func buildPrintPrompt(instruction string, stdin io.Reader) (string, error) {
@@ -72,8 +74,33 @@ func printResponse(prompt string, respond func(string, <-chan string, func(agent
 	return nil
 }
 
+func newSessionID() (string, error) {
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return "", err
+	}
+	id[6] = id[6]&0x0f | 0x40
+	id[8] = id[8]&0x3f | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", id[:4], id[4:6], id[6:8], id[8:10], id[10:]), nil
+}
+
+func validSessionID(id string) bool {
+	parts := strings.Split(id, "-")
+	if len(parts) != 5 || len(parts[0]) != 8 || len(parts[1]) != 4 || len(parts[2]) != 4 || len(parts[3]) != 4 || len(parts[4]) != 12 {
+		return false
+	}
+	for _, part := range parts {
+		for _, c := range part {
+			if !strings.ContainsRune("0123456789abcdefABCDEF", c) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func run(args []string, stdin io.Reader, stdout io.Writer) error {
-	prompt, printMode, err := parseArgs(args)
+	prompt, printMode, sessionID, err := parseArgs(args)
 	if err != nil {
 		return err
 	}
@@ -88,10 +115,37 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	a := agent.New()
 	defer a.Close()
-	if printMode {
-		return printResponse(prompt, a.Respond, stdout)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
 	}
-	return ui.Run(a.ModelName(), a.ReasoningEffort(), a.Respond)
+	sessionsDir := home + "/.fn/sessions"
+	if sessionID == "" {
+		sessionID, err = newSessionID()
+		if err != nil {
+			return err
+		}
+		err = a.StartSession(sessionID, sessionsDir)
+	} else {
+		if !validSessionID(sessionID) {
+			return fmt.Errorf("invalid session UUID %q", sessionID)
+		}
+		err = a.ResumeSession(sessionID, sessionsDir)
+	}
+	if err != nil {
+		return err
+	}
+	respond := func(input string, steer <-chan string, emit func(agent.ToolEvent), ctx context.Context) agent.Response {
+		response := a.Respond(input, steer, emit, ctx)
+		if err := a.SaveSession(); err != nil && response.Err == nil {
+			response.Err = fmt.Errorf("save session: %w", err)
+		}
+		return response
+	}
+	if printMode {
+		return printResponse(prompt, respond, stdout)
+	}
+	return ui.Run(a.ModelName(), a.ReasoningEffort(), sessionID, respond)
 }
 
 func main() {

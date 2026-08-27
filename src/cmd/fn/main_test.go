@@ -36,7 +36,7 @@ func TestParseArgs(t *testing.T) {
 		{name: "unexpected argument", args: []string{"hello"}, wantErr: "use -p"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			prompt, printMode, err := parseArgs(test.args)
+			prompt, printMode, _, err := parseArgs(test.args)
 			if test.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
 					t.Fatalf("error = %v, want containing %q", err, test.wantErr)
@@ -47,6 +47,21 @@ func TestParseArgs(t *testing.T) {
 				t.Fatalf("parseArgs() = %q, %v, %v", prompt, printMode, err)
 			}
 		})
+	}
+}
+
+func TestSessionIDs(t *testing.T) {
+	id, err := newSessionID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !validSessionID(id) {
+		t.Fatalf("generated invalid session ID %q", id)
+	}
+	for _, invalid := range []string{"", "not-a-uuid", "../../other", "550e8400-e29b-41d4-a716-44665544000z"} {
+		if validSessionID(invalid) {
+			t.Fatalf("accepted invalid session ID %q", invalid)
+		}
 	}
 }
 
