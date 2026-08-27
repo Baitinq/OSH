@@ -51,8 +51,7 @@ func (s *fnUI) render(width int, viewportHeight ...int) ([]string, int, int) {
 	editor, crow, ccol := renderEditor(s.textarea.Text(), s.textarea.CursorPos(), width)
 	cursorRow := len(lines) + crow
 	lines = append(lines, editor...)
-	info := fmt.Sprintf("%s (%s)  ·  context %s tokens  ·  %s  ·  session %s", s.modelName, s.reasoningEffort, formatTokenCount(s.contextTokens), s.cwd, s.sessionID)
-	lines = append(lines, ansi256FG(242, truncateCells(info, max(width-2, 0))))
+	lines = append(lines, renderFooter(s.modelName, s.reasoningEffort, s.contextTokens, s.cwd, s.sessionID, max(width-2, 0)))
 	if len(viewportHeight) > 0 {
 		filler := max(viewportHeight[0]-len(lines), 0)
 		if filler > 0 {
@@ -123,9 +122,58 @@ func renderedMessageAt(msg message, width int, now time.Time) string {
 	return strings.Join(lines, "\n")
 }
 
+type footerPart struct {
+	text  string
+	color string
+}
+
+func renderFooter(model, effort string, contextTokens int64, cwd, sessionID string, width int) string {
+	parts := []footerPart{
+		{model + " (", piText},
+		{effort, reasoningEffortColor(effort)},
+		{")  ·  context ", piDim},
+		{formatTokenCount(contextTokens), piGreen},
+		{" tokens  ·  ", piDim},
+		{cwd, piAccent},
+		{"  ·  session ", piDim},
+		{sessionID, piBlue},
+	}
+	var out strings.Builder
+	for _, part := range parts {
+		if width <= 0 {
+			break
+		}
+		text := truncateCells(part.text, width)
+		out.WriteString(ansiRGBStyle(part.color, "", false, false, text))
+		width -= lineWidth(text)
+	}
+	return out.String()
+}
+
+func reasoningEffortColor(effort string) string {
+	switch effort {
+	case "minimal":
+		return "110;110;110"
+	case "low":
+		return "95;135;175"
+	case "medium":
+		return "129;162;190"
+	case "high":
+		return "178;148;187"
+	case "xhigh":
+		return "209;131;232"
+	default:
+		return piGray
+	}
+}
+
 const (
 	piText          = "212;212;212"
 	piGray          = "128;128;128"
+	piDim           = "102;102;102"
+	piAccent        = "138;190;183"
+	piBlue          = "129;162;190"
+	piGreen         = "181;189;104"
 	piError         = "204;102;102"
 	piUserMessageBg = "52;53;65"
 	piToolPendingBg = "40;40;50"

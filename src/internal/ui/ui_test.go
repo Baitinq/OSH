@@ -910,6 +910,24 @@ func TestShortDocumentFillsAndBottomAlignsViewport(t *testing.T) {
 	}
 }
 
+func TestFooterUsesPiThemeColors(t *testing.T) {
+	footer := renderFooter("gpt-5", "high", 12345, "/tmp/project", "abc123", 100)
+	for _, want := range []string{
+		"38;2;212;212;212m", // model
+		"38;2;178;148;187m", // high reasoning
+		"38;2;181;189;104m", // context tokens
+		"38;2;138;190;183m", // working directory
+		"38;2;129;162;190m", // session
+	} {
+		if !strings.Contains(footer, want) {
+			t.Errorf("footer missing Pi theme color %q: %q", want, footer)
+		}
+	}
+	if got, want := stripANSI(footer), "gpt-5 (high)  ·  context 12,345 tokens  ·  /tmp/project  ·  session abc123"; got != want {
+		t.Fatalf("footer text = %q, want %q", got, want)
+	}
+}
+
 func TestStreamingMarkdownCacheTracksContentAndWidth(t *testing.T) {
 	s, _ := newState(nil)
 	s.responding = true
