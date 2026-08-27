@@ -1,3 +1,4 @@
+import json
 import shlex
 from typing import override
 
@@ -76,8 +77,31 @@ class FnAgent(BaseInstalledAgent):
             command=(
                 "mkdir -p /logs/agent/home; "
                 f"printf %s {shlex.quote(instruction)} "
-                "| /installed-agent/bin/fn -p "
-                "2>&1 | tee /logs/agent/fn.txt"
+                "| /installed-agent/bin/fn -p --json "
+                "2> /logs/agent/fn.stderr "
+                "| tee /logs/agent/fn.jsonl"
             ),
             env=env,
         )
+
+    @override
+    def populate_context_post_run(self, context: AgentContext) -> None:
+        output_file = self.logs_dir / "fn.jsonl"
+        if not output_file.exists():
+            return
+
+        input_tokens = 0
+        cached_tokens = 0
+        output_tokens = 0
+        for line in output_file.read_text().splitlines():
+            event = json.loads(line)
+            if event.get("type") != "response":
+                continue
+            usage = event["usage"]
+            input_tokens += usage["input_tokens"]
+            cached_tokens += usage["cached_input_tokens"]
+            output_tokens += usage["output_tokens"]
+
+        context.n_input_tokens = input_tokens
+        context.n_cache_tokens = cached_tokens
+        context.n_output_tokens = output_tokens

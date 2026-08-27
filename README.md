@@ -67,6 +67,14 @@ git diff | fn -p "review this diff"
 cat error.log | fn --print "find the root cause"
 ```
 
+Use `--json` with print mode to emit one JSONL record per model response with its
+input, cached input, output, reasoning, and total token usage, followed by the final
+result:
+
+```sh
+fn -p --json "summarize the changes in this repository"
+```
+
 ## Sessions
 
 `fn` starts a new session by default and shows its UUID in the status line. Sessions are saved under `~/.fn/sessions` after each response. Resume one explicitly with:
@@ -75,7 +83,8 @@ cat error.log | fn --print "find the root cause"
 fn --session <UUID>
 ```
 
-Conversation context is restored exactly. Python REPL variables are restored on a best-effort basis using Python's standard `pickle` support; values that cannot be pickled are skipped. Sessions must be resumed from the directory where they were created.
+Conversation context and per-response token usage are stored in `session.json`.
+Python REPL variables are restored on a best-effort basis using Python's standard `pickle` support; values that cannot be pickled are skipped. Sessions must be resumed from the directory where they were created.
 
 ## Configuration
 

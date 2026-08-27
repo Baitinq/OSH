@@ -85,6 +85,10 @@ func TestCallLLMUsesFreshToolFreeRequest(t *testing.T) {
 	if a.TokensUsed() != 42 {
 		t.Fatalf("TokensUsed() = %d, want 42", a.TokensUsed())
 	}
+	usage := a.Usage()
+	if len(usage) != 1 || usage[0].InputTokens != 40 || usage[0].CachedInputTokens != 10 || usage[0].OutputTokens != 2 || usage[0].ReasoningOutputTokens != 1 || usage[0].TotalTokens != 42 {
+		t.Fatalf("Usage() = %#v", usage)
+	}
 	if _, ok := request["tools"]; ok {
 		t.Fatalf("llm request included tools: %#v", request["tools"])
 	}

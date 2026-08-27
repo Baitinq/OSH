@@ -198,8 +198,20 @@ func (a *Agent) ModelName() string { return a.modelName }
 // ReasoningEffort returns the configured reasoning level.
 func (a *Agent) ReasoningEffort() string { return string(a.reasoningEffort) }
 
+// Usage describes token consumption for one completed model response.
+type Usage struct {
+	InputTokens           int64 `json:"input_tokens"`
+	CachedInputTokens     int64 `json:"cached_input_tokens"`
+	OutputTokens          int64 `json:"output_tokens"`
+	ReasoningOutputTokens int64 `json:"reasoning_output_tokens"`
+	TotalTokens           int64 `json:"total_tokens"`
+}
+
 // TokensUsed returns the total tokens used by completed model responses.
 func (a *Agent) TokensUsed() int64 { return a.tokensUsed }
+
+// Usage returns token consumption for completed model responses.
+func (a *Agent) Usage() []Usage { return append([]Usage(nil), a.usage...) }
 
 type Agent struct {
 	cwd             string
@@ -215,6 +227,7 @@ type Agent struct {
 	retryJitter     func() float64
 	summary         string
 	tokensUsed      int64
+	usage           []Usage
 	repl            *pythonREPL
 }
 
@@ -467,8 +480,16 @@ func (a *Agent) streamResponse(ctx context.Context, params responses.ResponseNew
 			emit(ToolEvent{Kind: ToolEventTextDelta, Detail: event.AsResponseOutputTextDelta().Delta})
 		case "response.completed":
 			resp = event.AsResponseCompleted().Response
-			a.tokensUsed += resp.Usage.TotalTokens
-			emit(ToolEvent{Kind: ToolEventContextTokens, ContextTokens: resp.Usage.TotalTokens})
+			usage := Usage{
+				InputTokens:           resp.Usage.InputTokens,
+				CachedInputTokens:     resp.Usage.InputTokensDetails.CachedTokens,
+				OutputTokens:          resp.Usage.OutputTokens,
+				ReasoningOutputTokens: resp.Usage.OutputTokensDetails.ReasoningTokens,
+				TotalTokens:           resp.Usage.TotalTokens,
+			}
+			a.usage = append(a.usage, usage)
+			a.tokensUsed += usage.TotalTokens
+			emit(ToolEvent{Kind: ToolEventContextTokens, ContextTokens: usage.TotalTokens})
 		case "response.failed":
 			failure := event.AsResponseFailed().Response
 			failed = &responseFailure{code: string(failure.Error.Code), message: failure.Error.Message}

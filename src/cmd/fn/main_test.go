@@ -3,7 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -36,10 +40,12 @@ func TestParseArgs(t *testing.T) {
 		{name: "short print", args: []string{"-p", "inspect", "this"}, prompt: "inspect this", printMode: true},
 		{name: "long print", args: []string{"--print", "inspect this"}, prompt: "inspect this", printMode: true},
 		{name: "stdin print", args: []string{"-p"}, printMode: true},
+		{name: "json print", args: []string{"-p", "--json"}, printMode: true},
+		{name: "json requires print", args: []string{"--json"}, wantErr: "requires -p"},
 		{name: "unexpected argument", args: []string{"hello"}, wantErr: "use -p"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			prompt, printMode, _, err := parseArgs(test.args)
+			prompt, printMode, _, _, err := parseArgs(test.args)
 			if test.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
 					t.Fatalf("error = %v, want containing %q", err, test.wantErr)
@@ -131,6 +137,50 @@ func TestPrintResponseWritesOnlyFinalText(t *testing.T) {
 	}
 	if got := out.String(); got != "child result\n" {
 		t.Fatalf("output = %q", got)
+	}
+}
+
+func TestPrintJSONResponseWritesUsageAndResult(t *testing.T) {
+	var out bytes.Buffer
+	a := &agent.Agent{}
+	respond := func(string, <-chan string, func(agent.ToolEvent), context.Context) agent.Response {
+		return agent.Response{Text: "done"}
+	}
+	if err := printJSONResponse("task", a, respond, &out); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != "{\"type\":\"result\",\"text\":\"done\"}\n" {
+		t.Fatalf("output = %q", got)
+	}
+}
+
+func TestRunJSONWritesStructuredUsage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":1,\"response\":{\"id\":\"resp_test\",\"object\":\"response\",\"model\":\"test\",\"status\":\"completed\",\"output\":[{\"id\":\"msg_test\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"done\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":40,\"input_tokens_details\":{\"cached_tokens\":10},\"output_tokens\":2,\"output_tokens_details\":{\"reasoning_tokens\":1},\"total_tokens\":42}}}\n\n")
+	}))
+	defer server.Close()
+
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("FN_BASE_URL", server.URL+"/")
+	t.Setenv("FN_MODEL", "test")
+	t.Chdir(t.TempDir())
+	var stdout, stderr bytes.Buffer
+	if err := run([]string{"-p", "--json", "do it"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	var events []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(stdout.String()), "\n") {
+		var event map[string]any
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			t.Fatal(err)
+		}
+		events = append(events, event)
+	}
+	usage := events[0]["usage"].(map[string]any)
+	if len(events) != 2 || events[0]["type"] != "response" || usage["total_tokens"] != float64(42) || events[1]["text"] != "done" || stderr.Len() != 0 {
+		t.Fatalf("events = %#v, stderr = %q", events, stderr.String())
 	}
 }
 

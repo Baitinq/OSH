@@ -24,6 +24,7 @@ func TestSessionRoundTrip(t *testing.T) {
 			}},
 		},
 		summary: "earlier context",
+		usage:   []Usage{{InputTokens: 40, CachedInputTokens: 10, OutputTokens: 2, ReasoningOutputTokens: 1, TotalTokens: 42}},
 	}
 	if err := a.StartSession(id, root); err != nil {
 		t.Fatal(err)
@@ -32,7 +33,7 @@ func TestSessionRoundTrip(t *testing.T) {
 	if err := loaded.ResumeSession(id, root); err != nil {
 		t.Fatal(err)
 	}
-	if loaded.summary != a.summary || len(loaded.history) != 2 || loaded.history[0].OfMessage == nil {
+	if loaded.summary != a.summary || len(loaded.history) != 2 || loaded.history[0].OfMessage == nil || loaded.TokensUsed() != 42 {
 		t.Fatalf("loaded session = summary %q, history %#v", loaded.summary, loaded.history)
 	}
 	message := loaded.history[1].OfOutputMessage
@@ -51,7 +52,7 @@ func TestSessionRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(data, &fields); err != nil {
 		t.Fatal(err)
 	}
-	if len(fields) != 3 || fields["cwd"] == nil || fields["summary"] == nil || fields["history"] == nil {
+	if len(fields) != 5 || fields["version"] != float64(2) || fields["cwd"] == nil || fields["summary"] == nil || fields["history"] == nil || fields["usage"] == nil {
 		t.Fatalf("session fields = %#v", fields)
 	}
 }

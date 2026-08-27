@@ -48,9 +48,11 @@ func (a *Agent) Conversation() []ConversationMessage {
 }
 
 type sessionFile struct {
+	Version int               `json:"version,omitempty"`
 	CWD     string            `json:"cwd"`
 	Summary string            `json:"summary,omitempty"`
 	History []json.RawMessage `json:"history"`
+	Usage   []Usage           `json:"usage,omitempty"`
 }
 
 func (a *Agent) StartSession(id, sessionsDir string) error {
@@ -74,6 +76,10 @@ func (a *Agent) ResumeSession(id, sessionsDir string) error {
 	}
 	a.sessionID, a.sessionDir = id, dir
 	a.summary = saved.Summary
+	a.usage = saved.Usage
+	for _, usage := range saved.Usage {
+		a.tokensUsed += usage.TotalTokens
+	}
 	for _, raw := range saved.History {
 		var fields struct {
 			Type string `json:"type"`
@@ -121,7 +127,7 @@ func (a *Agent) SaveSession() error {
 		return err
 	}
 	saved := sessionFile{
-		CWD: a.cwd, Summary: a.summary,
+		Version: 2, CWD: a.cwd, Summary: a.summary, Usage: a.Usage(),
 	}
 	for _, item := range a.history {
 		data, err := json.Marshal(item)

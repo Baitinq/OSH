@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -22,22 +23,26 @@ func requireOpenAIAPIKey() error {
 	return nil
 }
 
-func parseArgs(args []string) (string, bool, string, error) {
+func parseArgs(args []string) (string, bool, bool, string, error) {
 	flags := flag.NewFlagSet("fn", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	printMode := flags.Bool("p", false, "print the response without starting the UI")
 	flags.BoolVar(printMode, "print", false, "print the response without starting the UI")
+	jsonMode := flags.Bool("json", false, "print structured JSONL output")
 	sessionID := flags.String("session", "", "restore a session by UUID")
 	if err := flags.Parse(args); err != nil {
-		return "", false, "", err
+		return "", false, false, "", err
+	}
+	if *jsonMode && !*printMode {
+		return "", false, false, "", fmt.Errorf("--json requires -p")
 	}
 	if !*printMode {
 		if flags.NArg() > 0 {
-			return "", false, "", fmt.Errorf("unexpected arguments; use -p to run in print mode")
+			return "", false, false, "", fmt.Errorf("unexpected arguments; use -p to run in print mode")
 		}
-		return "", false, *sessionID, nil
+		return "", false, false, *sessionID, nil
 	}
-	return strings.Join(flags.Args(), " "), true, *sessionID, nil
+	return strings.Join(flags.Args(), " "), true, *jsonMode, *sessionID, nil
 }
 
 func buildPrintPrompt(instruction string, stdin io.Reader) (string, error) {
@@ -74,6 +79,27 @@ func printResponse(prompt string, respond func(string, <-chan string, func(agent
 		return err
 	}
 	return nil
+}
+
+func printJSONResponse(prompt string, a *agent.Agent, respond func(string, <-chan string, func(agent.ToolEvent), context.Context) agent.Response, out io.Writer) error {
+	usageStart := len(a.Usage())
+	resp := respond(prompt, nil, func(agent.ToolEvent) {}, context.Background())
+	if resp.Err != nil {
+		return resp.Err
+	}
+	encoder := json.NewEncoder(out)
+	for _, usage := range a.Usage()[usageStart:] {
+		if err := encoder.Encode(struct {
+			Type  string      `json:"type"`
+			Usage agent.Usage `json:"usage"`
+		}{Type: "response", Usage: usage}); err != nil {
+			return err
+		}
+	}
+	return encoder.Encode(struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}{Type: "result", Text: resp.Text})
 }
 
 func newSessionID() (string, error) {
@@ -114,7 +140,7 @@ func publishRunningSession(home, sessionID string) (func(), error) {
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	prompt, printMode, sessionID, err := parseArgs(args)
+	prompt, printMode, jsonMode, sessionID, err := parseArgs(args)
 	if err != nil {
 		return err
 	}
@@ -166,6 +192,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return response
 	}
 	if printMode {
+		if jsonMode {
+			return printJSONResponse(prompt, a, respond, stdout)
+		}
 		if err := printResponse(prompt, respond, stdout); err != nil {
 			return err
 		}

@@ -39,8 +39,8 @@ PYTHONPATH="$PWD" harbor run \
 ```
 
 The `version` argument accepts a release tag or commit available on GitHub. Pin it for
-reproducible results. fn's output and session files are retained under the trial's
-`agent` logs directory.
+reproducible results. fn's JSONL output, token usage, and session files are retained under the trial's
+`agent` logs directory and included in Harbor's aggregate token counts.
 
 fn requires an OpenAI Responses-compatible endpoint. To use a compatible proxy, set
 `OPENAI_BASE_URL` or `FN_BASE_URL` in addition to `OPENAI_API_KEY`.
