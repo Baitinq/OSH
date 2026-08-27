@@ -129,7 +129,8 @@ type footerPart struct {
 
 func renderFooter(model, effort string, contextTokens int64, cwd, sessionID string, width int) string {
 	parts := []footerPart{
-		{model + " (", piText},
+		{model, piText},
+		{" (", piDim},
 		{effort, reasoningEffortColor(effort)},
 		{")  ·  context ", piDim},
 		{formatTokenCount(contextTokens), piGreen},

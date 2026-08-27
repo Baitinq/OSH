@@ -926,6 +926,9 @@ func TestFooterUsesPiThemeColors(t *testing.T) {
 	if got, want := stripANSI(footer), "gpt-5 (high)  ·  context 12,345 tokens  ·  /tmp/project  ·  session abc123"; got != want {
 		t.Fatalf("footer text = %q, want %q", got, want)
 	}
+	if !strings.Contains(footer, ansiRGBStyle(piDim, "", false, false, " (")+ansiRGBStyle(reasoningEffortColor("high"), "", false, false, "high")+ansiRGBStyle(piDim, "", false, false, ")  ·  context ")) {
+		t.Fatalf("reasoning effort parentheses are not both dim: %q", footer)
+	}
 }
 
 func TestStreamingMarkdownCacheTracksContentAndWidth(t *testing.T) {
