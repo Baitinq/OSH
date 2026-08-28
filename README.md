@@ -20,21 +20,26 @@ and no framework hidden underneath.
 
 ## Benchmarks
 
-On 60 HarnessBench tasks run twice, fn agent achieved a **0.8702 mean outcome
-score**, compared with **0.8730 for Pi** and **0.8494 for Codex**, using the same
-model and reasoning level. The paired results place fn and Pi in an effective tie;
-fn was the fastest harness and the most consistent between repetitions. It
-processed 55% fewer total tokens than Pi and 74% fewer than Codex.
+On a fixed, language-stratified 100-task subset of
+[Aider Polyglot](https://github.com/Aider-AI/polyglot-benchmark), fn solved
+**77%**, compared with **74% for Codex** and **67% for Pi**. Every harness ran the
+same tasks with `gpt-5.6-sol` in isolated [Harbor](https://harborframework.com/)
+environments.
 
-| Harness | Combined mean | Mean time | Mean total tokens |
-| --- | ---: | ---: | ---: |
-| **fn agent** | **0.8702** | **45m 39s** | **1.91M** |
-| Pi | 0.8730 | 62m 01s | 4.27M |
-| Codex | 0.8494 | 76m 45s | 7.38M |
+| Harness | Passed | Total tokens | Cost | Cost / pass |
+| --- | ---: | ---: | ---: | ---: |
+| **fn agent** | **77/100** | **3.68M** | **$6.13** | **$0.08** |
+| Codex | 74/100 | 14.80M | $21.08 | $0.28 |
+| Pi | 67/100 | 2.39M | $4.71 | $0.07 |
 
-See the [methodology](src/benchmarks/harnessbench/README.md),
-[detailed results](src/benchmarks/harnessbench/results.html), and
-[run data](src/benchmarks/harnessbench/results-60x2-20260827.json).
+fn and Codex were statistically tied on paired outcomes (5 fn-only passes versus 2
+Codex-only passes, exact p=0.45). Against Pi, fn had 11 fn-only passes versus 1
+Pi-only pass (exact p=0.006). This is one run per harness and task; results should be
+read as evidence for this model and benchmark rather than a universal ranking.
+
+See the [Harbor adapter and methodology](src/benchmarks/harbor/README.md), the
+[task manifest](src/benchmarks/harbor/aider-polyglot-100.txt), and the
+[result data](src/benchmarks/harbor/results-aider-polyglot-100-20260828.json).
 
 ## Requirements
 

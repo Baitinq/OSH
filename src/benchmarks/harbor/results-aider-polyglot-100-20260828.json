@@ -1,0 +1,683 @@
+{
+  "benchmark": "aider-polyglot@1.0",
+  "date": "2026-08-28",
+  "task_manifest": "aider-polyglot-100.txt",
+  "selection": {
+    "tasks": 100,
+    "source_tasks": 225,
+    "languages": {
+      "cpp": 17,
+      "go": 17,
+      "java": 17,
+      "javascript": 17,
+      "python": 16,
+      "rust": 16
+    }
+  },
+  "trials_per_harness_task": 1,
+  "model": "gpt-5.6-sol",
+  "harbor_version": "0.22.0",
+  "harnesses": {
+    "fn": {
+      "version": "15d64ff76da1b1b94a9560d29a5eb98804a45bba",
+      "reasoning_effort": "medium",
+      "passed": 77,
+      "input_tokens": 3436893,
+      "cached_input_tokens": 2702324,
+      "output_tokens": 241290,
+      "total_tokens": 3678183,
+      "cost_usd": 6.13,
+      "cost_note": "Calculated from the same model rates reported by the other harnesses."
+    },
+    "pi": {
+      "version": "0.73.1",
+      "reasoning_effort": "default",
+      "passed": 67,
+      "input_tokens": 2183933,
+      "cached_input_tokens": 1730231,
+      "output_tokens": 209637,
+      "total_tokens": 2393570,
+      "cost_usd": 4.71136775
+    },
+    "codex": {
+      "version": "0.150.1",
+      "reasoning_effort": "medium",
+      "passed": 74,
+      "input_tokens": 14514026,
+      "cached_input_tokens": 12453340,
+      "output_tokens": 290040,
+      "total_tokens": 14804066,
+      "cost_usd": 21.083022
+    }
+  },
+  "paired": {
+    "fn_vs_pi": {
+      "both_pass": 66,
+      "fn_only": 11,
+      "pi_only": 1,
+      "both_fail": 22,
+      "exact_two_sided_p": 0.00634765625
+    },
+    "fn_vs_codex": {
+      "both_pass": 72,
+      "fn_only": 5,
+      "codex_only": 2,
+      "both_fail": 21,
+      "exact_two_sided_p": 0.453125
+    },
+    "pi_vs_codex": {
+      "both_pass": 66,
+      "pi_only": 1,
+      "codex_only": 8,
+      "both_fail": 25,
+      "exact_two_sided_p": 0.0390625
+    }
+  },
+  "notes": [
+    "Input token counts include cached input tokens.",
+    "Codex JavaScript trials were rerun after fixing an environment setup failure; no errored trial was scored.",
+    "Pi trials with verifier test failures that omitted the reward file were scored as failures."
+  ],
+  "task_results": [
+    {
+      "task": "polyglot_cpp_all-your-base",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_cpp_bank-account",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_cpp_circular-buffer",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_cpp_clock",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_cpp_crypto-square",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_cpp_diamond",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_cpp_dnd-character",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_cpp_grade-school",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_cpp_knapsack",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_cpp_linked-list",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_cpp_parallel-letter-frequency",
+      "fn": 1,
+      "pi": 0,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_cpp_perfect-numbers",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_cpp_queen-attack",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_cpp_space-age",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_cpp_sublist",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_cpp_yacht",
+      "fn": 1,
+      "pi": 0,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_cpp_zebra-puzzle",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_go_beer-song",
+      "fn": 1,
+      "pi": 0,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_go_book-store",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_go_counter",
+      "fn": 1,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_go_dominoes",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_go_forth",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_go_kindergarten-garden",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_go_ledger",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_go_markdown",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_go_matrix",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_go_paasio",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_go_palindrome-products",
+      "fn": 1,
+      "pi": 1,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_go_protein-translation",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_go_react",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_go_say",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_go_trinary",
+      "fn": 1,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_go_two-bucket",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_go_wordy",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_java_affine-cipher",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_java_all-your-base",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_java_bank-account",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_java_dominoes",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_java_food-chain",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_java_ledger",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_java_ocr-numbers",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_java_phone-number",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_java_protein-translation",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_java_pythagorean-triplet",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_java_queen-attack",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_java_rest-api",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_java_simple-linked-list",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_java_state-of-tic-tac-toe",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_java_twelve-days",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_java_word-search",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_java_zebra-puzzle",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_javascript_beer-song",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_javascript_book-store",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_javascript_complex-numbers",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_javascript_food-chain",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_javascript_killer-sudoku-helper",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_javascript_pig-latin",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_javascript_poker",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_javascript_promises",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_javascript_rational-numbers",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_javascript_robot-name",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_javascript_say",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_javascript_simple-linked-list",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_javascript_space-age",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_javascript_tournament",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_javascript_triangle",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_javascript_twelve-days",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_javascript_two-bucket",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_python_affine-cipher",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_python_bowling",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_python_dominoes",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_python_dot-dsl",
+      "fn": 1,
+      "pi": 0,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_python_grade-school",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_python_grep",
+      "fn": 0,
+      "pi": 0,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_python_hangman",
+      "fn": 1,
+      "pi": 0,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_python_list-ops",
+      "fn": 0,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_python_paasio",
+      "fn": 1,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_python_phone-number",
+      "fn": 1,
+      "pi": 0,
+      "codex": 0
+    },
+    {
+      "task": "polyglot_python_pig-latin",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_python_poker",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_python_pov",
+      "fn": 1,
+      "pi": 0,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_python_sgf-parsing",
+      "fn": 1,
+      "pi": 0,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_python_two-bucket",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_python_zipper",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_rust_acronym",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_rust_alphametics",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_rust_decimal",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_rust_fizzy",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_rust_forth",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_rust_gigasecond",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_rust_grade-school",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_rust_luhn-from",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_rust_parallel-letter-frequency",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_rust_pig-latin",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_rust_robot-name",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_rust_say",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_rust_two-bucket",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_rust_variable-length-quantity",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_rust_word-count",
+      "fn": 1,
+      "pi": 1,
+      "codex": 1
+    },
+    {
+      "task": "polyglot_rust_xorcism",
+      "fn": 0,
+      "pi": 1,
+      "codex": 1
+    }
+  ]
+}
