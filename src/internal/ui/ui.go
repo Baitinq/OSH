@@ -449,11 +449,10 @@ func (s *fnUI) finishResponse(resp response) {
 	s.markDirty()
 }
 
-func (s *fnUI) cancelRequest() {
-	if !s.responding || s.cancel == nil {
-		return
+func (s *fnUI) restorePendingInputs() bool {
+	if len(s.pendingInputs) == 0 {
+		return false
 	}
-	s.cancel()
 	var input []string
 	for _, pending := range s.pendingInputs {
 		input = append(input, pending.text)
@@ -461,11 +460,30 @@ func (s *fnUI) cancelRequest() {
 	if draft := s.textarea.Text(); draft != "" {
 		input = append(input, draft)
 	}
-	s.textarea.SetText(strings.Join(input, "\n"))
-	s.textarea.SetCursorPos(runeToClusterIndex(s.textarea.Text(), len([]rune(s.textarea.Text()))))
+	text := strings.Join(input, "\n\n")
+	s.textarea.SetText(text)
+	s.textarea.SetCursorPos(runeToClusterIndex(text, len([]rune(text))))
 	s.queued = nil
 	s.pendingSteer = nil
 	s.pendingInputs = nil
+	for s.steer != nil {
+		select {
+		case <-s.steer:
+		default:
+			s.markDirty()
+			return true
+		}
+	}
+	s.markDirty()
+	return true
+}
+
+func (s *fnUI) cancelRequest() {
+	if !s.responding || s.cancel == nil {
+		return
+	}
+	s.cancel()
+	s.restorePendingInputs()
 	s.nextRequestID++
 	s.cancel = nil
 	s.steer = nil
@@ -657,6 +675,9 @@ func (s *fnUI) handleKey(k tui.KeyEvent) bool {
 	}
 	if k.Key == tui.KeyEnter && k.Mod == tui.ModNone {
 		s.submitInput(s.textarea.Text(), false)
+		return true
+	}
+	if k.Key == tui.KeyUp && k.Mod.Has(tui.ModCtrl) && s.restorePendingInputs() {
 		return true
 	}
 	if k.Mod == tui.ModNone && k.Key == tui.KeyUp && s.navigateHistory(-1) {

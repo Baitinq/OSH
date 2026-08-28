@@ -262,6 +262,29 @@ func TestEnterSteersAndShiftEnterQueues(t *testing.T) {
 	}
 }
 
+func TestCtrlUpMovesPendingInputsBackToEditor(t *testing.T) {
+	s, _ := newState(nil)
+	s.responding = true
+	s.steer = make(chan string, 2)
+	s.queued = []string{"later"}
+	s.pendingSteer = []string{"correction"}
+	s.pendingInputs = []pendingInput{{kind: "queued", text: "later"}, {kind: "steer", text: "correction"}}
+	s.steer <- "correction"
+	s.textarea.SetText("draft")
+
+	s.handleKey(tui.KeyEvent{Key: tui.KeyUp, Mod: tui.ModCtrl})
+
+	if got, want := s.textarea.Text(), "later\n\ncorrection\n\ndraft"; got != want {
+		t.Fatalf("editor = %q, want %q", got, want)
+	}
+	if len(s.queued) != 0 || len(s.pendingSteer) != 0 || len(s.pendingInputs) != 0 || len(s.steer) != 0 {
+		t.Fatalf("pending inputs remain: queued=%#v steer=%#v inputs=%#v channel=%d", s.queued, s.pendingSteer, s.pendingInputs, len(s.steer))
+	}
+	if !s.responding {
+		t.Fatal("restoring pending inputs stopped the active response")
+	}
+}
+
 func TestSteerIsDeliveredIntoActiveResponse(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -407,7 +430,7 @@ func TestCancelMovesPendingInputsBackToEditor(t *testing.T) {
 
 	s.cancelRequest()
 
-	if got, want := s.textarea.Text(), "queued follow-up\nsteer correction\nunfinished draft"; got != want {
+	if got, want := s.textarea.Text(), "queued follow-up\n\nsteer correction\n\nunfinished draft"; got != want {
 		t.Fatalf("editor = %q, want %q", got, want)
 	}
 	if len(s.queued) != 0 || len(s.pendingSteer) != 0 || len(s.pendingInputs) != 0 {
@@ -857,7 +880,7 @@ func TestWorkingAndPendingLabelsUsePiWording(t *testing.T) {
 	s.pendingInputs = []pendingInput{{kind: "steer", text: "fix"}, {kind: "queued", text: "later"}}
 	lines, _, _ := s.render(60)
 	plain := stripANSI(strings.Join(lines, "\n"))
-	for _, want := range []string{"Working…", "Steering: fix", "Queued: later"} {
+	for _, want := range []string{"Working…", "Steering: fix", "Queued: later", "↳ Ctrl+↑ to edit all queued messages"} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("render missing %q: %q", want, plain)
 		}
