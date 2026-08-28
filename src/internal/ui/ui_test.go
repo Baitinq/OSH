@@ -547,7 +547,7 @@ func TestWorkingDurationFormatsElapsedRequestTime(t *testing.T) {
 
 func TestCompletedRequestMessage(t *testing.T) {
 	started := time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC)
-	if got := completedRequestMessage(started, started.Add(1250*time.Millisecond)); got != "Done in 1.2s at 00:00" {
+	if got := completedRequestMessage(started, started.Add(1250*time.Millisecond)); got != "Done in 1s at 00:00" {
 		t.Fatalf("completed request message = %q", got)
 	}
 	if got := completedRequestMessage(time.Time{}, started); got != "" {
@@ -560,8 +560,8 @@ func TestToolDurationFormatsAndPersists(t *testing.T) {
 		duration time.Duration
 		want     string
 	}{
-		{350 * time.Millisecond, "350ms"},
-		{1250 * time.Millisecond, "1.2s"},
+		{350 * time.Millisecond, "0s"},
+		{1250 * time.Millisecond, "1s"},
 		{65 * time.Second, "1m 05s"},
 	} {
 		if got := formatToolDuration(test.duration); got != test.want {
@@ -576,18 +576,18 @@ func TestToolDurationFormatsAndPersists(t *testing.T) {
 		toolStartedAt: started, toolFinishedAt: finished,
 	}
 	rendered := strings.Split(stripANSI(renderedMessage(msg, 40)), "\n")
-	if len(rendered) < 3 || strings.TrimSpace(rendered[1]) != "(1.2s)" || strings.TrimSpace(rendered[2]) != "$ sleep 1" {
+	if len(rendered) < 3 || strings.TrimSpace(rendered[1]) != "(1s)" || strings.TrimSpace(rendered[2]) != "$ sleep 1" {
 		t.Fatalf("completed tool duration is not on its own line above command: %q", rendered)
 	}
-	if got := toolDurationLabel(msg, finished.Add(time.Hour)); got != " (1.2s)" {
+	if got := toolDurationLabel(msg, finished.Add(time.Hour)); got != " (1s)" {
 		t.Fatalf("completed duration changed after completion: %q", got)
 	}
 	pending := message{toolStartedAt: started}
-	if got := toolDurationLabel(pending, started.Add(350*time.Millisecond)); got != " (300ms)" {
+	if got := toolDurationLabel(pending, started.Add(350*time.Millisecond)); got != " (0s)" {
 		t.Fatalf("pending duration did not use current time: %q", got)
 	}
-	if got := toolDurationLabel(pending, started.Add(1350*time.Millisecond)); got != " (1.3s)" {
-		t.Fatalf("pending duration did not advance by tenths: %q", got)
+	if got := toolDurationLabel(pending, started.Add(1350*time.Millisecond)); got != " (1s)" {
+		t.Fatalf("pending duration did not advance by seconds: %q", got)
 	}
 }
 

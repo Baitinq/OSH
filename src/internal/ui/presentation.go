@@ -205,11 +205,8 @@ func formatToolDuration(d time.Duration) string {
 	if d < 0 {
 		d = 0
 	}
-	if d < time.Second {
-		return fmt.Sprintf("%dms", d.Round(time.Millisecond).Milliseconds())
-	}
 	if d < time.Minute {
-		return fmt.Sprintf("%.1fs", d.Seconds())
+		return fmt.Sprintf("%ds", int(d/time.Second))
 	}
 	minutes := int(d / time.Minute)
 	seconds := int(d/time.Second) % 60
@@ -222,7 +219,7 @@ func toolDurationLabel(msg message, now time.Time) string {
 	}
 	end := msg.toolFinishedAt
 	if end.IsZero() {
-		elapsed := max(now.Sub(msg.toolStartedAt), 0).Truncate(100 * time.Millisecond)
+		elapsed := max(now.Sub(msg.toolStartedAt), 0).Truncate(time.Second)
 		return " (" + formatToolDuration(elapsed) + ")"
 	}
 	return " (" + formatToolDuration(end.Sub(msg.toolStartedAt)) + ")"
