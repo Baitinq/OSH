@@ -28,6 +28,8 @@ type historyItem struct {
 	Model            string          `json:"model,omitempty"`
 	ThoughtSignature string          `json:"thought_signature,omitempty"`
 	ProviderData     json.RawMessage `json:"provider_data,omitempty"`
+	RedactedThinking string          `json:"redacted_thinking,omitempty"`
+	ToolError        bool            `json:"tool_error,omitempty"`
 	transient        bool
 }
 
@@ -219,11 +221,19 @@ func geminiContents(history []historyItem, provider, model string, includeToolCa
 			if !includeToolCallIDs {
 				id = ""
 			}
-			appendPart("user", geminiPart{FunctionResponse: &geminiFunctionResponse{Name: h.Name, ID: id, Response: map[string]any{"output": h.Text}}})
+			appendPart("user", geminiPart{FunctionResponse: &geminiFunctionResponse{Name: h.Name, ID: id, Response: geminiToolResponse(h)}})
 		}
 	}
 	return contents
 }
+
+func geminiToolResponse(item historyItem) map[string]any {
+	if item.ToolError {
+		return map[string]any{"error": item.Text}
+	}
+	return map[string]any{"output": item.Text}
+}
+
 func geminiThinkingLevel(effort string) string {
 	switch effort {
 	case "minimal":
@@ -312,17 +322,18 @@ func (a *Agent) streamGemini(ctx context.Context, request modelRequest, emit fun
 					result.ToolCalls = append(result.ToolCalls, item)
 					continue
 				}
-				if part.Text != "" {
+				if part.Text != "" || part.ThoughtSignature != "" {
 					typ, role, event := "message", "assistant", ToolEventTextDelta
 					if part.Thought {
 						typ, role, event = "reasoning", "", ToolEventReasoningDelta
 					} else {
 						result.Text += part.Text
 					}
-					if len(result.Items) > 0 && result.Items[len(result.Items)-1].Type == typ {
-						result.Items[len(result.Items)-1].Text += part.Text
+					previous := len(result.Items) - 1
+					if previous >= 0 && result.Items[previous].Type == typ && (part.ThoughtSignature == "" || result.Items[previous].ThoughtSignature == "") {
+						result.Items[previous].Text += part.Text
 						if part.ThoughtSignature != "" {
-							result.Items[len(result.Items)-1].ThoughtSignature = part.ThoughtSignature
+							result.Items[previous].ThoughtSignature = part.ThoughtSignature
 						}
 					} else {
 						result.Items = append(result.Items, historyItem{Type: typ, Role: role, Text: part.Text, Provider: "gemini", Model: a.modelName, ThoughtSignature: part.ThoughtSignature})

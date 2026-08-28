@@ -22,6 +22,8 @@ type anthropicContent struct {
 	Input     json.RawMessage `json:"input,omitempty"`
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	Content   string          `json:"content,omitempty"`
+	Data      string          `json:"data,omitempty"`
+	IsError   bool            `json:"is_error,omitempty"`
 }
 
 type anthropicMessage struct {
@@ -94,16 +96,36 @@ func anthropicMessages(history []historyItem, model string) []anthropicMessage {
 			}
 			appendContent(role, anthropicContent{Type: "text", Text: item.Text})
 		case "reasoning":
-			if sameModel {
+			if sameModel && item.RedactedThinking != "" {
+				appendContent("assistant", anthropicContent{Type: "redacted_thinking", Data: item.RedactedThinking})
+			} else if sameModel && item.ThoughtSignature != "" {
 				appendContent("assistant", anthropicContent{Type: "thinking", Thinking: item.Text, Signature: item.ThoughtSignature})
+			} else if item.Text != "" {
+				appendContent("assistant", anthropicContent{Type: "text", Text: item.Text})
 			}
 		case "tool_call":
-			appendContent("assistant", anthropicContent{Type: "tool_use", ID: item.CallID, Name: item.Name, Input: item.Arguments})
+			appendContent("assistant", anthropicContent{Type: "tool_use", ID: anthropicToolID(item), Name: item.Name, Input: item.Arguments})
 		case "tool_result":
-			appendContent("user", anthropicContent{Type: "tool_result", ToolUseID: item.CallID, Content: item.Text})
+			appendContent("user", anthropicContent{Type: "tool_result", ToolUseID: anthropicToolID(item), Content: item.Text, IsError: item.ToolError})
 		}
 	}
 	return messages
+}
+
+func anthropicToolID(item historyItem) string {
+	var id strings.Builder
+	for _, r := range item.CallID {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' {
+			id.WriteRune(r)
+		}
+		if id.Len() == 64 {
+			break
+		}
+	}
+	if id.Len() == 0 {
+		return "tool_call"
+	}
+	return id.String()
 }
 
 func anthropicAdaptiveThinking(model string) bool {
@@ -176,7 +198,9 @@ func (a *Agent) streamAnthropic(ctx context.Context, request modelRequest, emit 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", os.Getenv("ANTHROPIC_API_KEY"))
 	req.Header.Set("anthropic-version", "2023-06-01")
-	req.Header.Set("anthropic-beta", "interleaved-thinking-2025-05-14")
+	if !anthropicAdaptiveThinking(a.modelName) {
+		req.Header.Set("anthropic-beta", "interleaved-thinking-2025-05-14")
+	}
 	response, err := a.httpClient.Do(req)
 	if err != nil {
 		return modelResponse{}, err
@@ -221,6 +245,8 @@ func (a *Agent) streamAnthropic(ctx context.Context, request modelRequest, emit 
 				item.Type, item.Role, item.Text = "message", "assistant", block.Text
 			case "thinking":
 				item.Type, item.Text, item.ThoughtSignature = "reasoning", block.Thinking, block.Signature
+			case "redacted_thinking":
+				item.Type, item.RedactedThinking = "reasoning", block.Data
 			case "tool_use":
 				item.Type, item.CallID, item.Name, item.Arguments = "tool_call", block.ID, block.Name, block.Input
 			default:

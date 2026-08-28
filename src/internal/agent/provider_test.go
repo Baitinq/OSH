@@ -73,6 +73,61 @@ func TestGeminiRespondExecutesToolAndPreservesThoughtSignature(t *testing.T) {
 	}
 }
 
+func TestGeminiPreservesSignedEmptyParts(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, `data: {"candidates":[{"content":{"role":"model","parts":[{"thought":true,"thoughtSignature":"first"},{"thought":true,"thoughtSignature":"second"}]}}]}`)
+	}))
+	defer server.Close()
+
+	a := &Agent{provider: "gemini", baseURL: server.URL, httpClient: server.Client(), modelName: "gemini-3.7-flash"}
+	response, err := a.streamGemini(t.Context(), modelRequest{}, func(ToolEvent) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Items) != 2 || response.Items[0].ThoughtSignature != "first" || response.Items[1].ThoughtSignature != "second" {
+		t.Fatalf("items = %#v", response.Items)
+	}
+}
+
+func TestGeminiMarksToolErrors(t *testing.T) {
+	contents := geminiContents([]historyItem{{Type: "tool_result", CallID: "call_1", Name: "repl", Text: "failed", ToolError: true}}, "gemini", "model", true)
+	response := contents[0].Parts[0].FunctionResponse.Response
+	if response["error"] != "failed" || response["output"] != nil {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestGeminiCancellationDoesNotLeaveModelTurn(t *testing.T) {
+	var requests []geminiRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request geminiRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		requests = append(requests, request)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintln(w, `data: {"candidates":[{"content":{"role":"model","parts":[{"text":"answer"}]}}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1,"totalTokenCount":2}}`)
+	}))
+	defer server.Close()
+
+	a := &Agent{provider: "gemini", baseURL: server.URL, httpClient: server.Client(), modelName: "gemini-3.7-flash", maxRetries: 0}
+	ctx, cancel := context.WithCancel(t.Context())
+	a.Respond("cancelled question", nil, func(event ToolEvent) {
+		if event.Kind == ToolEventContextTokens {
+			cancel()
+		}
+	}, ctx)
+
+	response := a.Respond("next question", nil, func(ToolEvent) {}, t.Context())
+	if response.Err != nil || response.Text != "answer" {
+		t.Fatalf("response = %#v", response)
+	}
+	contents := requests[1].Contents
+	if contents[len(contents)-1].Role != "user" {
+		t.Fatalf("request ended with %q turn: %#v", contents[len(contents)-1].Role, contents)
+	}
+}
+
 func TestNewSelectsGeminiFromModel(t *testing.T) {
 	t.Setenv("FN_PROVIDER", "")
 	t.Setenv("FN_MODEL", "gemini-3.7-flash")

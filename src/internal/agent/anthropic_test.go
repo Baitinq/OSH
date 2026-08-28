@@ -88,6 +88,22 @@ func TestAnthropicRespondExecutesToolAndPreservesThinkingSignature(t *testing.T)
 	}
 }
 
+func TestAnthropicHistoryCompatibility(t *testing.T) {
+	messages := anthropicMessages([]historyItem{
+		{Type: "reasoning", Text: "unsigned"},
+		{Type: "reasoning", Provider: "anthropic", Model: "model", RedactedThinking: "opaque"},
+		{Type: "tool_call", CallID: "call.bad/id", Name: "repl", Arguments: json.RawMessage(`{}`)},
+		{Type: "tool_result", CallID: "call.bad/id", Text: "failed", ToolError: true},
+	}, "model")
+	encoded, _ := json.Marshal(messages)
+	body := string(encoded)
+	for _, want := range []string{`"type":"text","text":"unsigned"`, `"type":"redacted_thinking","data":"opaque"`, `"id":"callbadid"`, `"tool_use_id":"callbadid"`, `"is_error":true`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("messages omitted %s: %s", want, body)
+		}
+	}
+}
+
 func TestNewSelectsAnthropicFromModel(t *testing.T) {
 	t.Setenv("FN_PROVIDER", "")
 	t.Setenv("FN_MODEL", "claude-sonnet-4-20250514")
