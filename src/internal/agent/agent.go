@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/openai/openai-go/v3"
@@ -236,6 +237,7 @@ type Agent struct {
 	tokensUsed      int64
 	usage           []Usage
 	repl            *pythonREPL
+	respondMu       sync.Mutex
 }
 
 func (a *Agent) pythonREPL() *pythonREPL {
@@ -572,6 +574,8 @@ func (a *Agent) input() []historyItem {
 }
 
 func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), ctx context.Context) Response {
+	a.respondMu.Lock()
+	defer a.respondMu.Unlock()
 	a.appendUserMessage(msg)
 	defer a.pruneTransientHistory()
 	var text string
@@ -623,7 +627,7 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 			}
 		}
 		contextTokens = resp.Usage.TotalTokens
-		if len(resp.ToolCalls) > 0 && ctx.Err() != nil {
+		if ctx.Err() != nil {
 			return Response{}
 		}
 		a.history = append(a.history, resp.Items...)
@@ -648,6 +652,7 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 		emit(ToolEvent{Kind: ToolEventReasoningDone})
 		for _, call := range resp.ToolCalls {
 			output := ""
+			failed := false
 			switch call.Name {
 			case "repl":
 				var args struct {
@@ -655,11 +660,13 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 				}
 				if err := json.Unmarshal(call.Arguments, &args); err != nil {
 					output = "tool error: invalid repl arguments: " + err.Error()
+					failed = true
 					emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
 					break
 				}
 				emit(ToolEvent{Kind: ToolEventCall, Name: call.Name, ID: call.CallID, Detail: args.Code})
-				result, failed, err := a.pythonREPL().execute(ctx, args.Code)
+				result, replFailed, err := a.pythonREPL().execute(ctx, args.Code)
+				failed = replFailed
 				if err != nil {
 					output = formatREPLError(err)
 					failed = true
@@ -673,9 +680,10 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 				}
 			default:
 				output = fmt.Sprintf("tool error: unsupported tool %q", call.Name)
+				failed = true
 				emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
 			}
-			a.history = append(a.history, historyItem{Type: "tool_result", CallID: call.CallID, Name: call.Name, Text: output})
+			a.history = append(a.history, historyItem{Type: "tool_result", CallID: call.CallID, Name: call.Name, Text: output, ToolError: failed})
 		}
 		a.consumeSteering(steer, emit)
 	}
