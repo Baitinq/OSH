@@ -72,6 +72,7 @@ type fnUI struct {
 	streamingText          strings.Builder
 	streamingRenderedWidth int
 	streamingRenderedLines []string
+	frameLines             []string
 	reasoningText          strings.Builder
 	responding             bool
 	spinnerFrame           int

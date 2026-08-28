@@ -20,7 +20,7 @@ import (
 func (s *fnUI) render(width int, viewportHeight ...int) ([]string, int, int) {
 	width = max(width, 10)
 	s.setTextareaWidth(max(width-4, 1))
-	var lines []string
+	lines := s.frameLines[:0]
 	for i := range s.messages {
 		lines = append(lines, s.renderedMessageLines(&s.messages[i], width)...)
 		lines = append(lines, "")
@@ -62,6 +62,7 @@ func (s *fnUI) render(width int, viewportHeight ...int) ([]string, int, int) {
 			cursorRow += filler
 		}
 	}
+	s.frameLines = lines
 	return lines, cursorRow, ccol
 }
 
@@ -493,6 +494,10 @@ func wrapPlain(text string, width int) []string {
 	for _, p := range strings.Split(text, "\n") {
 		if p == "" {
 			out = append(out, "")
+			continue
+		}
+		if tui.StringWidth(p) <= width {
+			out = append(out, strings.TrimSpace(p))
 			continue
 		}
 		r := []rune(p)
