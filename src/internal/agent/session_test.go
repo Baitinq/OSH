@@ -52,8 +52,28 @@ func TestSessionRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(data, &fields); err != nil {
 		t.Fatal(err)
 	}
-	if len(fields) != 5 || fields["version"] != float64(2) || fields["cwd"] == nil || fields["summary"] == nil || fields["history"] == nil || fields["usage"] == nil {
+	if len(fields) != 5 || fields["version"] != float64(sessionVersion) || fields["cwd"] == nil || fields["summary"] == nil || fields["history"] == nil || fields["usage"] == nil {
 		t.Fatalf("session fields = %#v", fields)
+	}
+}
+
+func TestSessionRejectsUnsupportedVersion(t *testing.T) {
+	root := t.TempDir()
+	cwd := t.TempDir()
+	id := "550e8400-e29b-41d4-a716-446655440000"
+	dir := filepath.Join(root, id)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(sessionFile{Version: sessionVersion + 1, CWD: cwd})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "session.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&Agent{cwd: cwd}).ResumeSession(id, root); err == nil {
+		t.Fatal("expected unsupported version")
 	}
 }
 

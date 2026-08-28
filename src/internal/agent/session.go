@@ -47,6 +47,8 @@ func (a *Agent) Conversation() []ConversationMessage {
 	return conversation
 }
 
+const sessionVersion = 2
+
 type sessionFile struct {
 	Version int               `json:"version,omitempty"`
 	CWD     string            `json:"cwd"`
@@ -70,6 +72,9 @@ func (a *Agent) ResumeSession(id, sessionsDir string) error {
 	var saved sessionFile
 	if err := json.Unmarshal(data, &saved); err != nil {
 		return fmt.Errorf("load session %s: %w", id, err)
+	}
+	if saved.Version != sessionVersion {
+		return fmt.Errorf("load session %s: unsupported version %d (expected %d)", id, saved.Version, sessionVersion)
 	}
 	if saved.CWD != a.cwd {
 		return fmt.Errorf("session %s belongs to %s", id, saved.CWD)
@@ -127,7 +132,7 @@ func (a *Agent) SaveSession() error {
 		return err
 	}
 	saved := sessionFile{
-		Version: 2, CWD: a.cwd, Summary: a.summary, Usage: a.Usage(),
+		Version: sessionVersion, CWD: a.cwd, Summary: a.summary, Usage: a.Usage(),
 	}
 	for _, item := range a.history {
 		data, err := json.Marshal(item)
