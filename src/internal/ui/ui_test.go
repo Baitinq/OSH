@@ -586,6 +586,9 @@ func TestToolDurationFormatsAndPersists(t *testing.T) {
 	if got := toolDurationLabel(pending, started.Add(350*time.Millisecond)); got != " (300ms)" {
 		t.Fatalf("pending duration did not use current time: %q", got)
 	}
+	if got := toolDurationLabel(pending, started.Add(1350*time.Millisecond)); got != " (1.3s)" {
+		t.Fatalf("pending duration did not advance by tenths: %q", got)
+	}
 }
 
 func TestToolEventsRecordDuration(t *testing.T) {
@@ -682,7 +685,7 @@ func TestMainScreenRendererAppendsWithoutAlternateScreen(t *testing.T) {
 	}
 }
 
-func TestMainScreenRendererReplaysWhenChangedLineIsAboveViewport(t *testing.T) {
+func TestMainScreenRendererRetainsChangedLineAboveViewportWithoutReplay(t *testing.T) {
 	var out strings.Builder
 	r := newMainScreenRenderer(&out, 20, 3)
 	lines := []string{"zero", "one", "two", "input"}
@@ -695,8 +698,29 @@ func TestMainScreenRendererReplaysWhenChangedLineIsAboveViewport(t *testing.T) {
 	if err := r.render(changed, 3, 0); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "\x1b[3J") {
-		t.Fatalf("unaddressable edit did not replay: %q", out.String())
+	if strings.Contains(out.String(), "\x1b[3J") {
+		t.Fatalf("off-screen edit caused a replay: %q", out.String())
+	}
+	if r.previousLines[0] != "ZERO" {
+		t.Fatalf("off-screen state was not retained: %q", r.previousLines[0])
+	}
+}
+
+func TestMainScreenRendererUpdatesViewportWithoutReplayingOffscreenChanges(t *testing.T) {
+	var out strings.Builder
+	r := newMainScreenRenderer(&out, 20, 3)
+	if err := r.render([]string{"spinner 1", "one", "status 1", "input"}, 3, 0); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := r.render([]string{"spinner 2", "one", "status 2", "input"}, 3, 0); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "\x1b[3J") {
+		t.Fatalf("visible update replayed an off-screen change: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "status 2") {
+		t.Fatalf("visible update was not rendered: %q", out.String())
 	}
 }
 

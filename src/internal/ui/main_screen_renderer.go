@@ -10,8 +10,8 @@ import (
 
 // mainScreenRenderer is a small Go port of Pi's main-screen renderer. Logical
 // lines grow into native terminal history; only addressable changed lines are
-// rewritten. If a required change is above the viewport, the only correct
-// recovery is a full clear and replay, matching Pi.
+// rewritten. Changes entirely above the viewport are retained for the next
+// replay instead of clearing the visible screen.
 type mainScreenRenderer struct {
 	out                 io.Writer
 	width, height       int
@@ -101,7 +101,11 @@ func (r *mainScreenRenderer) render(lines []string, cursorRow, cursorCol int) er
 	}
 
 	firstChanged, lastChanged := -1, -1
-	for i := 0; i < max(len(lines), len(r.previousLines)); i++ {
+	compareFrom := 0
+	if len(lines) == len(r.previousLines) {
+		compareFrom = prevViewportTop
+	}
+	for i := compareFrom; i < max(len(lines), len(r.previousLines)); i++ {
 		oldLine, newLine := "", ""
 		if i < len(r.previousLines) {
 			oldLine = r.previousLines[i]
@@ -118,7 +122,7 @@ func (r *mainScreenRenderer) render(lines []string, cursorRow, cursorCol int) er
 	}
 	if firstChanged < 0 {
 		r.previousViewportTop = prevViewportTop
-		r.previousHeight = height
+		r.commit(lines, width, height)
 		return r.positionCursor(cursorRow, cursorCol, len(lines))
 	}
 	if err := validateLines(firstChanged, min(lastChanged+1, len(lines))); err != nil {
