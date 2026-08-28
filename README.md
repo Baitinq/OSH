@@ -164,6 +164,7 @@ ranked titles, URLs, and snippets; full pages can still be inspected with
 - `Shift+Enter` — queue a follow-up until the active response finishes
 - `Ctrl+J` — insert a newline
 - `↑` / `↓` — navigate submitted messages and return to the current draft
+- `Ctrl+↑` — move all queued messages back to the editor
 - `Ctrl+C` — cancel the active response; press twice within one second to quit
 - `Escape` — clear the editor
 - `Ctrl/Alt+←/→` or `Alt+B/F` — move by word

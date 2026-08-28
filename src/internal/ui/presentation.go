@@ -46,7 +46,10 @@ func (s *fnUI) render(width int, viewportHeight ...int) ([]string, int, int) {
 		}
 	}
 	for _, p := range s.pendingInputs {
-		lines = append(lines, renderPendingLines(p, width)...)
+		lines = append(lines, renderPendingLine(p, width))
+	}
+	if len(s.pendingInputs) > 0 {
+		lines = append(lines, ansi256FG(245, truncateCells("↳ Ctrl+↑ to edit all queued messages", width)))
 	}
 	editor, crow, ccol := renderEditor(s.textarea.Text(), s.textarea.CursorPos(), width)
 	cursorRow := len(lines) + crow
@@ -420,23 +423,13 @@ func piBoxLine(text string, width int, fg, bg string, bold bool) string {
 	return ansiRGBStyle(fg, bg, bold, false, text)
 }
 
-func renderPendingLines(p pendingInput, width int) []string {
-	label := "Queued:"
+func renderPendingLine(p pendingInput, width int) string {
+	label := "Queued: "
 	if p.kind == "steer" {
-		label = "Steering:"
+		label = "Steering: "
 	}
-	prefix := label + " "
-	avail := max(width-lineWidth(prefix)-2, 1)
-	wrapped := wrapPlain(strings.ReplaceAll(p.text, "\n", " "), avail)
-	out := make([]string, len(wrapped))
-	for i, l := range wrapped {
-		q := strings.Repeat(" ", lineWidth(prefix))
-		if i == 0 {
-			q = prefix
-		}
-		out[i] = ansi256FG(245, q+l)
-	}
-	return out
+	text := strings.ReplaceAll(p.text, "\n", " ")
+	return ansi256FG(245, label+truncateCells(text, max(width-lineWidth(label), 0)))
 }
 
 func renderEditor(text string, cursor, width int) ([]string, int, int) {
