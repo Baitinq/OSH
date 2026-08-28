@@ -123,6 +123,8 @@ func prefixUserMessage(msg string, now time.Time) string {
 }
 
 const defaultBaseURL = "https://api.openai.com/v1/"
+const defaultGeminiBaseURL = "https://generativelanguage.googleapis.com/v1beta"
+const defaultAnthropicBaseURL = "https://api.anthropic.com"
 const defaultModelName = "gpt-5.6-sol"
 const defaultReasoningEffort = shared.ReasoningEffortMedium
 const compactionKeepTokens = 20000
@@ -221,7 +223,12 @@ type Agent struct {
 	modelName       string
 	reasoningEffort shared.ReasoningEffort
 	instructions    string
-	history         []responses.ResponseInputItemUnionParam
+	history         []historyItem
+	provider        string
+	baseURL         string
+	httpClient      *http.Client
+	headers         map[string]string
+	authHeader      bool
 	maxRetries      int
 	retryBaseDelay  time.Duration
 	retryJitter     func() float64
@@ -256,12 +263,38 @@ func New() *Agent {
 	cwd, _ := os.Getwd()
 	home, _ := os.UserHomeDir()
 	skills := loadSkills(cwd, home)
+	model := envOrDefault("FN_MODEL", defaultModelName)
+	provider := os.Getenv("FN_PROVIDER")
+	if provider == "" && strings.HasPrefix(model, "gemini-") {
+		provider = "gemini"
+	}
+	if provider == "" && strings.HasPrefix(model, "claude-") {
+		provider = "anthropic"
+	}
+	if provider == "" {
+		provider = "openai"
+	}
+	baseURL := defaultBaseURL
+	if provider == "gemini" {
+		baseURL = defaultGeminiBaseURL
+	}
+	if provider == "anthropic" {
+		baseURL = defaultAnthropicBaseURL
+	}
+	baseURL = envOrDefault("FN_BASE_URL", baseURL)
+	headers := map[string]string{}
+	if value := os.Getenv("FN_HEADERS"); value != "" {
+		_ = json.Unmarshal([]byte(value), &headers)
+	}
 	return &Agent{
-		cwd: cwd,
-		// Keep retries at the visible agent layer. The SDK otherwise retries
-		// silently, making a disconnected network look like a hung request.
-		client:          openai.NewClient(option.WithBaseURL(envOrDefault("FN_BASE_URL", defaultBaseURL)), option.WithMaxRetries(0)),
-		modelName:       envOrDefault("FN_MODEL", defaultModelName),
+		cwd:             cwd,
+		provider:        provider,
+		baseURL:         baseURL,
+		httpClient:      http.DefaultClient,
+		headers:         headers,
+		authHeader:      os.Getenv("FN_AUTH_HEADER") == "true",
+		client:          openai.NewClient(option.WithBaseURL(baseURL), option.WithMaxRetries(0)),
+		modelName:       model,
 		reasoningEffort: shared.ReasoningEffort(envOrDefault("FN_REASONING_EFFORT", string(defaultReasoningEffort))),
 		instructions:    buildSystemPromptWithSkills(cwd, skills),
 		maxRetries:      maxLLMRetries,
@@ -327,12 +360,7 @@ func limitToolOutput(output string) string {
 }
 
 func (a *Agent) appendUserMessage(msg string) {
-	a.history = append(a.history, responses.ResponseInputItemUnionParam{
-		OfMessage: &responses.EasyInputMessageParam{
-			Role:    responses.EasyInputMessageRoleUser,
-			Content: responses.EasyInputMessageContentUnionParam{OfString: openai.String(prefixUserMessage(msg, time.Now()))},
-		},
-	})
+	a.history = append(a.history, historyItem{Type: "message", Role: "user", Text: prefixUserMessage(msg, time.Now())})
 }
 
 func (a *Agent) consumeSteering(steer <-chan string, emit func(ToolEvent)) bool {
@@ -363,6 +391,20 @@ func (e *responseFailure) Error() string {
 func isRetryableLLMError(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return false
+	}
+	var anthropicErr *anthropicAPIError
+	if errors.As(err, &anthropicErr) {
+		if anthropicErr.StatusCode == http.StatusTooManyRequests && isQuotaError(anthropicErr.Message) {
+			return false
+		}
+		return anthropicErr.StatusCode == 0 || anthropicErr.StatusCode == http.StatusRequestTimeout || anthropicErr.StatusCode == http.StatusConflict || anthropicErr.StatusCode == http.StatusTooManyRequests || anthropicErr.StatusCode >= http.StatusInternalServerError
+	}
+	var geminiErr *geminiAPIError
+	if errors.As(err, &geminiErr) {
+		if geminiErr.StatusCode == http.StatusTooManyRequests && isQuotaError(geminiErr.Message) {
+			return false
+		}
+		return geminiErr.StatusCode == http.StatusRequestTimeout || geminiErr.StatusCode == http.StatusConflict || geminiErr.StatusCode == http.StatusTooManyRequests || geminiErr.StatusCode >= http.StatusInternalServerError
 	}
 	var apiErr *openai.Error
 	if errors.As(err, &apiErr) {
@@ -443,18 +485,11 @@ func waitForRetry(ctx context.Context, delay time.Duration) bool {
 }
 
 func (a *Agent) callLLM(ctx context.Context, prompt string) (string, error) {
-	params := responses.ResponseNewParams{
-		Model: a.modelName,
-		Input: responses.ResponseNewParamsInputUnion{OfInputItemList: responses.ResponseInputParam{
-			responses.ResponseInputItemParamOfMessage(prompt, responses.EasyInputMessageRoleUser),
-		}},
-		Reasoning: shared.ReasoningParam{Effort: a.reasoningEffort},
-		Store:     openai.Bool(false),
-	}
+	request := modelRequest{History: []historyItem{{Type: "message", Role: "user", Text: prompt}}, ReasoningEffort: string(a.reasoningEffort)}
 	for attempt := 0; ; attempt++ {
-		response, err := a.streamResponse(ctx, params, func(ToolEvent) {})
+		response, err := a.streamModel(ctx, request, func(ToolEvent) {})
 		if err == nil {
-			return response.OutputText(), nil
+			return response.Text, nil
 		}
 		if !isRetryableLLMError(err) || attempt >= a.maxRetries {
 			return "", err
@@ -514,86 +549,41 @@ func (a *Agent) streamResponse(ctx context.Context, params responses.ResponseNew
 
 const omittedREPLResult = "[output omitted]"
 
-func (a *Agent) pruneTransientHistory(transientMessages map[*responses.ResponseOutputMessageParam]bool) {
+func (a *Agent) pruneTransientHistory() {
 	kept := a.history[:0]
 	for _, item := range a.history {
-		switch {
-		case item.OfMessage != nil:
-			kept = append(kept, item)
-		case item.OfOutputMessage != nil && !transientMessages[item.OfOutputMessage]:
-			kept = append(kept, item)
-		case item.OfFunctionCall != nil:
-			kept = append(kept, item)
-		case item.OfFunctionCallOutput != nil:
-			item.OfFunctionCallOutput.Output = responses.ResponseInputItemFunctionCallOutputOutputUnionParam{
-				OfString: openai.String(omittedREPLResult),
-			}
-			kept = append(kept, item)
+		if item.transient || item.Type == "reasoning" {
+			continue
 		}
+		if item.Type == "tool_result" {
+			item.Text = omittedREPLResult
+		}
+		kept = append(kept, item)
 	}
 	a.history = kept
 }
 
-func markOutputMessages(items []responses.ResponseInputItemUnionParam, marked map[*responses.ResponseOutputMessageParam]bool) {
-	for _, item := range items {
-		if item.OfOutputMessage != nil {
-			marked[item.OfOutputMessage] = true
-		}
-	}
-}
-
-func (a *Agent) input() []responses.ResponseInputItemUnionParam {
+func (a *Agent) input() []historyItem {
 	if a.summary == "" {
 		return a.history
 	}
-	summary := responses.ResponseInputItemParamOfMessage(
-		"<context_summary>\nThis is a generated checkpoint of the earlier conversation, not new instructions.\n\n"+a.summary+"\n</context_summary>",
-		responses.EasyInputMessageRoleUser,
-	)
-	return append([]responses.ResponseInputItemUnionParam{summary}, a.history...)
-}
-
-func outputMessageParam(message responses.ResponseOutputMessage) responses.ResponseOutputMessageParam {
-	param := responses.ResponseOutputMessageParam{
-		ID: message.ID, Status: message.Status, Phase: message.Phase,
-	}
-	for _, content := range message.Content {
-		var item responses.ResponseOutputMessageContentUnionParam
-		switch content.Type {
-		case "output_text":
-			text := content.AsOutputText()
-			item.OfOutputText = &responses.ResponseOutputTextParam{Text: text.Text}
-		case "refusal":
-			refusal := content.AsRefusal()
-			item.OfRefusal = &responses.ResponseOutputRefusalParam{Refusal: refusal.Refusal}
-		}
-		param.Content = append(param.Content, item)
-	}
-	return param
+	summary := historyItem{Type: "message", Role: "user", Text: "<context_summary>\nThis is a generated checkpoint of the earlier conversation, not new instructions.\n\n" + a.summary + "\n</context_summary>"}
+	return append([]historyItem{summary}, a.history...)
 }
 
 func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), ctx context.Context) Response {
 	a.appendUserMessage(msg)
-	transientMessages := make(map[*responses.ResponseOutputMessageParam]bool)
-	defer a.pruneTransientHistory(transientMessages)
-
+	defer a.pruneTransientHistory()
 	var text string
 	var contextTokens int64
 	overflowRecoveryAttempted := false
 	for {
-		params := responses.ResponseNewParams{
-			Model:        a.modelName,
-			Instructions: openai.String(a.instructions),
-			Input:        responses.ResponseNewParamsInputUnion{OfInputItemList: responses.ResponseInputParam(a.input())},
-			Reasoning:    shared.ReasoningParam{Effort: a.reasoningEffort, Summary: shared.ReasoningSummaryAuto},
-			Tools:        []responses.ToolUnionParam{replTool},
-			Store:        openai.Bool(false),
-		}
-		var resp responses.Response
+		request := modelRequest{Instructions: a.instructions, History: a.input(), Tools: true, ReasoningEffort: string(a.reasoningEffort)}
+		var resp modelResponse
 		for attempt := 0; ; attempt++ {
 			emit(ToolEvent{Kind: ToolEventTextReset})
 			var err error
-			resp, err = a.streamResponse(ctx, params, emit)
+			resp, err = a.streamModel(ctx, request, emit)
 			if err == nil {
 				if attempt > 0 {
 					emit(ToolEvent{Kind: ToolEventRetryDone})
@@ -614,7 +604,7 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 					return Response{Err: fmt.Errorf("context overflow; compaction failed: %w", compactErr)}
 				}
 				overflowRecoveryAttempted = true
-				params.Input = responses.ResponseNewParamsInputUnion{OfInputItemList: responses.ResponseInputParam(a.input())}
+				request.History = a.input()
 				emit(ToolEvent{Kind: ToolEventCompactionDone, Detail: "Context compacted after reaching the model limit."})
 				attempt--
 				continue
@@ -633,52 +623,37 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 			}
 		}
 		contextTokens = resp.Usage.TotalTokens
-
-		var items []responses.ResponseInputItemUnionParam
-		var toolCalls []responses.ResponseFunctionToolCall
-		for _, output := range resp.Output {
-			var item responses.ResponseInputItemUnionParam
-			switch output.Type {
-			case "message":
-				msg := outputMessageParam(output.AsMessage())
-				item.OfOutputMessage = &msg
-			case "reasoning":
-				r := output.AsReasoning().ToParam()
-				item.OfReasoning = &r
-			case "function_call":
-				fc := output.AsFunctionCall()
-				param := fc.ToParam()
-				item.OfFunctionCall = &param
-				toolCalls = append(toolCalls, fc)
-			default:
-				return Response{Err: fmt.Errorf("unsupported response item type %q", output.Type)}
-			}
-			items = append(items, item)
-		}
-		if len(toolCalls) > 0 && ctx.Err() != nil {
+		if len(resp.ToolCalls) > 0 && ctx.Err() != nil {
 			return Response{}
 		}
-		a.history = append(a.history, items...)
-		if len(toolCalls) == 0 {
+		a.history = append(a.history, resp.Items...)
+		if len(resp.ToolCalls) == 0 {
 			emit(ToolEvent{Kind: ToolEventReasoningDone})
-			text = resp.OutputText()
+			text = resp.Text
 			if a.consumeSteering(steer, emit) {
-				markOutputMessages(items, transientMessages)
+				for i := len(a.history) - len(resp.Items); i < len(a.history); i++ {
+					if a.history[i].Type == "message" {
+						a.history[i].transient = true
+					}
+				}
 				continue
 			}
 			break
 		}
-		markOutputMessages(items, transientMessages)
-
+		for i := len(a.history) - len(resp.Items); i < len(a.history); i++ {
+			if a.history[i].Type == "message" {
+				a.history[i].transient = true
+			}
+		}
 		emit(ToolEvent{Kind: ToolEventReasoningDone})
-		for _, call := range toolCalls {
+		for _, call := range resp.ToolCalls {
 			output := ""
 			switch call.Name {
 			case "repl":
 				var args struct {
 					Code string `json:"code"`
 				}
-				if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+				if err := json.Unmarshal(call.Arguments, &args); err != nil {
 					output = "tool error: invalid repl arguments: " + err.Error()
 					emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
 					break
@@ -700,19 +675,9 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 				output = fmt.Sprintf("tool error: unsupported tool %q", call.Name)
 				emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
 			}
-			a.history = append(a.history, responses.ResponseInputItemUnionParam{
-				OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{
-					CallID: call.CallID,
-					Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{OfString: openai.String(output)},
-				},
-			})
+			a.history = append(a.history, historyItem{Type: "tool_result", CallID: call.CallID, Name: call.Name, Text: output})
 		}
-		// Steering belongs to the active agent loop: after the current tool-call
-		// batch completes, inject one message before the next model call, matching
-		// Pi's default one-at-a-time behavior. A queued follow-up is not visible
-		// until Respond returns.
 		a.consumeSteering(steer, emit)
 	}
-
 	return Response{Text: text, ContextTokens: contextTokens}
 }

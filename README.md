@@ -37,6 +37,14 @@ results, methodology, artifacts, and additional benchmarks.
 cd src
 export OPENAI_API_KEY='...'
 go run ./cmd/fn
+
+# Gemini (API-key authentication)
+export GEMINI_API_KEY='...'
+FN_MODEL=gemini-3.7-flash go run ./cmd/fn
+
+# Anthropic (API-key authentication)
+export ANTHROPIC_API_KEY='...'
+FN_MODEL=claude-sonnet-5 go run ./cmd/fn
 ```
 
 To build a local binary:
@@ -77,11 +85,12 @@ Python REPL variables are restored on a best-effort basis using Python's standar
 
 ## Configuration
 
-Set the API key with `OPENAI_API_KEY`. fn agent also supports these optional overrides:
+Set `OPENAI_API_KEY`, `GEMINI_API_KEY`, or `ANTHROPIC_API_KEY` for the corresponding provider. Model names beginning with `gemini-` select Google's native Generative AI API; names beginning with `claude-` select Anthropic's native Messages API. Gemini and Anthropic use API-key authentication directly; OAuth and Vertex AI are not used.
 
 | Variable | Default |
 | --- | --- |
-| `FN_BASE_URL` | `https://api.openai.com/v1/` |
+| `FN_PROVIDER` | inferred from `FN_MODEL` (`openai`, `gemini`, or `anthropic`) |
+| `FN_BASE_URL` | provider API URL |
 | `FN_MODEL` | `gpt-5.6-sol` |
 | `FN_REASONING_EFFORT` | `medium` |
 
@@ -89,8 +98,7 @@ When a model rejects a request because its context limit was reached, fn agent
 summarizes older context, preserves approximately 20,000 recent tokens verbatim,
 and retries once.
 
-For local servers that ignore authentication, use any non-empty API key. Custom
-endpoints must support `POST /responses`, including function tool calls.
+For local OpenAI-compatible servers that ignore authentication, use any non-empty API key. OpenAI-compatible endpoints must support `POST /responses`, including function tool calls.
 
 ## Persistent REPL
 

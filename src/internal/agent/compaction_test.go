@@ -10,21 +10,20 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
-	"github.com/openai/openai-go/v3/responses"
 )
 
-func historyMessage(role responses.EasyInputMessageRole, text string) responses.ResponseInputItemUnionParam {
-	return responses.ResponseInputItemParamOfMessage(text, role)
+func historyMessage(role, text string) historyItem {
+	return historyItem{Type: "message", Role: role, Text: text}
 }
 
 func TestFindHistoryCutKeepsRecentCompleteTurns(t *testing.T) {
-	history := []responses.ResponseInputItemUnionParam{
-		historyMessage(responses.EasyInputMessageRoleUser, "first request"),
-		historyMessage(responses.EasyInputMessageRoleAssistant, strings.Repeat("a", 400)),
-		historyMessage(responses.EasyInputMessageRoleUser, "second request"),
-		historyMessage(responses.EasyInputMessageRoleAssistant, strings.Repeat("b", 400)),
-		historyMessage(responses.EasyInputMessageRoleUser, "third request"),
-		historyMessage(responses.EasyInputMessageRoleAssistant, strings.Repeat("c", 400)),
+	history := []historyItem{
+		historyMessage("user", "first request"),
+		historyMessage("assistant", strings.Repeat("a", 400)),
+		historyMessage("user", "second request"),
+		historyMessage("assistant", strings.Repeat("b", 400)),
+		historyMessage("user", "third request"),
+		historyMessage("assistant", strings.Repeat("c", 400)),
 	}
 	latestTurnTokens := estimateHistoryItemTokens(history[4]) + estimateHistoryItemTokens(history[5])
 	if cut := findHistoryCut(history, latestTurnTokens+1); cut != 2 {
@@ -33,11 +32,11 @@ func TestFindHistoryCutKeepsRecentCompleteTurns(t *testing.T) {
 }
 
 func TestFindHistoryCutDoesNotStartAtToolOutput(t *testing.T) {
-	history := []responses.ResponseInputItemUnionParam{
-		historyMessage(responses.EasyInputMessageRoleUser, "request"),
-		responses.ResponseInputItemParamOfFunctionCall(`{"code":"work()"}`, "call_1", "repl"),
-		responses.ResponseInputItemParamOfFunctionCallOutput("call_1", strings.Repeat("result", 200)),
-		historyMessage(responses.EasyInputMessageRoleAssistant, "finished"),
+	history := []historyItem{
+		historyMessage("user", "request"),
+		historyItem{Type: "tool_call", Arguments: json.RawMessage(`{"code":"work()"}`), CallID: "call_1", Name: "repl"},
+		historyItem{Type: "tool_result", CallID: "call_1", Text: strings.Repeat("result", 200)},
+		historyMessage("assistant", "finished"),
 	}
 	cut := findHistoryCut(history, estimateHistoryItemTokens(history[3])+1)
 	if cut == 2 || cut == 0 {
@@ -46,12 +45,12 @@ func TestFindHistoryCutDoesNotStartAtToolOutput(t *testing.T) {
 }
 
 func TestFindHistoryCutKeepsBatchedToolCallsPaired(t *testing.T) {
-	history := []responses.ResponseInputItemUnionParam{
-		historyMessage(responses.EasyInputMessageRoleUser, "request"),
-		responses.ResponseInputItemParamOfFunctionCall(`{"code":"first()"}`, "call_1", "repl"),
-		responses.ResponseInputItemParamOfFunctionCall(`{"code":"second()"}`, "call_2", "repl"),
-		responses.ResponseInputItemParamOfFunctionCallOutput("call_1", "first result"),
-		responses.ResponseInputItemParamOfFunctionCallOutput("call_2", "second result"),
+	history := []historyItem{
+		historyMessage("user", "request"),
+		historyItem{Type: "tool_call", Arguments: json.RawMessage(`{"code":"first()"}`), CallID: "call_1", Name: "repl"},
+		historyItem{Type: "tool_call", Arguments: json.RawMessage(`{"code":"second()"}`), CallID: "call_2", Name: "repl"},
+		historyItem{Type: "tool_result", CallID: "call_1", Text: "first result"},
+		historyItem{Type: "tool_result", CallID: "call_2", Text: "second result"},
 	}
 	if isSafeHistoryCut(history, 2) {
 		t.Fatal("cut between batched function calls leaves an orphaned output")
@@ -62,8 +61,8 @@ func TestFindHistoryCutKeepsBatchedToolCallsPaired(t *testing.T) {
 }
 
 func TestSerializeHistoryTruncatesToolResults(t *testing.T) {
-	history := []responses.ResponseInputItemUnionParam{
-		responses.ResponseInputItemParamOfFunctionCallOutput("call_1", strings.Repeat("x", summaryToolOutputLimit+100)),
+	history := []historyItem{
+		historyItem{Type: "tool_result", CallID: "call_1", Text: strings.Repeat("x", summaryToolOutputLimit+100)},
 	}
 	serialized := serializeHistory(history)
 	if !strings.Contains(serialized, "100 more characters truncated") || strings.Count(serialized, "x") >= summaryToolOutputLimit+100 {
@@ -85,13 +84,13 @@ func TestCompactHistoryReplacesOldContextWithSummary(t *testing.T) {
 	a := &Agent{
 		client:    openai.NewClient(option.WithAPIKey("test"), option.WithBaseURL(server.URL+"/"), option.WithMaxRetries(0)),
 		modelName: "test",
-		history: []responses.ResponseInputItemUnionParam{
-			historyMessage(responses.EasyInputMessageRoleUser, "old request"),
-			historyMessage(responses.EasyInputMessageRoleAssistant, strings.Repeat("old result", 100)),
-			historyMessage(responses.EasyInputMessageRoleUser, "middle request"),
-			historyMessage(responses.EasyInputMessageRoleAssistant, strings.Repeat("middle result", 100)),
-			historyMessage(responses.EasyInputMessageRoleUser, "recent request"),
-			historyMessage(responses.EasyInputMessageRoleAssistant, "recent result"),
+		history: []historyItem{
+			historyMessage("user", "old request"),
+			historyMessage("assistant", strings.Repeat("old result", 100)),
+			historyMessage("user", "middle request"),
+			historyMessage("assistant", strings.Repeat("middle result", 100)),
+			historyMessage("user", "recent request"),
+			historyMessage("assistant", "recent result"),
 		},
 	}
 	latestTokens := estimateHistoryItemTokens(a.history[4]) + estimateHistoryItemTokens(a.history[5])
@@ -149,9 +148,9 @@ func TestRespondCompactsAndRetriesContextOverflow(t *testing.T) {
 		modelName:    "test",
 		instructions: "test",
 		maxRetries:   0,
-		history: []responses.ResponseInputItemUnionParam{
-			historyMessage(responses.EasyInputMessageRoleUser, "old request"),
-			historyMessage(responses.EasyInputMessageRoleAssistant, "old result"),
+		history: []historyItem{
+			historyMessage("user", "old request"),
+			historyMessage("assistant", "old result"),
 		},
 	}
 	var events []ToolEvent
