@@ -1,6 +1,7 @@
-# fn agent vs Pi: HarnessBench
+# fn agent, Pi, and Codex: HarnessBench
 
-This is a lightweight, paired comparison of fn agent and Pi using the upstream
+This is a lightweight, repeated comparison of fn agent, Pi, and Codex using
+the upstream
 [HarnessBench](https://github.com/Qihoo360/harness-bench) task fixtures and
 programmatic oracles. It does not use Harbor or rebuild benchmark scoring.
 
@@ -20,13 +21,14 @@ replacement but required the same tunnel and was excluded. Each reported
 repetition contains the same 60 successfully scored tasks.
 
 The default suite contains tasks 027–056: 30 deterministic office, retrieval,
-software-engineering, and data-analysis workspaces. Each task runs once through
-each harness, for 60 agent runs total. The order alternates by task to reduce
-systematic time-of-run bias.
+software-engineering, and data-analysis workspaces. By default, each task runs
+once through fn and Pi, for 60 agent runs total. Their order alternates by task
+to reduce systematic time-of-run bias. Codex can be run separately on the same
+tasks.
 
 ## Controlled variables
 
-Both harnesses receive the same task prompt, fresh fixture workspace, model,
+All harnesses receive the same task prompt, fresh fixture workspace, model,
 reasoning level, and 15-minute timeout. The defaults are:
 
 - Model: `openai/gpt-5.6-sol`
@@ -39,9 +41,10 @@ scoring deterministic and avoids judging one agent with another model. A task is
 a headline pass only when its oracle outcome score is 1. Partial outcome scores
 are retained and included in the mean.
 
-This compares the installed Pi configuration with the current fn agent checkout.
-Pi and fn agent use their normal non-interactive print modes with installed resources
-enabled. Pi receives the task prompt on stdin so long prompts are not passed as
+This compares the installed Pi and Codex configurations with the current fn
+agent checkout. Each harness uses its normal non-interactive mode with installed
+resources enabled.
+Pi receives the task prompt on stdin so long prompts are not passed as
 command-line arguments.
 
 ## Requirements
@@ -49,7 +52,7 @@ command-line arguments.
 - macOS with Python, Go, Node.js, and `uv`
 - fn agent's configured Responses API available through `FN_BASE_URL`
 - Pi configured for the native OpenAI provider
-- API credentials for both harnesses
+- API credentials for the configured harnesses
 
 No task Docker images are needed. Fixture workspaces and results are small.
 
@@ -65,9 +68,9 @@ Setup pins upstream HarnessBench to commit `1025086a`, installs it in a Python
 3.12 virtual environment, and builds the current native fn agent binary. The upstream
 checkout and build products stay under the ignored `.cache/` directory.
 
-## Validate both adapters
+## Validate the default adapters
 
-Run one task through both harnesses before starting all 60 runs:
+Run one task through fn and Pi before starting the default 60-run comparison:
 
 ```sh
 make smoke LABEL=adapter-smoke
@@ -87,7 +90,7 @@ It takes about 14 minutes with fn agent on this Mac. Override `HARNESS=codex` fo
 screening benchmark; use the 30-task suite and repeated runs before making a
 high-confidence decision.
 
-## Run the 30-task comparison
+## Run the default 30-task comparison
 
 ```sh
 make run LABEL=fn-vs-pi
@@ -99,9 +102,9 @@ Run only fn agent when establishing a standalone baseline:
 .venv/bin/python benchmark.py run --label fn-baseline --harness fn
 ```
 
-The complete comparison can take one to several hours and consumes 60 model
-sessions. It is deliberately sequential so local proxy load and task ordering
-stay predictable.
+The default fn–Pi comparison can take one to several hours and consumes 60 model
+sessions. Run Codex separately with `--harness codex`. It is deliberately
+sequential so local proxy load and task ordering stay predictable.
 
 Choose a smaller or different contiguous range when iterating:
 
