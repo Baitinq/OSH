@@ -14,31 +14,23 @@ func TestSessionRoundTrip(t *testing.T) {
 	cwd := t.TempDir()
 	id := "550e8400-e29b-41d4-a716-446655440000"
 	a := &Agent{
-		cwd: cwd,
-		history: []responses.ResponseInputItemUnionParam{
-			responses.ResponseInputItemParamOfMessage("hello", responses.EasyInputMessageRoleUser),
-			{OfOutputMessage: &responses.ResponseOutputMessageParam{
-				Content: []responses.ResponseOutputMessageContentUnionParam{
-					{OfOutputText: &responses.ResponseOutputTextParam{Text: "hi"}},
-				},
-			}},
-		},
+		cwd: cwd, provider: "openai", modelName: "test",
+		history: []historyItem{{Type: "message", Role: "user", Text: "hello"}, {Type: "message", Role: "assistant", Text: "hi"}},
 		summary: "earlier context",
 		usage:   []Usage{{InputTokens: 40, CachedInputTokens: 10, OutputTokens: 2, ReasoningOutputTokens: 1, TotalTokens: 42}},
 	}
 	if err := a.StartSession(id, root); err != nil {
 		t.Fatal(err)
 	}
-	loaded := &Agent{cwd: cwd}
+	loaded := &Agent{cwd: cwd, provider: "openai", modelName: "test"}
 	if err := loaded.ResumeSession(id, root); err != nil {
 		t.Fatal(err)
 	}
-	if loaded.summary != a.summary || len(loaded.history) != 2 || loaded.history[0].OfMessage == nil || loaded.TokensUsed() != 42 {
+	if loaded.summary != a.summary || len(loaded.history) != 2 || loaded.history[0].Type != "message" || loaded.TokensUsed() != 42 {
 		t.Fatalf("loaded session = summary %q, history %#v", loaded.summary, loaded.history)
 	}
-	message := loaded.history[1].OfOutputMessage
-	if message == nil || len(message.Content) != 1 || message.Content[0].OfOutputText.Text != "hi" {
-		t.Fatalf("loaded output message = %#v", message)
+	if loaded.history[1].Text != "hi" {
+		t.Fatalf("loaded output message = %#v", loaded.history[1])
 	}
 	sessionPath := filepath.Join(root, id, "session.json")
 	if mode := fileMode(t, sessionPath); mode != 0o600 {
@@ -52,8 +44,36 @@ func TestSessionRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(data, &fields); err != nil {
 		t.Fatal(err)
 	}
-	if len(fields) != 5 || fields["version"] != float64(sessionVersion) || fields["cwd"] == nil || fields["summary"] == nil || fields["history"] == nil || fields["usage"] == nil {
+	if len(fields) != 7 || fields["version"] != float64(sessionVersion) || fields["cwd"] == nil || fields["summary"] == nil || fields["history"] == nil || fields["usage"] == nil {
 		t.Fatalf("session fields = %#v", fields)
+	}
+}
+
+func TestResumeMigratesVersionTwoSession(t *testing.T) {
+	root, cwd := t.TempDir(), t.TempDir()
+	id := "550e8400-e29b-41d4-a716-446655440000"
+	dir := filepath.Join(root, id)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	oldHistory := []responses.ResponseInputItemUnionParam{
+		responses.ResponseInputItemParamOfMessage("hello", responses.EasyInputMessageRoleUser),
+		{OfFunctionCall: &responses.ResponseFunctionToolCallParam{CallID: "call_1", Name: "repl", Arguments: `{"code":"print(1)"}`}},
+		responses.ResponseInputItemParamOfFunctionCallOutput("call_1", "1\n"),
+	}
+	historyData, _ := json.Marshal(oldHistory)
+	var rawHistory []json.RawMessage
+	_ = json.Unmarshal(historyData, &rawHistory)
+	data, _ := json.Marshal(legacySessionFile{Version: 2, CWD: cwd, History: rawHistory})
+	if err := os.WriteFile(filepath.Join(dir, "session.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := &Agent{cwd: cwd, provider: "openai", modelName: "gpt-test"}
+	if err := a.ResumeSession(id, root); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.history) != 3 || a.history[0].Text != "hello" || a.history[1].Name != "repl" || string(a.history[1].Arguments) != `{"code":"print(1)"}` || a.history[2].Text != "1\n" {
+		t.Fatalf("migrated history = %#v", a.history)
 	}
 }
 
@@ -123,12 +143,10 @@ func fileMode(t *testing.T, path string) os.FileMode {
 }
 
 func TestConversationRestoresDisplayableMessages(t *testing.T) {
-	a := &Agent{history: []responses.ResponseInputItemUnionParam{
-		responses.ResponseInputItemParamOfMessage("[2026-08-27T14:03:01+02:00]\n\nfix session restoring", responses.EasyInputMessageRoleUser),
-		{OfFunctionCall: &responses.ResponseFunctionToolCallParam{Name: "repl", Arguments: `{"code":"pwd"}`}},
-		{OfOutputMessage: &responses.ResponseOutputMessageParam{Content: []responses.ResponseOutputMessageContentUnionParam{
-			{OfOutputText: &responses.ResponseOutputTextParam{Text: "Fixed."}},
-		}}},
+	a := &Agent{history: []historyItem{
+		{Type: "message", Role: "user", Text: "[2026-08-27T14:03:01+02:00]\n\nfix session restoring"},
+		{Type: "tool_call", Name: "repl", Arguments: json.RawMessage(`{"code":"pwd"}`)},
+		{Type: "message", Role: "assistant", Text: "Fixed."},
 	}}
 	got := a.Conversation()
 	if len(got) != 2 || got[0].Role != "user" || got[0].Text != "fix session restoring" || got[1].Role != "assistant" || got[1].Text != "Fixed." {

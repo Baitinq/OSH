@@ -15,7 +15,6 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
-	"github.com/openai/openai-go/v3/responses"
 )
 
 func TestNewUsesEnvironmentOverrides(t *testing.T) {
@@ -162,32 +161,22 @@ func TestConsumeSteeringDeliversOneMessageAtATime(t *testing.T) {
 }
 
 func TestPruneTransientHistoryKeepsConversationAndREPLCalls(t *testing.T) {
-	prior := &responses.ResponseOutputMessageParam{ID: "prior"}
-	intermediate := &responses.ResponseOutputMessageParam{ID: "intermediate"}
-	final := &responses.ResponseOutputMessageParam{ID: "final"}
-	a := &Agent{history: []responses.ResponseInputItemUnionParam{
-		responses.ResponseInputItemParamOfMessage("first", responses.EasyInputMessageRoleUser),
-		{OfOutputMessage: prior},
-		responses.ResponseInputItemParamOfMessage("second", responses.EasyInputMessageRoleUser),
-		{OfReasoning: &responses.ResponseReasoningItemParam{}},
-		{OfOutputMessage: intermediate},
-		{OfFunctionCall: &responses.ResponseFunctionToolCallParam{}},
-		{OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{}},
-		{OfOutputMessage: final},
+	a := &Agent{history: []historyItem{
+		{Type: "message", Role: "user", Text: "first"},
+		{Type: "message", Role: "assistant", Text: "prior"},
+		{Type: "message", Role: "user", Text: "second"},
+		{Type: "reasoning", Text: "thinking"},
+		{Type: "message", Role: "assistant", Text: "intermediate", transient: true},
+		{Type: "tool_call", CallID: "call_1", Name: "repl"},
+		{Type: "tool_result", CallID: "call_1", Text: "result"},
+		{Type: "message", Role: "assistant", Text: "final"},
 	}}
-
-	a.pruneTransientHistory(map[*responses.ResponseOutputMessageParam]bool{intermediate: true})
-
+	a.pruneTransientHistory()
 	if len(a.history) != 6 {
 		t.Fatalf("retained history = %#v", a.history)
 	}
-	if a.history[0].OfMessage == nil || a.history[1].OfOutputMessage != prior ||
-		a.history[2].OfMessage == nil || a.history[3].OfFunctionCall == nil ||
-		a.history[4].OfFunctionCallOutput == nil || a.history[5].OfOutputMessage != final {
+	if a.history[0].Text != "first" || a.history[1].Text != "prior" || a.history[3].Type != "tool_call" || a.history[4].Text != omittedREPLResult || a.history[5].Text != "final" {
 		t.Fatalf("retained history = %#v", a.history)
-	}
-	if output := a.history[4].OfFunctionCallOutput.Output.OfString.Value; output != omittedREPLResult {
-		t.Fatalf("retained REPL output = %q", output)
 	}
 }
 

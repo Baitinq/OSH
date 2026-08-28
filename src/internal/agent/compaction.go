@@ -6,10 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"strings"
-
-	"github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/responses"
-	"github.com/openai/openai-go/v3/shared"
 )
 
 const summaryToolOutputLimit = 2000
@@ -45,30 +41,30 @@ const summarizationPrompt = `Create a concise context checkpoint using exactly t
 
 Preserve exact technical details. When a previous summary is present, update it with the new messages rather than replacing useful existing information.`
 
-func estimateHistoryItemTokens(item responses.ResponseInputItemUnionParam) int {
+func estimateHistoryItemTokens(item historyItem) int {
 	data, _ := json.Marshal(item)
 	return (len(data) + 3) / 4
 }
 
-func isUserHistoryItem(item responses.ResponseInputItemUnionParam) bool {
-	return item.OfMessage != nil && item.OfMessage.Role == responses.EasyInputMessageRoleUser
+func isUserHistoryItem(item historyItem) bool {
+	return item.Type == "message" && item.Role == "user"
 }
 
-func isSafeHistoryCut(history []responses.ResponseInputItemUnionParam, cut int) bool {
+func isSafeHistoryCut(history []historyItem, cut int) bool {
 	calls := make(map[string]int)
 	outputs := make(map[string]int)
 	for _, item := range history[cut:] {
-		if item.OfFunctionCall != nil {
-			calls[item.OfFunctionCall.CallID]++
+		if item.Type == "tool_call" {
+			calls[item.CallID]++
 		}
-		if item.OfFunctionCallOutput != nil {
-			outputs[item.OfFunctionCallOutput.CallID]++
+		if item.Type == "tool_result" {
+			outputs[item.CallID]++
 		}
 	}
 	return maps.Equal(calls, outputs)
 }
 
-func findHistoryCut(history []responses.ResponseInputItemUnionParam, keepTokens int) int {
+func findHistoryCut(history []historyItem, keepTokens int) int {
 	if len(history) == 0 {
 		return 0
 	}
@@ -104,17 +100,17 @@ func findHistoryCut(history []responses.ResponseInputItemUnionParam, keepTokens 
 }
 
 func truncateSummaryToolOutput(item map[string]any) {
-	if item["type"] != "function_call_output" {
+	if item["type"] != "tool_result" {
 		return
 	}
-	output, ok := item["output"].(string)
+	output, ok := item["text"].(string)
 	if !ok || len(output) <= summaryToolOutputLimit {
 		return
 	}
-	item["output"] = fmt.Sprintf("%s\n\n[... %d more characters truncated]", output[:summaryToolOutputLimit], len(output)-summaryToolOutputLimit)
+	item["text"] = fmt.Sprintf("%s\n\n[... %d more characters truncated]", output[:summaryToolOutputLimit], len(output)-summaryToolOutputLimit)
 }
 
-func serializeHistory(history []responses.ResponseInputItemUnionParam) string {
+func serializeHistory(history []historyItem) string {
 	var result strings.Builder
 	for _, entry := range history {
 		data, _ := json.Marshal(entry)
@@ -147,26 +143,20 @@ func (a *Agent) compactHistory(ctx context.Context, keepTokens int) error {
 	}
 	prompt.WriteString(summarizationPrompt)
 
-	params := responses.ResponseNewParams{
-		Model:        a.modelName,
-		Instructions: openai.String(summarizationInstructions),
-		Input: responses.ResponseNewParamsInputUnion{OfInputItemList: responses.ResponseInputParam{
-			responses.ResponseInputItemParamOfMessage(prompt.String(), responses.EasyInputMessageRoleUser),
-		}},
-		MaxOutputTokens: openai.Int(4096),
-		Reasoning:       shared.ReasoningParam{Effort: shared.ReasoningEffortLow},
-		Store:           openai.Bool(false),
-	}
-	response, err := a.streamResponse(ctx, params, func(ToolEvent) {})
+	response, err := a.streamModel(ctx, modelRequest{
+		Instructions:    summarizationInstructions,
+		History:         []historyItem{{Type: "message", Role: "user", Text: prompt.String()}},
+		ReasoningEffort: "low", MaxOutputTokens: 4096,
+	}, func(ToolEvent) {})
 	if err != nil {
 		return err
 	}
-	summary := strings.TrimSpace(response.OutputText())
+	summary := strings.TrimSpace(response.Text)
 	if summary == "" {
 		return fmt.Errorf("compaction returned an empty summary")
 	}
 
 	a.summary = summary
-	a.history = append([]responses.ResponseInputItemUnionParam(nil), a.history[cut:]...)
+	a.history = append([]historyItem(nil), a.history[cut:]...)
 	return nil
 }

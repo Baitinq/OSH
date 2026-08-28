@@ -17,14 +17,34 @@ import (
 	"fn/internal/agent"
 )
 
-func TestRequireOpenAIAPIKey(t *testing.T) {
+func TestRequireAPIKey(t *testing.T) {
+	t.Setenv("FN_PROVIDER", "")
+	t.Setenv("FN_MODEL", "")
 	t.Setenv("OPENAI_API_KEY", "")
-	if err := requireOpenAIAPIKey(); err == nil {
+	if err := requireAPIKey(); err == nil {
 		t.Fatal("expected an error when OPENAI_API_KEY is empty")
 	}
 	t.Setenv("OPENAI_API_KEY", "test-key")
-	if err := requireOpenAIAPIKey(); err != nil {
+	if err := requireAPIKey(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	t.Setenv("FN_MODEL", "gemini-3.7-flash")
+	t.Setenv("GEMINI_API_KEY", "")
+	if err := requireAPIKey(); err == nil || !strings.Contains(err.Error(), "GEMINI_API_KEY") {
+		t.Fatalf("Gemini error = %v", err)
+	}
+	t.Setenv("GEMINI_API_KEY", "test-gemini-key")
+	if err := requireAPIKey(); err != nil {
+		t.Fatalf("unexpected Gemini error: %v", err)
+	}
+	t.Setenv("FN_MODEL", "claude-sonnet-4-20250514")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	if err := requireAPIKey(); err == nil || !strings.Contains(err.Error(), "ANTHROPIC_API_KEY") {
+		t.Fatalf("Anthropic error = %v", err)
+	}
+	t.Setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+	if err := requireAPIKey(); err != nil {
+		t.Fatalf("unexpected Anthropic error: %v", err)
 	}
 }
 
