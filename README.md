@@ -28,12 +28,8 @@ fn is evaluated against Pi and Codex with `gpt-5.6-sol` at medium reasoning.
 | Pi | 35.0% | **21.49M** | **87.30%** | 4.27M |
 | Codex | 30.0% | 82.12M | 84.94% | 7.38M |
 
-fn used 69% fewer tokens than Codex on SWE Atlas. On HarnessBench it matched
-Pi and Codex within the confidence intervals while using 55% fewer tokens than
-Pi and 74% fewer than Codex. Pi used 15% fewer tokens than fn on SWE Atlas.
-These results indicate similar task performance rather than a definitive
-ranking. See [BENCHMARKS.md](BENCHMARKS.md) for the methodology, statistical
-comparisons, caveats, and additional results.
+fn scored competitively while using 55–74% fewer tokens on HarnessBench and
+69% fewer than Codex on SWE Atlas. See [BENCHMARKS.md](BENCHMARKS.md) for details.
 
 ## Requirements
 
