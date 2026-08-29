@@ -70,5 +70,4 @@ jobs:
           gh release create "$tag" dist/* \
             --target "$GITHUB_SHA" \
             --title "Daily release $(date -u +%Y-%m-%d)" \
-            --prerelease \
             "${notes[@]}"
