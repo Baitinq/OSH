@@ -1268,6 +1268,7 @@ func TestRenderedMarkdownFitsWidth(t *testing.T) {
 		"1. A long list item that must wrap and retain its continuation indentation.",
 		"[documentation](https://example.com/a/very/long/documentation/path)",
 		"```go\nfmt.Println(\"a very long code line that exceeds the width\")\n```",
+		"```\n" + strings.Repeat("-", 100) + "\n```",
 	}
 	for _, input := range inputs {
 		lines := renderedMarkdownLines(input, 24)
