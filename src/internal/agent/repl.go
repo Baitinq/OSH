@@ -29,6 +29,7 @@ import signal
 import subprocess
 import sys
 import traceback
+from typing import Optional
 import urllib.parse
 import urllib.request
 
@@ -42,7 +43,7 @@ _web_search_url = "https://html.duckduckgo.com/html/"
 class ShellResult:
     stdout: str
     exit_code: int
-    error: str | None = None
+    error: Optional[str] = None
 
 @dataclasses.dataclass
 class SearchResult:
@@ -98,7 +99,7 @@ def shell(command, timeout=None):
         except KeyboardInterrupt:
             process.wait()
             raise
-        error = None if process.returncode == 0 else f"exit status {process.returncode}"
+        error: Optional[str] = None if process.returncode == 0 else f"exit status {process.returncode}"
         return ShellResult(output, process.returncode, error)
     finally:
         _active_process = None

@@ -42,9 +42,76 @@ a comprehensive coding-agent ranking. Pi token counts came from the original
 runs. fn and Codex counts came from score-equivalent reruns after comparable
 token reporting was enabled.
 
-- [Methodology and reproduction instructions](src/benchmarks/harnessbench/README.md)
-- [Detailed report](src/benchmarks/harnessbench/results.html)
-- [Machine-readable results](src/benchmarks/harnessbench/results-60x2-20260827.json)
+The custom HarnessBench runner has since been removed in favor of using Harbor
+for benchmark execution and result collection.
+
+## SWE Atlas Codebase Q&A
+
+[SWE Atlas](https://scale.com/research/swe_atlas) evaluates questions that
+require navigating and understanding real repositories. This comparison used a
+fixed 40-task subset: eight tasks from each of Kitty, SimpleLogin, Scapy, Maddy,
+and TruffleHog. Every harness received the same task and repository in an
+isolated Harbor environment.
+
+- Model: `openai/gpt-5.6-sol`
+- Reasoning effort: medium
+- Harbor: 0.23.0
+- Harnesses: fn `7c3886b` plus the Python 3.8 compatibility fix, Pi 0.84.2,
+  Codex 0.144.1
+- Score: upstream rubric grader using `gpt-4.1-mini`
+- Repetitions: one final scored attempt per task and harness
+
+### Results
+
+| Harness | Passed | Pass rate |
+| --- | ---: | ---: |
+| fn agent | **15/40** | **37.5%** |
+| Pi | 14/40 | 35.0% |
+| Codex | 12/40 | 30.0% |
+
+The differences were not statistically significant. Paired outcomes had three
+fn-only and two Pi-only passes (exact McNemar p=1.00), and eight fn-only and five
+Codex-only passes (p=0.58). At this sample size, the result supports approximate
+parity rather than a ranking.
+
+The benchmark was run in two balanced 20-task batches. Infrastructure failures
+in the first batch were rerun after fixing fn's support for repository images
+with Python 3.8 or 3.9; the final attempt for each task is reported. Timeouts,
+policy refusals, and agent exits in the final runs count as failures. SWE Atlas
+uses an LLM rubric grader, so its scores are less deterministic than test-based
+coding benchmarks.
+
+## ContextBench issue resolution
+
+[ContextBench](https://github.com/EuniAI/ContextBench) provides repository-level
+issues with human-annotated relevant context. This comparison sampled 20 tasks
+from its verified 500-task selection: ten Django and ten scikit-learn issues.
+The harnesses solved the issues in Harbor, and the corresponding SWE-bench test
+verifiers scored the resulting patches.
+
+- Model: `openai/gpt-5.6-sol`
+- Reasoning effort: medium
+- Harnesses: the same versions as the SWE Atlas comparison
+- Timeout: 25 minutes per agent attempt
+- Repetitions: one per task and harness
+
+### Results
+
+| Harness | Passed | Pass rate |
+| --- | ---: | ---: |
+| fn agent | **18/20** | **90%** |
+| Pi | 17/20 | 85% |
+| Codex | 17/20 | 85% |
+
+All harnesses completed all 20 tasks without infrastructure exceptions. Paired
+outcomes do not show a significant difference: fn had two unique passes versus
+one for Pi, and one unique pass versus none for Codex (exact McNemar p=1.00 for
+both comparisons).
+
+This run measures end-to-end issue resolution on tasks selected by ContextBench;
+it does **not** report ContextBench's official file, symbol, or span retrieval
+metrics. Twenty tasks and one attempt per task are enough for a smoke comparison,
+not a stable estimate of general issue-resolution ability.
 
 ## Aider Polyglot
 
