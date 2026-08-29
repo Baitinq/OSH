@@ -10,6 +10,7 @@ import (
 	"charm.land/glamour/v2"
 	"charm.land/glamour/v2/styles"
 	"github.com/alecthomas/chroma/v2/quick"
+	"github.com/charmbracelet/x/ansi"
 	tui "github.com/grindlemire/go-tui"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -283,9 +284,12 @@ func renderedMarkdownLines(text string, width int) []string {
 	if rendered == "" {
 		return nil
 	}
-	lines := strings.Split(rendered, "\n")
-	for i, line := range lines {
-		lines[i] = " " + trimMarkdownPadding(line)
+	var lines []string
+	for _, line := range strings.Split(rendered, "\n") {
+		wrapped := ansi.Hardwrap(trimMarkdownPadding(line), width-1, true)
+		for line := range strings.SplitSeq(wrapped, "\n") {
+			lines = append(lines, " "+line)
+		}
 	}
 	return lines
 }
