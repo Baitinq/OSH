@@ -63,11 +63,11 @@ isolated Harbor environment.
 
 ### Results
 
-| Harness | Passed | Pass rate |
-| --- | ---: | ---: |
-| fn agent | **15/40** | **37.5%** |
-| Pi | 14/40 | 35.0% |
-| Codex | 12/40 | 30.0% |
+| Harness | Passed | Pass rate | Input tokens | Output tokens | Total tokens |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| fn agent | **15/40** | **37.5%** | 24.97M | 0.27M | 25.24M |
+| Pi | 14/40 | 35.0% | **21.23M** | **0.26M** | **21.49M** |
+| Codex | 12/40 | 30.0% | 81.73M | 0.39M | 82.12M |
 
 The differences were not statistically significant. Paired outcomes had three
 fn-only and two Pi-only passes (exact McNemar p=1.00), and eight fn-only and five
@@ -97,11 +97,11 @@ verifiers scored the resulting patches.
 
 ### Results
 
-| Harness | Passed | Pass rate |
-| --- | ---: | ---: |
-| fn agent | **18/20** | **90%** |
-| Pi | 17/20 | 85% |
-| Codex | 17/20 | 85% |
+| Harness | Passed | Pass rate | Input tokens | Output tokens | Total tokens |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| fn agent | **18/20** | **90%** | 4.01M | 0.05M | 4.06M |
+| Pi | 17/20 | 85% | **3.53M** | 0.07M | **3.59M** |
+| Codex | 17/20 | 85% | 7.64M | **0.05M** | 7.69M |
 
 All harnesses completed all 20 tasks without infrastructure exceptions. Paired
 outcomes do not show a significant difference: fn had two unique passes versus
@@ -112,6 +112,12 @@ This run measures end-to-end issue resolution on tasks selected by ContextBench;
 it does **not** report ContextBench's official file, symbol, or span retrieval
 metrics. Twenty tasks and one attempt per task are enough for a smoke comparison,
 not a stable estimate of general issue-resolution ability.
+
+Token totals are provider-reported input plus output tokens; cached input remains
+part of the input total. Harbor adapters differ in how they expose cache usage,
+so only aggregate input and output are compared. fn used 69% fewer total tokens
+than Codex on SWE Atlas and 47% fewer on ContextBench, while Pi used 15% and 12%
+fewer than fn, respectively.
 
 ## Aider Polyglot
 
