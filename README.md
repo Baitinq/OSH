@@ -20,13 +20,17 @@ and no framework hidden underneath.
 
 ## Benchmarks
 
-fn is evaluated against Pi and Codex on general agent, coding, repository Q&A,
-and issue-resolution benchmarks. With `gpt-5.6-sol`, fn scored 37.5% on a
-40-task SWE Atlas subset and 90% on a 20-task ContextBench issue-resolution
-subset, compared with 35% and 85% for Pi and 30% and 85% for Codex. These small
-subsets indicate similar performance rather than a definitive ranking. See
-[BENCHMARKS.md](BENCHMARKS.md) for methodology, caveats, artifacts, and the
-HarnessBench and Aider Polyglot results.
+fn is evaluated against Pi and Codex with `gpt-5.6-sol` at medium reasoning.
+
+| Harness | SWE Atlas (40 tasks) | ContextBench (20 tasks) |
+| --- | ---: | ---: |
+| **fn agent** | **37.5%** | **90%** |
+| Pi | 35.0% | 85% |
+| Codex | 30.0% | 85% |
+
+These subsets indicate similar performance rather than a definitive ranking.
+See [BENCHMARKS.md](BENCHMARKS.md) for the methodology, statistical comparisons,
+caveats, and additional results.
 
 ## Requirements
 
