@@ -22,15 +22,16 @@ and no framework hidden underneath.
 
 fn is evaluated against Pi and Codex with `gpt-5.6-sol` at medium reasoning.
 
-| Harness | SWE Atlas (40 tasks) | ContextBench (20 tasks) |
-| --- | ---: | ---: |
-| **fn agent** | **37.5%** | **90%** |
-| Pi | 35.0% | 85% |
-| Codex | 30.0% | 85% |
+| Harness | SWE Atlas score | Tokens | ContextBench score | Tokens |
+| --- | ---: | ---: | ---: | ---: |
+| **fn agent** | **37.5%** | 25.24M | **90%** | 4.06M |
+| Pi | 35.0% | **21.49M** | 85% | **3.59M** |
+| Codex | 30.0% | 82.12M | 85% | 7.69M |
 
-These subsets indicate similar performance rather than a definitive ranking.
-See [BENCHMARKS.md](BENCHMARKS.md) for the methodology, statistical comparisons,
-caveats, and additional results.
+fn used 69% fewer tokens than Codex on SWE Atlas and 47% fewer on
+ContextBench; Pi used the fewest tokens. These subsets indicate similar task
+performance rather than a definitive ranking. See [BENCHMARKS.md](BENCHMARKS.md)
+for the methodology, statistical comparisons, caveats, and additional results.
 
 ## Requirements
 
