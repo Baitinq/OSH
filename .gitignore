@@ -12,3 +12,9 @@
 
 # Benchmark output
 /src/jobs/
+
+# Local benchmark data
+/src/benchmarks/bin/
+/src/benchmarks/contextbench-upstream/
+/src/benchmarks/datasets/
+/src/benchmarks/runs/

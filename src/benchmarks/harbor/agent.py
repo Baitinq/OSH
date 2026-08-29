@@ -1,5 +1,6 @@
 import json
 import shlex
+from pathlib import Path
 from typing import override
 
 from harbor.agents.installed.base import BaseInstalledAgent, with_prompt_template
@@ -15,9 +16,12 @@ class FnAgent(BaseInstalledAgent):
         base_url_envs=("FN_BASE_URL", "OPENAI_BASE_URL"),
     )
 
-    def __init__(self, *args, reasoning_effort: str = "medium", **kwargs):
+    def __init__(
+        self, *args, reasoning_effort: str = "medium", local_binary: str | None = None, **kwargs
+    ):
         super().__init__(*args, **kwargs)
         self.reasoning_effort = reasoning_effort
+        self.local_binary = local_binary
 
     @staticmethod
     @override
@@ -26,6 +30,15 @@ class FnAgent(BaseInstalledAgent):
 
     @override
     async def install(self, environment: BaseEnvironment) -> None:
+        if self.local_binary:
+            await self.exec_as_root(environment, command="mkdir -p /installed-agent/bin")
+            await environment.upload_file(Path(self.local_binary), "/installed-agent/bin/fn")
+            await self.exec_as_root(
+                environment,
+                command="chmod 755 /installed-agent/bin/fn",
+            )
+            return
+
         await self.ensure_system_dependencies(
             environment,
             ("curl", "ca_certificates", "python3", "tar"),

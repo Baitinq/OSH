@@ -20,10 +20,13 @@ and no framework hidden underneath.
 
 ## Benchmarks
 
-fn is evaluated against Pi and Codex on
-[HarnessBench](https://github.com/Qihoo360/harness-bench), a suite of
-programmatically scored agent tasks. See [BENCHMARKS.md](BENCHMARKS.md) for the
-results, methodology, artifacts, and additional benchmarks.
+fn is evaluated against Pi and Codex on general agent, coding, repository Q&A,
+and issue-resolution benchmarks. With `gpt-5.6-sol`, fn scored 37.5% on a
+40-task SWE Atlas subset and 90% on a 20-task ContextBench issue-resolution
+subset, compared with 35% and 85% for Pi and 30% and 85% for Codex. These small
+subsets indicate similar performance rather than a definitive ranking. See
+[BENCHMARKS.md](BENCHMARKS.md) for methodology, caveats, artifacts, and the
+HarnessBench and Aider Polyglot results.
 
 ## Requirements
 
