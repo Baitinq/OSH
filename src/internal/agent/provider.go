@@ -190,15 +190,10 @@ func geminiContents(history []historyItem, provider, model string, includeToolCa
 	var contents []geminiContent
 	appendPart := func(role string, p geminiPart) {
 		if len(contents) > 0 && contents[len(contents)-1].Role == role {
-			lastParts := contents[len(contents)-1].Parts
-			isLastFuncResp := len(lastParts) > 0 && lastParts[len(lastParts)-1].FunctionResponse != nil
-			isCurFuncResp := p.FunctionResponse != nil
-			if isLastFuncResp == isCurFuncResp {
-				contents[len(contents)-1].Parts = append(contents[len(contents)-1].Parts, p)
-				return
-			}
+			contents[len(contents)-1].Parts = append(contents[len(contents)-1].Parts, p)
+		} else {
+			contents = append(contents, geminiContent{Role: role, Parts: []geminiPart{p}})
 		}
-		contents = append(contents, geminiContent{Role: role, Parts: []geminiPart{p}})
 	}
 	for _, h := range history {
 		signature := ""
@@ -229,9 +224,6 @@ func geminiContents(history []historyItem, provider, model string, includeToolCa
 			}
 			appendPart("user", geminiPart{FunctionResponse: &geminiFunctionResponse{Name: h.Name, ID: id, Response: geminiToolResponse(h)}})
 		}
-	}
-	for len(contents) > 0 && contents[len(contents)-1].Role == "model" {
-		contents = contents[:len(contents)-1]
 	}
 	return contents
 }

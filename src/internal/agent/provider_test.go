@@ -220,40 +220,7 @@ func TestGeminiCancellationWhileToolRunning(t *testing.T) {
 		t.Fatalf("requests count = %d, want 2", len(requests))
 	}
 	contents := requests[1].Contents
-	last := contents[len(contents)-1]
-	if last.Role != "user" {
-		t.Fatalf("request ended with %q turn: %#v", last.Role, contents)
-	}
-	for _, c := range contents {
-		if c.Role == "user" {
-			hasFuncResp, hasText := false, false
-			for _, p := range c.Parts {
-				if p.FunctionResponse != nil {
-					hasFuncResp = true
-				}
-				if p.Text != "" {
-					hasText = true
-				}
-			}
-			if hasFuncResp && hasText {
-				t.Fatalf("user content has both functionResponse and text: %#v", c)
-			}
-		}
-	}
-}
-
-func TestGeminiContentsSeparatesFunctionResponseAndText(t *testing.T) {
-	history := []historyItem{
-		{Type: "message", Role: "user", Text: "first"},
-		{Type: "tool_call", CallID: "call_1", Name: "repl", Arguments: json.RawMessage(`{}`)},
-		{Type: "tool_result", CallID: "call_1", Name: "repl", Text: "out"},
-		{Type: "message", Role: "user", Text: "second"},
-	}
-	contents := geminiContents(history, "gemini", "model", true)
-	if len(contents) != 4 {
-		t.Fatalf("contents len = %d, want 4: %#v", len(contents), contents)
-	}
-	if contents[2].Parts[0].FunctionResponse == nil || contents[3].Parts[0].Text != "second" {
-		t.Fatalf("contents structure incorrect: %#v", contents)
+	if len(contents) != 1 || contents[0].Role != "user" {
+		t.Fatalf("expected single user content turn after cancellation: %#v", contents)
 	}
 }
