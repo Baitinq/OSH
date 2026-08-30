@@ -28,7 +28,7 @@ func TestRequireAPIKey(t *testing.T) {
 	if err := requireAPIKey(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	t.Setenv("FN_MODEL", "gemini-3.7-flash")
+	t.Setenv("FN_PROVIDER", "gemini")
 	t.Setenv("GEMINI_API_KEY", "")
 	if err := requireAPIKey(); err == nil || !strings.Contains(err.Error(), "GEMINI_API_KEY") {
 		t.Fatalf("Gemini error = %v", err)
@@ -37,7 +37,7 @@ func TestRequireAPIKey(t *testing.T) {
 	if err := requireAPIKey(); err != nil {
 		t.Fatalf("unexpected Gemini error: %v", err)
 	}
-	t.Setenv("FN_MODEL", "claude-sonnet-4-20250514")
+	t.Setenv("FN_PROVIDER", "anthropic")
 	t.Setenv("ANTHROPIC_API_KEY", "")
 	if err := requireAPIKey(); err == nil || !strings.Contains(err.Error(), "ANTHROPIC_API_KEY") {
 		t.Fatalf("Anthropic error = %v", err)

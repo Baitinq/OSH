@@ -62,11 +62,11 @@ export PATH="$PATH:$(go env GOPATH)/bin"
 
 ## Configuration
 
-Set `OPENAI_API_KEY`, `GEMINI_API_KEY`, or `ANTHROPIC_API_KEY` for the corresponding provider. Model names beginning with `gemini-` select Google's native Generative AI API; names beginning with `claude-` select Anthropic's native Messages API. Gemini and Anthropic use API-key authentication directly; OAuth and Vertex AI are not used.
+Set `OPENAI_API_KEY`, `GEMINI_API_KEY`, or `ANTHROPIC_API_KEY` for the corresponding provider. Set `FN_PROVIDER` to `gemini` for Google's native Generative AI API or `anthropic` for Anthropic's native Messages API. Gemini and Anthropic use API-key authentication directly; OAuth and Vertex AI are not used.
 
 | Variable | Default |
 | --- | --- |
-| `FN_PROVIDER` | inferred from `FN_MODEL` (`openai`, `gemini`, or `anthropic`) |
+| `FN_PROVIDER` | `openai` (`openai`, `gemini`, or `anthropic`) |
 | `FN_BASE_URL` | provider API URL |
 | `FN_MODEL` | `gpt-5.6-sol` |
 | `FN_REASONING_EFFORT` | `medium` |

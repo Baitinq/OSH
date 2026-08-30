@@ -130,8 +130,8 @@ func TestGeminiCancellationDoesNotLeaveModelTurn(t *testing.T) {
 	}
 }
 
-func TestNewSelectsGeminiFromModel(t *testing.T) {
-	t.Setenv("FN_PROVIDER", "")
+func TestNewSelectsGeminiProvider(t *testing.T) {
+	t.Setenv("FN_PROVIDER", "gemini")
 	t.Setenv("FN_MODEL", "gemini-3.7-flash")
 	t.Setenv("FN_BASE_URL", "")
 	a := mustNewAgent(t)

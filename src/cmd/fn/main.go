@@ -18,15 +18,14 @@ import (
 )
 
 func requireAPIKey() error {
-	model := os.Getenv("FN_MODEL")
 	provider := os.Getenv("FN_PROVIDER")
-	if provider == "gemini" || strings.HasPrefix(model, "gemini-") {
+	if provider == "gemini" {
 		if os.Getenv("GEMINI_API_KEY") == "" && os.Getenv("FN_API_KEY") == "" {
 			return fmt.Errorf("GEMINI_API_KEY or FN_API_KEY must be set")
 		}
 		return nil
 	}
-	if provider == "anthropic" || strings.HasPrefix(model, "claude-") {
+	if provider == "anthropic" {
 		if os.Getenv("ANTHROPIC_API_KEY") == "" {
 			return fmt.Errorf("ANTHROPIC_API_KEY must be set")
 		}

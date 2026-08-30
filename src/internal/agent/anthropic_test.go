@@ -105,8 +105,8 @@ func TestAnthropicHistoryCompatibility(t *testing.T) {
 	}
 }
 
-func TestNewSelectsAnthropicFromModel(t *testing.T) {
-	t.Setenv("FN_PROVIDER", "")
+func TestNewSelectsAnthropicProvider(t *testing.T) {
+	t.Setenv("FN_PROVIDER", "anthropic")
 	t.Setenv("FN_MODEL", "claude-sonnet-4-20250514")
 	t.Setenv("FN_BASE_URL", "")
 	a := mustNewAgent(t)

@@ -269,16 +269,7 @@ func New() (*Agent, error) {
 	home, _ := os.UserHomeDir()
 	skills := loadSkills(cwd, home)
 	model := envOrDefault("FN_MODEL", defaultModelName)
-	provider := os.Getenv("FN_PROVIDER")
-	if provider == "" && strings.HasPrefix(model, "gemini-") {
-		provider = "gemini"
-	}
-	if provider == "" && strings.HasPrefix(model, "claude-") {
-		provider = "anthropic"
-	}
-	if provider == "" {
-		provider = "openai"
-	}
+	provider := envOrDefault("FN_PROVIDER", "openai")
 	baseURL := defaultBaseURL
 	if provider == "gemini" {
 		baseURL = defaultGeminiBaseURL
