@@ -27,6 +27,12 @@
 
           subPackages = ["cmd/fn"];
 
+          nativeBuildInputs = [pkgs.makeWrapper pkgs.python3];
+
+          postInstall = ''
+            wrapProgram $out/bin/fn --prefix PATH : ${pkgs.lib.makeBinPath [pkgs.python3]}
+          '';
+
           meta = with pkgs.lib; {
             description = "A small terminal-based LLM agent with shell access";
             homepage = "https://github.com/Baitinq/fn-agent";
