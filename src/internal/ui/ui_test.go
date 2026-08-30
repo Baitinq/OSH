@@ -11,7 +11,7 @@ import (
 
 	tui "github.com/grindlemire/go-tui"
 
-	"fn/internal/agent"
+	"github.com/Baitinq/fn-agent/src/internal/agent"
 )
 
 const (

@@ -13,8 +13,8 @@ import (
 
 	tui "github.com/grindlemire/go-tui"
 
-	"fn/internal/agent"
-	"fn/internal/assert"
+	"github.com/Baitinq/fn-agent/src/internal/agent"
+	"github.com/Baitinq/fn-agent/src/internal/assert"
 )
 
 type message struct {

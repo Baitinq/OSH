@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"fn/internal/agent"
+	"github.com/Baitinq/fn-agent/src/internal/agent"
 	"time"
 )
 

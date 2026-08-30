@@ -19,7 +19,7 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
 
-	"fn/internal/assert"
+	"github.com/Baitinq/fn-agent/src/internal/assert"
 )
 
 const systemPrompt = `You are an expert general-purpose assistant operating inside fn agent, a terminal agent harness. You help users answer questions and complete tasks by reasoning, inspecting the environment, running code, and modifying files.

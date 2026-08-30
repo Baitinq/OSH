@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"fn/internal/agent"
+	"github.com/Baitinq/fn-agent/src/internal/agent"
 )
 
 func TestRequireAPIKey(t *testing.T) {

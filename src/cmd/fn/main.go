@@ -12,9 +12,9 @@ import (
 	"strconv"
 	"strings"
 
-	"fn/internal/agent"
-	"fn/internal/assert"
-	"fn/internal/ui"
+	"github.com/Baitinq/fn-agent/src/internal/agent"
+	"github.com/Baitinq/fn-agent/src/internal/assert"
+	"github.com/Baitinq/fn-agent/src/internal/ui"
 )
 
 func requireAPIKey() error {

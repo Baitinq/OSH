@@ -1,4 +1,4 @@
-module fn
+module github.com/Baitinq/fn-agent/src
 
 go 1.26.0
 

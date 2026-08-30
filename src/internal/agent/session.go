@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"fn/internal/assert"
+	"github.com/Baitinq/fn-agent/src/internal/assert"
 )
 
 type ConversationMessage struct {

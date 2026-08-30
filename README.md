@@ -31,6 +31,21 @@ fn is evaluated against Pi and Codex with `gpt-5.6-sol` at medium reasoning.
 fn scored competitively while using 55–74% fewer tokens on HarnessBench and
 69% fewer than Codex on SWE Atlas. See [BENCHMARKS.md](BENCHMARKS.md) for details.
 
+## Install
+
+Install the latest version with Go:
+
+```sh
+go install github.com/Baitinq/fn-agent/src/cmd/fn@latest
+```
+
+Make sure Go's binary directory is in your `PATH`. By default, this is
+`$HOME/go/bin`:
+
+```sh
+export PATH="$PATH:$(go env GOPATH)/bin"
+```
+
 ## Requirements
 
 - Go 1.26 or newer

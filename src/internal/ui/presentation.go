@@ -17,7 +17,7 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/text"
 
-	"fn/internal/assert"
+	"github.com/Baitinq/fn-agent/src/internal/assert"
 )
 
 func (s *fnUI) render(width int, viewportHeight ...int) ([]string, int, int) {
