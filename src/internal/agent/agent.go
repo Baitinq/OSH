@@ -524,9 +524,7 @@ func (a *Agent) streamResponse(ctx context.Context, params responses.ResponseNew
 				ReasoningOutputTokens: resp.Usage.OutputTokensDetails.ReasoningTokens,
 				TotalTokens:           resp.Usage.TotalTokens,
 			}
-			a.usage = append(a.usage, usage)
-			a.tokensUsed += usage.TotalTokens
-			emit(ToolEvent{Kind: ToolEventContextTokens, ContextTokens: usage.TotalTokens})
+			a.recordUsage(usage, emit)
 		case "response.failed":
 			failure := event.AsResponseFailed().Response
 			failed = &responseFailure{code: string(failure.Error.Code), message: failure.Error.Message}
