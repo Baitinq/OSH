@@ -209,11 +209,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 	defer removeRunningSession()
 	respond := func(input string, steer <-chan string, emit func(agent.ToolEvent), ctx context.Context) agent.Response {
-		response := a.Respond(input, steer, emit, ctx)
-		if err := a.SaveSession(); err != nil && response.Err == nil {
-			response.Err = fmt.Errorf("save session: %w", err)
-		}
-		return response
+		return a.Respond(input, steer, emit, ctx)
 	}
 	if printMode {
 		if jsonMode {

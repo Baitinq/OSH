@@ -178,6 +178,35 @@ func (a *Agent) StartSession(id, sessionsDir string) error {
 	return a.SaveSession()
 }
 
+func (a *Agent) completeInterruptedToolCalls() bool {
+	pending := make(map[string]historyItem)
+	var order []string
+	for _, item := range a.history {
+		switch item.Type {
+		case "tool_call":
+			if _, exists := pending[item.CallID]; !exists {
+				order = append(order, item.CallID)
+			}
+			pending[item.CallID] = item
+		case "tool_result":
+			delete(pending, item.CallID)
+		}
+	}
+	changed := false
+	for _, callID := range order {
+		call, exists := pending[callID]
+		if !exists {
+			continue
+		}
+		a.history = append(a.history, historyItem{
+			Type: "tool_result", CallID: callID, Name: call.Name,
+			Text: "tool error: execution was interrupted before completion", ToolError: true,
+		})
+		changed = true
+	}
+	return changed
+}
+
 func (a *Agent) ResumeSession(id, sessionsDir string) error {
 	a.assertSessionUninitialized()
 	assertSessionArguments(id, sessionsDir)
@@ -210,6 +239,11 @@ func (a *Agent) ResumeSession(id, sessionsDir string) error {
 	if _, err := os.Stat(statePath); err == nil {
 		if err := a.pythonREPL().restore(statePath); err != nil {
 			return fmt.Errorf("restore Python state: %w", err)
+		}
+	}
+	if a.completeInterruptedToolCalls() {
+		if err := a.SaveSession(); err != nil {
+			return fmt.Errorf("repair interrupted session: %w", err)
 		}
 	}
 	return nil

@@ -602,7 +602,7 @@ func (a *Agent) input() []historyItem {
 	return append([]historyItem{summary}, history...)
 }
 
-func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), ctx context.Context) Response {
+func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), ctx context.Context) (result Response) {
 	a.assertSessionInitialized()
 	assert.That(emit != nil, "respond without event callback")
 	assert.That(ctx != nil, "respond without context")
@@ -612,11 +612,17 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 	if err := a.appendUserMessage(msg); err != nil {
 		return Response{Err: err}
 	}
+	if err := a.SaveSession(); err != nil {
+		return Response{Err: fmt.Errorf("save session: %w", err)}
+	}
 	defer func() {
 		if ctx.Err() != nil {
 			a.history = a.history[:turnStart+1]
 		}
 		a.pruneTransientHistory()
+		if err := a.SaveSession(); err != nil && result.Err == nil {
+			result.Err = fmt.Errorf("save session: %w", err)
+		}
 	}()
 	var text string
 	var contextTokens int64
@@ -671,6 +677,9 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 			return Response{}
 		}
 		a.history = append(a.history, resp.Items...)
+		if err := a.SaveSession(); err != nil {
+			return Response{Err: fmt.Errorf("save session: %w", err)}
+		}
 		if len(resp.ToolCalls) == 0 {
 			emit(ToolEvent{Kind: ToolEventReasoningDone})
 			text = resp.Text
@@ -683,6 +692,9 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 					if a.history[i].Type == "message" {
 						a.history[i].transient = true
 					}
+				}
+				if err := a.SaveSession(); err != nil {
+					return Response{Err: fmt.Errorf("save session: %w", err)}
 				}
 				continue
 			}
@@ -728,12 +740,18 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 				emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
 			}
 			a.history = append(a.history, historyItem{Type: "tool_result", CallID: call.CallID, Name: call.Name, Text: output, ToolError: failed})
+			if err := a.SaveSession(); err != nil {
+				return Response{Err: fmt.Errorf("save session: %w", err)}
+			}
 			if ctx.Err() != nil {
 				return Response{}
 			}
 		}
 		if _, err := a.consumeSteering(steer, emit); err != nil {
 			return Response{Err: err}
+		}
+		if err := a.SaveSession(); err != nil {
+			return Response{Err: fmt.Errorf("save session: %w", err)}
 		}
 	}
 	return Response{Text: text, ContextTokens: contextTokens}
