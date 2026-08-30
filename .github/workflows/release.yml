@@ -1,4 +1,4 @@
-name: Daily release
+name: Release
 
 on:
   schedule:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: daily-release
+  group: release
 
 jobs:
   release:
@@ -22,7 +22,7 @@ jobs:
       - name: Check for changes
         id: changes
         run: |
-          previous=$(git tag --list 'daily-*' --sort=-creatordate | head -n 1)
+          previous=$(git tag --sort=-creatordate | head -n 1)
           if [ -n "$previous" ] && [ "$(git rev-list -n 1 "$previous")" = "$GITHUB_SHA" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
@@ -62,12 +62,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PREVIOUS: ${{ steps.changes.outputs.previous }}
         run: |
-          tag="daily-$(date -u +%Y%m%d)-$(git rev-parse --short=7 HEAD)"
+          tag="v$(date -u +%Y.%m.%d)"
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            i=1
+            while git rev-parse "${tag}.${i}" >/dev/null 2>&1; do
+              i=$((i + 1))
+            done
+            tag="${tag}.${i}"
+          fi
           notes=(--generate-notes)
           if [ -n "$PREVIOUS" ]; then
             notes+=(--notes-start-tag "$PREVIOUS")
           fi
           gh release create "$tag" dist/* \
             --target "$GITHUB_SHA" \
-            --title "Daily release $(date -u +%Y-%m-%d)" \
+            --title "$tag" \
             "${notes[@]}"
