@@ -53,31 +53,6 @@ export ANTHROPIC_API_KEY='...'
 FN_MODEL=claude-sonnet-5 go run ./cmd/fn
 ```
 
-To build a local binary:
-
-```sh
-cd src
-go build -o fn ./cmd/fn
-./fn
-```
-
-For non-interactive use, print only the final response to stdout. Piped input is
-appended to the prompt:
-
-```sh
-fn -p "summarize the changes in this repository"
-git diff | fn -p "review this diff"
-cat error.log | fn --print "find the root cause"
-```
-
-Use `--json` with print mode to emit one JSONL record per model response with its
-input, cached input, output, reasoning, and total token usage, followed by the final
-result:
-
-```sh
-fn -p --json "summarize the changes in this repository"
-```
-
 ## Sessions
 
 `fn` starts a new session by default and shows its UUID in the status line. Sessions are saved under `~/.fn/sessions` after each response. Resume one explicitly with:
@@ -165,6 +140,33 @@ Reasoning summaries stream as italic gray text. REPL calls appear as Python cell
 and model-visible output is capped at 2,000 lines or 50KB. Primary-screen rendering
 keeps terminal scrollback, selection, search, and copying native. Distinguishing
 `Shift+Enter` requires terminal keyboard-enhancement support.
+
+## Build and non-interactive use
+
+To build a local binary:
+
+```sh
+cd src
+go build -o fn ./cmd/fn
+./fn
+```
+
+For non-interactive use, print only the final response to stdout. Piped input is
+appended to the prompt:
+
+```sh
+fn -p "summarize the changes in this repository"
+git diff | fn -p "review this diff"
+cat error.log | fn --print "find the root cause"
+```
+
+Use `--json` with print mode to emit one JSONL record per model response with its
+input, cached input, output, reasoning, and total token usage, followed by the final
+result:
+
+```sh
+fn -p --json "summarize the changes in this repository"
+```
 
 ## Test
 
