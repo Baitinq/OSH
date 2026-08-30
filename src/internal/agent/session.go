@@ -7,11 +7,32 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"fn/internal/assert"
 )
 
 type ConversationMessage struct {
 	Role string
 	Text string
+}
+
+func (a *Agent) assertSessionInitialized() {
+	assert.That(a.sessionID != "", "agent has no session ID")
+	assert.That(a.sessionDir != "", "agent has no session directory")
+	assert.That(filepath.IsAbs(a.sessionDir), "session directory is not absolute")
+	assert.That(filepath.Base(a.sessionDir) == a.sessionID, "session directory does not match session ID")
+}
+
+func (a *Agent) assertSessionUninitialized() {
+	assert.That(a.sessionID == "", "agent already has a session ID")
+	assert.That(a.sessionDir == "", "agent already has a session directory")
+}
+
+func assertSessionArguments(id, sessionsDir string) {
+	assert.That(id != "", "empty session ID")
+	assert.That(filepath.Base(id) == id, "session ID contains a path separator")
+	assert.That(sessionsDir != "", "empty sessions directory")
+	assert.That(filepath.IsAbs(sessionsDir), "sessions directory is not absolute")
 }
 
 func (a *Agent) Conversation() []ConversationMessage {
@@ -101,11 +122,15 @@ type sessionFile struct {
 }
 
 func (a *Agent) StartSession(id, sessionsDir string) error {
+	a.assertSessionUninitialized()
+	assertSessionArguments(id, sessionsDir)
 	a.sessionID = id
 	a.sessionDir = filepath.Join(sessionsDir, id)
 	return a.SaveSession()
 }
 func (a *Agent) ResumeSession(id, sessionsDir string) error {
+	a.assertSessionUninitialized()
+	assertSessionArguments(id, sessionsDir)
 	dir := filepath.Join(sessionsDir, id)
 	data, err := os.ReadFile(filepath.Join(dir, "session.json"))
 	if err != nil {
@@ -147,6 +172,7 @@ func (a *Agent) ResumeSession(id, sessionsDir string) error {
 	return nil
 }
 func (a *Agent) SaveSession() error {
+	a.assertSessionInitialized()
 	if err := os.MkdirAll(a.sessionDir, 0700); err != nil {
 		return err
 	}

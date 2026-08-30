@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"fn/internal/agent"
+	"fn/internal/assert"
 	"fn/internal/ui"
 )
 
@@ -142,6 +143,9 @@ func validSessionID(id string) bool {
 }
 
 func publishRunningSession(home, sessionID string) (func(), error) {
+	assert.That(home != "", "publish running session without home directory")
+	assert.That(filepath.IsAbs(home), "home directory is not absolute")
+	assert.That(validSessionID(sessionID), "invalid running session ID")
 	dir := filepath.Join(home, ".fn", "running")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err

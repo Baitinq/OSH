@@ -64,6 +64,7 @@ func TestAnthropicRespondExecutesToolAndPreservesThinkingSignature(t *testing.T)
 	defer server.Close()
 
 	a := &Agent{provider: "anthropic", baseURL: server.URL, httpClient: server.Client(), modelName: "claude-test", reasoningEffort: "high", instructions: "Use the tool.", maxRetries: 0, cwd: t.TempDir()}
+	startTestSession(t, a)
 	var events []ToolEvent
 	response := a.Respond("calculate", nil, func(event ToolEvent) { events = append(events, event) }, context.Background())
 	if response.Err != nil {

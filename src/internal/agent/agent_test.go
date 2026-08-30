@@ -38,6 +38,7 @@ func TestNewUsesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("FN_REASONING_EFFORT", "high")
 
 	a := New()
+	startTestSession(t, a)
 	if a.ModelName() != "override-model" || a.ReasoningEffort() != "high" {
 		t.Fatalf("configuration = model %q, reasoning %q", a.ModelName(), a.ReasoningEffort())
 	}
@@ -138,6 +139,7 @@ func TestPrefixUserMessageIncludesCurrentDateAndTime(t *testing.T) {
 
 func TestConsumeSteeringDeliversOneMessageAtATime(t *testing.T) {
 	a := &Agent{}
+	startTestSession(t, a)
 	steer := make(chan string, 2)
 	steer <- "first"
 	steer <- "second"
@@ -278,6 +280,7 @@ func TestRespondRetriesTransientFailures(t *testing.T) {
 		retryBaseDelay: time.Millisecond,
 		retryJitter:    func() float64 { return 1 },
 	}
+	startTestSession(t, a)
 	var events []ToolEvent
 	resp := a.Respond("hello", make(chan string), func(ev ToolEvent) { events = append(events, ev) }, t.Context())
 	if resp.Err != nil || resp.Text != "hello" {
@@ -335,6 +338,7 @@ func TestRespondCancellationDoesNotLeaveFunctionCallWithoutOutput(t *testing.T) 
 		instructions: "test",
 		maxRetries:   0,
 	}
+	startTestSession(t, a)
 	ctx, cancel := context.WithCancel(t.Context())
 	a.Respond("cancelled question", nil, func(event ToolEvent) {
 		if event.Kind == ToolEventContextTokens {
@@ -397,6 +401,7 @@ func TestRespondDropsCompletedToolHistoryFromLaterTurns(t *testing.T) {
 		instructions: "test",
 		maxRetries:   0,
 	}
+	startTestSession(t, a)
 	defer a.Close()
 	if response := a.Respond("first question", nil, func(ToolEvent) {}, t.Context()); response.Err != nil {
 		t.Fatal(response.Err)

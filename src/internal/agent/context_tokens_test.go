@@ -22,6 +22,7 @@ func TestRespondStreamsContextTokens(t *testing.T) {
 		modelName:    "test",
 		instructions: "test",
 	}
+	startTestSession(t, a)
 	var streamed int64
 	response := a.Respond("hello", nil, func(event ToolEvent) {
 		if event.Kind == ToolEventContextTokens {

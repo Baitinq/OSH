@@ -17,6 +17,8 @@ import (
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
+
+	"fn/internal/assert"
 )
 
 const systemPrompt = `You are an expert general-purpose assistant operating inside fn agent, a terminal agent harness. You help users answer questions and complete tasks by reasoning, inspecting the environment, running code, and modifying files.
@@ -362,10 +364,12 @@ func limitToolOutput(output string) string {
 }
 
 func (a *Agent) appendUserMessage(msg string) {
+	a.assertSessionInitialized()
 	a.history = append(a.history, historyItem{Type: "message", Role: "user", Text: prefixUserMessage(msg, time.Now())})
 }
 
 func (a *Agent) consumeSteering(steer <-chan string, emit func(ToolEvent)) bool {
+	assert.That(emit != nil, "consume steering without event callback")
 	select {
 	case msg, ok := <-steer:
 		if !ok {
@@ -572,6 +576,9 @@ func (a *Agent) input() []historyItem {
 }
 
 func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), ctx context.Context) Response {
+	a.assertSessionInitialized()
+	assert.That(emit != nil, "respond without event callback")
+	assert.That(ctx != nil, "respond without context")
 	a.respondMu.Lock()
 	defer a.respondMu.Unlock()
 	a.appendUserMessage(msg)

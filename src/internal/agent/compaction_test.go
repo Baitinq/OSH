@@ -153,6 +153,7 @@ func TestRespondCompactsAndRetriesContextOverflow(t *testing.T) {
 			historyMessage("assistant", "old result"),
 		},
 	}
+	startTestSession(t, a)
 	var events []ToolEvent
 	response := a.Respond(strings.Repeat("new request ", 10000), nil, func(event ToolEvent) { events = append(events, event) }, t.Context())
 	if response.Err != nil || response.Text != "recovered" {

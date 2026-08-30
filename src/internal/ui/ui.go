@@ -14,6 +14,7 @@ import (
 	tui "github.com/grindlemire/go-tui"
 
 	"fn/internal/agent"
+	"fn/internal/assert"
 )
 
 type message struct {
@@ -172,9 +173,8 @@ func (s *fnUI) submitInput(text string, queue bool) {
 }
 
 func (s *fnUI) startRequest(text string, showUser bool) {
-	if s.respond == nil || s.dispatch == nil {
-		return
-	}
+	assert.That(s.respond != nil, "start request without responder")
+	assert.That(s.dispatch != nil, "start request without dispatcher")
 	s.nextRequestID++
 	id := s.nextRequestID
 	ctx, cancel := context.WithCancel(context.Background())
