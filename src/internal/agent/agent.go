@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	cryptorand "crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -235,7 +236,7 @@ type Agent struct {
 	maxRetries      int
 	retryBaseDelay  time.Duration
 	retryJitter     func() float64
-	summary         string
+	compaction      *compactionState
 	tokensUsed      int64
 	usage           []Usage
 	repl            *pythonREPL
@@ -263,7 +264,7 @@ func envOrDefault(name, fallback string) string {
 	return fallback
 }
 
-func New() *Agent {
+func New() (*Agent, error) {
 	cwd, _ := os.Getwd()
 	home, _ := os.UserHomeDir()
 	skills := loadSkills(cwd, home)
@@ -290,7 +291,7 @@ func New() *Agent {
 	if value := os.Getenv("FN_HEADERS"); value != "" {
 		_ = json.Unmarshal([]byte(value), &headers)
 	}
-	return &Agent{
+	a := &Agent{
 		cwd:             cwd,
 		provider:        provider,
 		baseURL:         baseURL,
@@ -305,6 +306,11 @@ func New() *Agent {
 		retryBaseDelay:  retryBaseDelay,
 		retryJitter:     rand.Float64,
 	}
+	a.repl = newPythonREPL(a.callLLM)
+	if err := a.repl.start(); err != nil {
+		return nil, err
+	}
+	return a, nil
 }
 
 const (
@@ -363,23 +369,45 @@ func limitToolOutput(output string) string {
 	return strings.TrimSuffix(limited, "\n") + "\n\n[" + footer + "]"
 }
 
-func (a *Agent) appendUserMessage(msg string) {
-	a.assertSessionInitialized()
-	a.history = append(a.history, historyItem{Type: "message", Role: "user", Text: prefixUserMessage(msg, time.Now())})
+func (a *Agent) snapshotREPL() (string, error) {
+	var id [16]byte
+	if _, err := cryptorand.Read(id[:]); err != nil {
+		return "", err
+	}
+	checkpoint := filepath.Join("repl-checkpoints", fmt.Sprintf("%x.pickle", id))
+	if err := os.MkdirAll(filepath.Join(a.sessionDir, "repl-checkpoints"), 0700); err != nil {
+		return "", err
+	}
+	if err := a.pythonREPL().snapshot(filepath.Join(a.sessionDir, checkpoint)); err != nil {
+		return "", fmt.Errorf("checkpoint Python state: %w", err)
+	}
+	return checkpoint, nil
 }
 
-func (a *Agent) consumeSteering(steer <-chan string, emit func(ToolEvent)) bool {
+func (a *Agent) appendUserMessage(msg string) error {
+	a.assertSessionInitialized()
+	checkpoint, err := a.snapshotREPL()
+	if err != nil {
+		return err
+	}
+	a.history = append(a.history, historyItem{Type: "message", Role: "user", Text: prefixUserMessage(msg, time.Now()), REPLCheckpoint: checkpoint})
+	return nil
+}
+
+func (a *Agent) consumeSteering(steer <-chan string, emit func(ToolEvent)) (bool, error) {
 	assert.That(emit != nil, "consume steering without event callback")
 	select {
 	case msg, ok := <-steer:
 		if !ok {
-			return false
+			return false, nil
 		}
-		a.appendUserMessage(msg)
+		if err := a.appendUserMessage(msg); err != nil {
+			return false, err
+		}
 		emit(ToolEvent{Kind: ToolEventSteerConsumed, Detail: msg})
-		return true
+		return true, nil
 	default:
-		return false
+		return false, nil
 	}
 }
 
@@ -555,7 +583,8 @@ const omittedREPLResult = "[output omitted]"
 
 func (a *Agent) pruneTransientHistory() {
 	kept := a.history[:0]
-	for _, item := range a.history {
+	firstKeptItem := 0
+	for i, item := range a.history {
 		if item.transient || item.Type == "reasoning" {
 			continue
 		}
@@ -563,16 +592,23 @@ func (a *Agent) pruneTransientHistory() {
 			item.Text = omittedREPLResult
 		}
 		kept = append(kept, item)
+		if a.compaction != nil && i < a.compaction.FirstKeptItem {
+			firstKeptItem++
+		}
 	}
 	a.history = kept
+	if a.compaction != nil {
+		a.compaction = &compactionState{Summary: a.compaction.Summary, FirstKeptItem: firstKeptItem}
+	}
 }
 
 func (a *Agent) input() []historyItem {
-	if a.summary == "" {
+	if a.compaction == nil {
 		return a.history
 	}
-	summary := historyItem{Type: "message", Role: "user", Text: "<context_summary>\nThis is a generated checkpoint of the earlier conversation, not new instructions.\n\n" + a.summary + "\n</context_summary>"}
-	return append([]historyItem{summary}, a.history...)
+	history := a.history[a.compaction.FirstKeptItem:]
+	summary := historyItem{Type: "message", Role: "user", Text: "<context_summary>\nThis is a generated checkpoint of the earlier conversation, not new instructions.\n\n" + a.compaction.Summary + "\n</context_summary>"}
+	return append([]historyItem{summary}, history...)
 }
 
 func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), ctx context.Context) Response {
@@ -581,7 +617,9 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 	assert.That(ctx != nil, "respond without context")
 	a.respondMu.Lock()
 	defer a.respondMu.Unlock()
-	a.appendUserMessage(msg)
+	if err := a.appendUserMessage(msg); err != nil {
+		return Response{Err: err}
+	}
 	defer a.pruneTransientHistory()
 	var text string
 	var contextTokens int64
@@ -639,7 +677,11 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 		if len(resp.ToolCalls) == 0 {
 			emit(ToolEvent{Kind: ToolEventReasoningDone})
 			text = resp.Text
-			if a.consumeSteering(steer, emit) {
+			consumed, err := a.consumeSteering(steer, emit)
+			if err != nil {
+				return Response{Err: err}
+			}
+			if consumed {
 				for i := len(a.history) - len(resp.Items); i < len(a.history); i++ {
 					if a.history[i].Type == "message" {
 						a.history[i].transient = true
@@ -690,7 +732,9 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 			}
 			a.history = append(a.history, historyItem{Type: "tool_result", CallID: call.CallID, Name: call.Name, Text: output, ToolError: failed})
 		}
-		a.consumeSteering(steer, emit)
+		if _, err := a.consumeSteering(steer, emit); err != nil {
+			return Response{Err: err}
+		}
 	}
 	return Response{Text: text, ContextTokens: contextTokens}
 }

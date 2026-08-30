@@ -142,18 +142,22 @@ func validSessionID(id string) bool {
 	return true
 }
 
-func publishRunningSession(home, sessionID string) (func(), error) {
-	assert.That(home != "", "publish running session without home directory")
+func setRunningSession(home, sessionID string) error {
+	assert.That(home != "", "set running session without home directory")
 	assert.That(filepath.IsAbs(home), "home directory is not absolute")
 	assert.That(validSessionID(sessionID), "invalid running session ID")
 	dir := filepath.Join(home, ".fn", "running")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, strconv.Itoa(os.Getpid())), []byte(sessionID), 0o600)
+}
+
+func publishRunningSession(home, sessionID string) (func(), error) {
+	if err := setRunningSession(home, sessionID); err != nil {
 		return nil, err
 	}
-	path := filepath.Join(dir, strconv.Itoa(os.Getpid()))
-	if err := os.WriteFile(path, []byte(sessionID), 0o600); err != nil {
-		return nil, err
-	}
+	path := filepath.Join(home, ".fn", "running", strconv.Itoa(os.Getpid()))
 	return func() { os.Remove(path) }, nil
 }
 
@@ -171,7 +175,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if err := requireAPIKey(); err != nil {
 		return err
 	}
-	a := agent.New()
+	a, err := agent.New()
+	if err != nil {
+		return err
+	}
 	defer a.Close()
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -219,7 +226,25 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stderr, "tokens used\n%d\n", a.TokensUsed())
 		return nil
 	}
-	return ui.Run(a.ModelName(), a.ReasoningEffort(), sessionID, cwd, a.Conversation(), respond)
+	commands := ui.Commands{
+		Undo: a.Undo,
+		Fork: func() (string, error) {
+			id, err := newSessionID()
+			if err != nil {
+				return "", err
+			}
+			if err := setRunningSession(home, id); err != nil {
+				return "", err
+			}
+			if err := a.Fork(id, sessionsDir); err != nil {
+				_ = setRunningSession(home, sessionID)
+				return "", err
+			}
+			sessionID = id
+			return id, nil
+		},
+	}
+	return ui.Run(a.ModelName(), a.ReasoningEffort(), sessionID, cwd, a.Conversation(), commands, respond)
 }
 
 func main() {

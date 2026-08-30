@@ -30,6 +30,7 @@ type historyItem struct {
 	ProviderData     json.RawMessage `json:"provider_data,omitempty"`
 	RedactedThinking string          `json:"redacted_thinking,omitempty"`
 	ToolError        bool            `json:"tool_error,omitempty"`
+	REPLCheckpoint   string          `json:"repl_checkpoint,omitempty"`
 	transient        bool
 }
 

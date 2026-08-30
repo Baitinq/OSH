@@ -60,6 +60,17 @@ const (
 
 type pendingInput struct{ kind, text string }
 
+type undoOption struct {
+	text         string
+	messageIndex int
+}
+
+// Commands contains session operations handled by the interactive UI.
+type Commands struct {
+	Undo func(int) (string, error)
+	Fork func() (string, error)
+}
+
 type fnUI struct {
 	modelName              string
 	cwd                    string
@@ -96,6 +107,9 @@ type fnUI struct {
 	dispatch               func(func())
 	invalidate             func()
 	emit                   func(message)
+	commands               Commands
+	undoOptions            []undoOption
+	undoSelected           int
 }
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -148,6 +162,10 @@ func (s *fnUI) submitInput(text string, queue bool) {
 	if text == "" {
 		return
 	}
+	if text == "/undo" || text == "/fork" {
+		s.runCommand(text)
+		return
+	}
 	s.inputHistory = append(s.inputHistory, text)
 	s.historyIndex, s.historyDraft = -1, ""
 	s.textarea.Clear()
@@ -170,6 +188,43 @@ func (s *fnUI) submitInput(text string, queue bool) {
 		}
 	}
 	s.markDirty()
+}
+
+func (s *fnUI) runCommand(command string) {
+	assert.That(command == "/undo" || command == "/fork", "unknown session command")
+	s.textarea.Clear()
+	s.historyIndex, s.historyDraft = -1, ""
+	if s.responding {
+		s.addMessage(message{role: "error", text: command + " is unavailable while a response is running."})
+		return
+	}
+	switch command {
+	case "/undo":
+		assert.That(s.commands.Undo != nil, "undo command has no handler")
+		s.undoOptions = s.undoOptions[:0]
+		for i := range s.messages {
+			if s.messages[i].role == "you" {
+				s.undoOptions = append(s.undoOptions, undoOption{s.messages[i].text, i})
+			}
+		}
+		if len(s.undoOptions) == 0 {
+			s.addMessage(message{role: "error", text: "nothing to undo"})
+			return
+		}
+		s.undoSelected = len(s.undoOptions) - 1
+		s.markDirty()
+	case "/fork":
+		assert.That(s.commands.Fork != nil, "fork command has no handler")
+		id, err := s.commands.Fork()
+		if err != nil {
+			s.addMessage(message{role: "error", text: err.Error()})
+			return
+		}
+		assert.That(id != "", "fork command returned an empty session ID")
+		assert.That(id != s.sessionID, "fork command returned the current session ID")
+		s.sessionID = id
+		s.addMessage(message{role: "system", text: "Forked session " + id + "."})
+	}
 }
 
 func (s *fnUI) startRequest(text string, showUser bool) {
@@ -649,7 +704,52 @@ func (s *fnUI) navigateHistory(direction int) bool {
 	return true
 }
 
+func (s *fnUI) handleUndoKey(k tui.KeyEvent) bool {
+	assert.That(len(s.undoOptions) > 0, "handle undo key without undo options")
+	assert.That(s.undoSelected >= 0 && s.undoSelected < len(s.undoOptions), "undo selection out of bounds")
+	assert.That(s.commands.Undo != nil, "undo selector without undo command")
+	switch k.Key {
+	case tui.KeyEscape:
+		s.undoOptions = nil
+	case tui.KeyUp:
+		s.undoSelected = max(0, s.undoSelected-1)
+	case tui.KeyDown:
+		s.undoSelected = min(len(s.undoOptions)-1, s.undoSelected+1)
+	case tui.KeyEnter:
+		selected := s.undoSelected
+		option := s.undoOptions[selected]
+		text, err := s.commands.Undo(len(s.undoOptions) - 1 - selected)
+		s.undoOptions = nil
+		if err != nil {
+			s.addMessage(message{role: "error", text: err.Error()})
+			return true
+		}
+		assert.That(text == option.text, "undo command returned a different input")
+		assert.That(option.messageIndex >= 0 && option.messageIndex < len(s.messages), "undo message index out of bounds")
+		assert.That(s.messages[option.messageIndex].role == "you", "undo message is not a user message")
+		assert.That(s.messages[option.messageIndex].text == option.text, "undo message text changed")
+		s.messages = s.messages[:option.messageIndex]
+		s.inputHistory = s.inputHistory[:0]
+		for _, msg := range s.messages {
+			if msg.role == "you" {
+				s.inputHistory = append(s.inputHistory, msg.text)
+			}
+		}
+		assert.That(len(s.inputHistory) == selected, "undo options do not match user messages")
+		s.contextTokens = 0
+		s.textarea.SetText(text)
+		s.textarea.SetCursorPos(runeToClusterIndex(text, len([]rune(text))))
+	default:
+		return true
+	}
+	s.markDirty()
+	return true
+}
+
 func (s *fnUI) handleKey(k tui.KeyEvent) bool {
+	if len(s.undoOptions) > 0 {
+		return s.handleUndoKey(k)
+	}
 	if k.Key == tui.KeyRune && k.Rune == 'c' && k.Mod.Has(tui.ModCtrl) {
 		now := time.Now()
 		if !s.lastCtrlC.IsZero() && now.Sub(s.lastCtrlC) <= ctrlCDoublePressInterval {
@@ -728,7 +828,7 @@ func (s *fnUI) restoreConversation(conversation []agent.ConversationMessage) {
 	}
 }
 
-func Run(modelName, reasoningEffort, sessionID, cwd string, conversation []agent.ConversationMessage, respond func(string, <-chan string, func(agent.ToolEvent), context.Context) agent.Response) error {
+func Run(modelName, reasoningEffort, sessionID, cwd string, conversation []agent.ConversationMessage, commands Commands, respond func(string, <-chan string, func(agent.ToolEvent), context.Context) agent.Response) error {
 	term, err := tui.NewANSITerminal(os.Stdout, os.Stdin)
 	if err != nil {
 		return err
@@ -764,6 +864,7 @@ func Run(modelName, reasoningEffort, sessionID, cwd string, conversation []agent
 		return response{Text: result.Text, ContextTokens: result.ContextTokens, Err: result.Err}
 	})
 	root.sessionID = sessionID
+	root.commands = commands
 	root.restoreConversation(conversation)
 	root.cwd = cwd
 	root.dispatch = func(fn func()) { updates <- fn }

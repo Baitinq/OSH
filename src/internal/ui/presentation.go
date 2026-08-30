@@ -16,11 +16,20 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/text"
+
+	"fn/internal/assert"
 )
 
 func (s *fnUI) render(width int, viewportHeight ...int) ([]string, int, int) {
 	width = max(width, 10)
 	s.setTextareaWidth(max(width-4, 1))
+	if len(s.undoOptions) > 0 {
+		height := 20
+		if len(viewportHeight) > 0 {
+			height = viewportHeight[0]
+		}
+		return s.renderUndoSelector(width, height)
+	}
 	lines := s.frameLines[:0]
 	for i := range s.messages {
 		lines = append(lines, s.renderedMessageLines(&s.messages[i], width)...)
@@ -65,6 +74,30 @@ func (s *fnUI) render(width int, viewportHeight ...int) ([]string, int, int) {
 	}
 	s.frameLines = lines
 	return lines, cursorRow, ccol
+}
+
+func (s *fnUI) renderUndoSelector(width, height int) ([]string, int, int) {
+	assert.That(len(s.undoOptions) > 0, "render undo selector without options")
+	assert.That(s.undoSelected >= 0 && s.undoSelected < len(s.undoOptions), "render undo selector with invalid selection")
+	visible := max(1, height-4)
+	start := max(0, s.undoSelected-visible/2)
+	start = min(start, max(0, len(s.undoOptions)-visible))
+	end := min(len(s.undoOptions), start+visible)
+	lines := []string{ansi256FG(39, " Select a turn to undo to"), ""}
+	for i := start; i < end; i++ {
+		prefix, color := "  ", 245
+		if i == s.undoSelected {
+			prefix, color = "› ", 39
+		}
+		text := strings.ReplaceAll(sanitizeTerminalText(s.undoOptions[i].text), "\n", " ")
+		lines = append(lines, ansi256FG(color, truncateCells(prefix+text, width)))
+	}
+	lines = append(lines, "", ansi256FG(245, truncateCells(" ↑/↓ select · Enter undo · Esc cancel", width)))
+	if filler := max(height-len(lines), 0); filler > 0 {
+		lines = append(make([]string, filler), lines...)
+	}
+	s.frameLines = lines
+	return lines, -1, 0
 }
 
 func (s *fnUI) renderedMessageLines(msg *message, width int) []string {

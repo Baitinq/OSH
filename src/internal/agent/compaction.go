@@ -41,6 +41,11 @@ const summarizationPrompt = `Create a concise context checkpoint using exactly t
 
 Preserve exact technical details. When a previous summary is present, update it with the new messages rather than replacing useful existing information.`
 
+type compactionState struct {
+	Summary       string `json:"summary"`
+	FirstKeptItem int    `json:"first_kept_item"`
+}
+
 func estimateHistoryItemTokens(item historyItem) int {
 	data, _ := json.Marshal(item)
 	return (len(data) + 3) / 4
@@ -131,15 +136,20 @@ func serializeHistory(history []historyItem) string {
 }
 
 func (a *Agent) compactHistory(ctx context.Context, keepTokens int) error {
-	cut := findHistoryCut(a.history, keepTokens)
+	firstKeptItem := 0
+	if a.compaction != nil {
+		firstKeptItem = a.compaction.FirstKeptItem
+	}
+	active := a.history[firstKeptItem:]
+	cut := findHistoryCut(active, keepTokens)
 	if cut == 0 {
 		return fmt.Errorf("nothing old enough to compact")
 	}
 
 	var prompt strings.Builder
-	fmt.Fprintf(&prompt, "<conversation>\n%s\n</conversation>\n\n", serializeHistory(a.history[:cut]))
-	if a.summary != "" {
-		fmt.Fprintf(&prompt, "<previous-summary>\n%s\n</previous-summary>\n\n", a.summary)
+	fmt.Fprintf(&prompt, "<conversation>\n%s\n</conversation>\n\n", serializeHistory(active[:cut]))
+	if a.compaction != nil {
+		fmt.Fprintf(&prompt, "<previous-summary>\n%s\n</previous-summary>\n\n", a.compaction.Summary)
 	}
 	prompt.WriteString(summarizationPrompt)
 
@@ -156,7 +166,6 @@ func (a *Agent) compactHistory(ctx context.Context, keepTokens int) error {
 		return fmt.Errorf("compaction returned an empty summary")
 	}
 
-	a.summary = summary
-	a.history = append([]historyItem(nil), a.history[cut:]...)
+	a.compaction = &compactionState{Summary: summary, FirstKeptItem: firstKeptItem + cut}
 	return nil
 }

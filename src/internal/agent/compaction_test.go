@@ -70,7 +70,7 @@ func TestSerializeHistoryTruncatesToolResults(t *testing.T) {
 	}
 }
 
-func TestCompactHistoryReplacesOldContextWithSummary(t *testing.T) {
+func TestCompactHistoryPreservesCanonicalHistory(t *testing.T) {
 	var request map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -97,11 +97,11 @@ func TestCompactHistoryReplacesOldContextWithSummary(t *testing.T) {
 	if err := a.compactHistory(t.Context(), latestTokens+1); err != nil {
 		t.Fatal(err)
 	}
-	if a.summary != "## Goal\nContinue the test" {
-		t.Fatalf("summary = %q", a.summary)
+	if a.compaction == nil || a.compaction.Summary != "## Goal\nContinue the test" {
+		t.Fatalf("compaction = %#v", a.compaction)
 	}
-	if len(a.history) != 4 || !isUserHistoryItem(a.history[0]) {
-		t.Fatalf("retained history = %#v", a.history)
+	if len(a.history) != 6 || a.compaction.FirstKeptItem != 2 {
+		t.Fatalf("canonical history = %#v, summarized items %d", a.history, a.compaction.FirstKeptItem)
 	}
 	body, _ := json.Marshal(request)
 	if !strings.Contains(string(body), "old request") || strings.Contains(string(body), "recent request") {
@@ -167,7 +167,7 @@ func TestRespondCompactsAndRetriesContextOverflow(t *testing.T) {
 		started = started || event.Kind == ToolEventCompactionStart
 		done = done || event.Kind == ToolEventCompactionDone
 	}
-	if !started || !done || a.summary == "" {
-		t.Fatalf("compaction state: started=%v done=%v summary=%q events=%#v", started, done, a.summary, events)
+	if !started || !done || a.compaction == nil {
+		t.Fatalf("compaction state: started=%v done=%v compaction=%#v events=%#v", started, done, a.compaction, events)
 	}
 }

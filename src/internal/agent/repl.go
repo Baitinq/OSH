@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -184,6 +185,9 @@ def _snapshot(path):
 def _restore(path):
     with open(path, "rb") as state:
         values = pickle.load(state)
+    for name in list(_user_globals):
+        if name not in _builtin_names:
+            del _user_globals[name]
     for name, value in values.items():
         try:
             _user_globals[name] = pickle.loads(value)
@@ -239,12 +243,13 @@ for line in _protocol_in:
 `
 
 type pythonREPL struct {
-	mu     sync.Mutex
-	llm    func(context.Context, string) (string, error)
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	stdout *bufio.Reader
-	stderr strings.Builder
+	mu      sync.Mutex
+	llm     func(context.Context, string) (string, error)
+	cmd     *exec.Cmd
+	stdin   io.WriteCloser
+	stdout  *bufio.Reader
+	stderr  strings.Builder
+	started bool
 }
 
 type replResult struct {
@@ -275,6 +280,7 @@ func (r *pythonREPL) start() error {
 	}
 	r.stdin = stdin
 	r.stdout = bufio.NewReader(stdout)
+	r.started = true
 	return nil
 }
 
@@ -340,6 +346,9 @@ func (r *pythonREPL) operation(request map[string]string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.cmd == nil {
+		if r.started {
+			return errors.New("Python REPL is stopped")
+		}
 		if err := r.start(); err != nil {
 			return err
 		}

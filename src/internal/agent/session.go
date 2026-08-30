@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,11 +44,7 @@ func (a *Agent) Conversation() []ConversationMessage {
 		}
 		text := item.Text
 		if item.Role == "user" {
-			if end := strings.Index(text, "]\n\n"); strings.HasPrefix(text, "[") && end >= 0 {
-				if _, err := time.Parse(time.RFC3339, text[1:end]); err == nil {
-					text = text[end+3:]
-				}
-			}
+			text = userMessageText(text)
 		}
 		if text != "" {
 			conversation = append(conversation, ConversationMessage{Role: item.Role, Text: text})
@@ -56,69 +53,121 @@ func (a *Agent) Conversation() []ConversationMessage {
 	return conversation
 }
 
-const sessionVersion = 3
-
-type legacySessionFile struct {
-	Version int               `json:"version"`
-	CWD     string            `json:"cwd"`
-	Summary string            `json:"summary,omitempty"`
-	History []json.RawMessage `json:"history"`
-	Usage   []Usage           `json:"usage,omitempty"`
-}
-
-func migrateLegacyHistory(items []json.RawMessage) []historyItem {
-	history := make([]historyItem, 0, len(items))
-	for _, raw := range items {
-		var item struct {
-			Type      string          `json:"type"`
-			Role      string          `json:"role"`
-			Content   json.RawMessage `json:"content"`
-			Arguments string          `json:"arguments"`
-			CallID    string          `json:"call_id"`
-			Name      string          `json:"name"`
-			Output    string          `json:"output"`
-		}
-		_ = json.Unmarshal(raw, &item)
-		switch {
-		case item.Type == "function_call":
-			history = append(history, historyItem{Type: "tool_call", CallID: item.CallID, Name: item.Name, Arguments: json.RawMessage(item.Arguments), Provider: "openai"})
-		case item.Type == "function_call_output":
-			history = append(history, historyItem{Type: "tool_result", CallID: item.CallID, Text: item.Output})
-		case item.Type == "reasoning":
-			history = append(history, historyItem{Type: "reasoning", Provider: "openai", ProviderData: raw})
-		case item.Role != "":
-			var text string
-			if item.Content[0] == '"' {
-				_ = json.Unmarshal(item.Content, &text)
-			} else {
-				var content []struct {
-					Type    string `json:"type"`
-					Text    string `json:"text"`
-					Refusal string `json:"refusal"`
-				}
-				_ = json.Unmarshal(item.Content, &content)
-				for _, part := range content {
-					text += part.Text + part.Refusal
-				}
-			}
-			historyItem := historyItem{Type: "message", Role: item.Role, Text: text}
-			if item.Role == "assistant" {
-				historyItem.Provider, historyItem.ProviderData = "openai", raw
-			}
-			history = append(history, historyItem)
+func userMessageText(text string) string {
+	if end := strings.Index(text, "]\n\n"); strings.HasPrefix(text, "[") && end >= 0 {
+		if _, err := time.Parse(time.RFC3339, text[1:end]); err == nil {
+			return text[end+3:]
 		}
 	}
-	return history
+	return text
 }
 
+// Undo removes the selected user message and everything after it. steps is zero for the latest message.
+func (a *Agent) Undo(steps int) (string, error) {
+	a.assertSessionInitialized()
+	assert.That(steps >= 0, "negative undo steps")
+	a.respondMu.Lock()
+	defer a.respondMu.Unlock()
+	for i := len(a.history) - 1; i >= 0; i-- {
+		if !isUserHistoryItem(a.history[i]) {
+			continue
+		}
+		if steps > 0 {
+			steps--
+			continue
+		}
+		text := userMessageText(a.history[i].Text)
+		checkpoint := a.history[i].REPLCheckpoint
+		rollbackCheckpoint := ""
+		if checkpoint != "" {
+			var err error
+			rollbackCheckpoint, err = a.snapshotREPL()
+			if err != nil {
+				return "", err
+			}
+			defer os.Remove(filepath.Join(a.sessionDir, rollbackCheckpoint))
+			if err := a.pythonREPL().restore(filepath.Join(a.sessionDir, checkpoint)); err != nil {
+				return "", fmt.Errorf("restore Python checkpoint: %w", err)
+			}
+		}
+		history, compaction := a.history, a.compaction
+		a.history = a.history[:i]
+		if a.compaction != nil && i < a.compaction.FirstKeptItem {
+			a.compaction = nil
+		}
+		if err := a.SaveSession(); err != nil {
+			a.history, a.compaction = history, compaction
+			if rollbackCheckpoint != "" {
+				if rollbackErr := a.pythonREPL().restore(filepath.Join(a.sessionDir, rollbackCheckpoint)); rollbackErr != nil {
+					return "", fmt.Errorf("%w; restore Python state after failed undo: %v", err, rollbackErr)
+				}
+				if rollbackErr := a.pythonREPL().snapshot(filepath.Join(a.sessionDir, "repl.pickle")); rollbackErr != nil {
+					return "", fmt.Errorf("%w; save Python state after failed undo: %v", err, rollbackErr)
+				}
+			}
+			return "", err
+		}
+		return text, nil
+	}
+	return "", fmt.Errorf("nothing to undo")
+}
+
+func copyFile(source, destination string) error {
+	if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
+		return err
+	}
+	input, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+	output, err := os.OpenFile(destination, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(output, input); err != nil {
+		_ = output.Close()
+		return err
+	}
+	return output.Close()
+}
+
+// Fork continues the current agent state in a new session.
+func (a *Agent) Fork(id, sessionsDir string) error {
+	a.assertSessionInitialized()
+	assertSessionArguments(id, sessionsDir)
+	assert.That(id != a.sessionID, "fork session ID matches current session")
+	a.respondMu.Lock()
+	defer a.respondMu.Unlock()
+	oldID, oldDir := a.sessionID, a.sessionDir
+	a.sessionID = id
+	a.sessionDir = filepath.Join(sessionsDir, id)
+	for _, item := range a.history {
+		if item.REPLCheckpoint == "" {
+			continue
+		}
+		if err := copyFile(filepath.Join(oldDir, item.REPLCheckpoint), filepath.Join(a.sessionDir, item.REPLCheckpoint)); err != nil {
+			a.sessionID, a.sessionDir = oldID, oldDir
+			return err
+		}
+	}
+	if err := a.SaveSession(); err != nil {
+		a.sessionID, a.sessionDir = oldID, oldDir
+		return err
+	}
+	return nil
+}
+
+const sessionVersion = 4
+
 type sessionFile struct {
-	Version  int           `json:"version,omitempty"`
-	CWD      string        `json:"cwd"`
-	Provider string        `json:"provider,omitempty"`
-	Model    string        `json:"model,omitempty"`
-	Summary  string        `json:"summary,omitempty"`
-	History  []historyItem `json:"history"`
-	Usage    []Usage       `json:"usage,omitempty"`
+	Version    int              `json:"version,omitempty"`
+	CWD        string           `json:"cwd"`
+	Provider   string           `json:"provider,omitempty"`
+	Model      string           `json:"model,omitempty"`
+	Compaction *compactionState `json:"compaction,omitempty"`
+	History    []historyItem    `json:"history"`
+	Usage      []Usage          `json:"usage,omitempty"`
 }
 
 func (a *Agent) StartSession(id, sessionsDir string) error {
@@ -128,6 +177,7 @@ func (a *Agent) StartSession(id, sessionsDir string) error {
 	a.sessionDir = filepath.Join(sessionsDir, id)
 	return a.SaveSession()
 }
+
 func (a *Agent) ResumeSession(id, sessionsDir string) error {
 	a.assertSessionUninitialized()
 	assertSessionArguments(id, sessionsDir)
@@ -140,13 +190,6 @@ func (a *Agent) ResumeSession(id, sessionsDir string) error {
 	if err := json.Unmarshal(data, &saved); err != nil {
 		return fmt.Errorf("load session %s: %w", id, err)
 	}
-	if saved.Version == 2 {
-		var legacy legacySessionFile
-		if err := json.Unmarshal(data, &legacy); err != nil {
-			return fmt.Errorf("load session %s: %w", id, err)
-		}
-		saved = sessionFile{Version: sessionVersion, CWD: legacy.CWD, Provider: "openai", Model: a.modelName, Summary: legacy.Summary, History: migrateLegacyHistory(legacy.History), Usage: legacy.Usage}
-	}
 	if saved.Version != sessionVersion {
 		return fmt.Errorf("load session %s: unsupported version %d (expected %d)", id, saved.Version, sessionVersion)
 	}
@@ -157,7 +200,7 @@ func (a *Agent) ResumeSession(id, sessionsDir string) error {
 		return fmt.Errorf("session %s uses %s/%s, current model is %s/%s", id, saved.Provider, saved.Model, a.provider, a.modelName)
 	}
 	a.sessionID, a.sessionDir = id, dir
-	a.summary = saved.Summary
+	a.compaction = saved.Compaction
 	a.history = saved.History
 	a.usage = saved.Usage
 	for _, usage := range saved.Usage {
@@ -171,15 +214,21 @@ func (a *Agent) ResumeSession(id, sessionsDir string) error {
 	}
 	return nil
 }
+
 func (a *Agent) SaveSession() error {
 	a.assertSessionInitialized()
 	if err := os.MkdirAll(a.sessionDir, 0700); err != nil {
 		return err
 	}
-	saved := sessionFile{Version: sessionVersion, CWD: a.cwd, Provider: a.provider, Model: a.modelName, Summary: a.summary, History: a.history, Usage: a.Usage()}
+	saved := sessionFile{Version: sessionVersion, CWD: a.cwd, Provider: a.provider, Model: a.modelName, Compaction: a.compaction, History: a.history, Usage: a.Usage()}
 	data, err := json.MarshalIndent(saved, "", "  ")
 	if err != nil {
 		return err
+	}
+	if a.repl != nil {
+		if err := a.repl.snapshot(filepath.Join(a.sessionDir, "repl.pickle")); err != nil {
+			return fmt.Errorf("save Python state: %w", err)
+		}
 	}
 	tmp := filepath.Join(a.sessionDir, "session.json.tmp")
 	if err := os.WriteFile(tmp, data, 0600); err != nil {
@@ -187,11 +236,6 @@ func (a *Agent) SaveSession() error {
 	}
 	if err := os.Rename(tmp, filepath.Join(a.sessionDir, "session.json")); err != nil {
 		return err
-	}
-	if a.repl != nil {
-		if err := a.repl.snapshot(filepath.Join(a.sessionDir, "repl.pickle")); err != nil {
-			return fmt.Errorf("save Python state: %w", err)
-		}
 	}
 	return nil
 }

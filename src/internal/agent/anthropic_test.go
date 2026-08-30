@@ -109,7 +109,7 @@ func TestNewSelectsAnthropicFromModel(t *testing.T) {
 	t.Setenv("FN_PROVIDER", "")
 	t.Setenv("FN_MODEL", "claude-sonnet-4-20250514")
 	t.Setenv("FN_BASE_URL", "")
-	a := New()
+	a := mustNewAgent(t)
 	if a.provider != "anthropic" || a.baseURL != defaultAnthropicBaseURL {
 		t.Fatalf("provider/base URL = %q, %q", a.provider, a.baseURL)
 	}

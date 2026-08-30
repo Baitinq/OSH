@@ -43,6 +43,59 @@ func newState(respond func(string, <-chan string, func(toolEvent), context.Conte
 	return s, runtime
 }
 
+func TestUndoCommandSelectsTurnAndRestoresInput(t *testing.T) {
+	s, _ := newState(nil)
+	s.restoreConversation([]agent.ConversationMessage{
+		{Role: "user", Text: "first"},
+		{Role: "assistant", Text: "one"},
+		{Role: "user", Text: "second"},
+		{Role: "assistant", Text: "two"},
+	})
+	gotSteps := -1
+	s.commands.Undo = func(steps int) (string, error) { gotSteps = steps; return "first", nil }
+	s.contextTokens = 100
+	s.submitInput("/undo", false)
+	if len(s.undoOptions) != 2 || s.undoSelected != 1 {
+		t.Fatalf("selector state: options=%#v selected=%d", s.undoOptions, s.undoSelected)
+	}
+	s.handleKey(tui.KeyEvent{Key: tui.KeyUp})
+	s.handleKey(tui.KeyEvent{Key: tui.KeyEnter})
+	if gotSteps != 1 || len(s.messages) != 0 || len(s.inputHistory) != 0 || s.textarea.Text() != "first" || s.contextTokens != 0 {
+		t.Fatalf("undo state: steps=%d messages=%#v history=%#v input=%q tokens=%d", gotSteps, s.messages, s.inputHistory, s.textarea.Text(), s.contextTokens)
+	}
+}
+
+func TestUndoSelectorEscapeCancels(t *testing.T) {
+	s, _ := newState(nil)
+	s.restoreConversation([]agent.ConversationMessage{{Role: "user", Text: "first"}})
+	s.commands.Undo = func(int) (string, error) { t.Fatal("undo called"); return "", nil }
+	s.submitInput("/undo", false)
+	s.handleKey(tui.KeyEvent{Key: tui.KeyEscape})
+	if s.undoOptions != nil || len(s.messages) != 1 {
+		t.Fatalf("cancel state: options=%#v messages=%#v", s.undoOptions, s.messages)
+	}
+}
+
+func TestForkCommandUpdatesSession(t *testing.T) {
+	s, _ := newState(nil)
+	s.commands.Fork = func() (string, error) { return "new-session", nil }
+	s.submitInput("/fork", false)
+	if s.sessionID != "new-session" || len(s.messages) != 1 || s.messages[0].role != "system" {
+		t.Fatalf("fork state: session=%q messages=%#v", s.sessionID, s.messages)
+	}
+}
+
+func TestSessionCommandsAreRejectedWhileResponding(t *testing.T) {
+	s, _ := newState(nil)
+	s.responding = true
+	called := false
+	s.commands.Undo = func(int) (string, error) { called = true; return "", nil }
+	s.submitInput("/undo", false)
+	if called || len(s.messages) != 1 || s.messages[0].role != "error" {
+		t.Fatalf("command state: called=%v messages=%#v", called, s.messages)
+	}
+}
+
 func TestTextareaEditingAndWordAliases(t *testing.T) {
 	s, _ := newState(nil)
 	s.textarea.SetText("hello world")

@@ -17,6 +17,16 @@ import (
 	"github.com/openai/openai-go/v3/option"
 )
 
+func mustNewAgent(t *testing.T) *Agent {
+	t.Helper()
+	a, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(a.Close)
+	return a
+}
+
 func TestNewUsesEnvironmentOverrides(t *testing.T) {
 	var request map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -37,7 +47,7 @@ func TestNewUsesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("FN_MODEL", "override-model")
 	t.Setenv("FN_REASONING_EFFORT", "high")
 
-	a := New()
+	a := mustNewAgent(t)
 	startTestSession(t, a)
 	if a.ModelName() != "override-model" || a.ReasoningEffort() != "high" {
 		t.Fatalf("configuration = model %q, reasoning %q", a.ModelName(), a.ReasoningEffort())
@@ -146,19 +156,19 @@ func TestConsumeSteeringDeliversOneMessageAtATime(t *testing.T) {
 	var events []ToolEvent
 	emit := func(event ToolEvent) { events = append(events, event) }
 
-	if !a.consumeSteering(steer, emit) {
+	if consumed, err := a.consumeSteering(steer, emit); err != nil || !consumed {
 		t.Fatal("first steering message was not consumed")
 	}
 	if len(a.history) != 1 || len(events) != 1 || events[0].Detail != "first" {
 		t.Fatalf("first delivery: history=%d events=%#v", len(a.history), events)
 	}
-	if !a.consumeSteering(steer, emit) {
+	if consumed, err := a.consumeSteering(steer, emit); err != nil || !consumed {
 		t.Fatal("second steering message was not consumed")
 	}
 	if len(a.history) != 2 || len(events) != 2 || events[1].Detail != "second" {
 		t.Fatalf("second delivery: history=%d events=%#v", len(a.history), events)
 	}
-	if a.consumeSteering(steer, emit) {
+	if consumed, err := a.consumeSteering(steer, emit); err != nil || consumed {
 		t.Fatal("empty steering queue reported a message")
 	}
 }
@@ -209,7 +219,7 @@ func TestLimitToolOutputRespectsByteLimitAndUTF8(t *testing.T) {
 }
 
 func TestDefaultLLMRetryBudget(t *testing.T) {
-	if got := New().maxRetries; got != 10 {
+	if got := mustNewAgent(t).maxRetries; got != 10 {
 		t.Fatalf("max retries = %d, want 10", got)
 	}
 }
