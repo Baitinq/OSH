@@ -46,6 +46,23 @@ Make sure Go's binary directory is in your `PATH`. By default, this is
 export PATH="$PATH:$(go env GOPATH)/bin"
 ```
 
+## Configuration
+
+Set `OPENAI_API_KEY`, `GEMINI_API_KEY`, or `ANTHROPIC_API_KEY` for the corresponding provider. Model names beginning with `gemini-` select Google's native Generative AI API; names beginning with `claude-` select Anthropic's native Messages API. Gemini and Anthropic use API-key authentication directly; OAuth and Vertex AI are not used.
+
+| Variable | Default |
+| --- | --- |
+| `FN_PROVIDER` | inferred from `FN_MODEL` (`openai`, `gemini`, or `anthropic`) |
+| `FN_BASE_URL` | provider API URL |
+| `FN_MODEL` | `gpt-5.6-sol` |
+| `FN_REASONING_EFFORT` | `medium` |
+
+When a model rejects a request because its context limit was reached, fn agent
+summarizes older context, preserves approximately 20,000 recent tokens verbatim,
+and retries once.
+
+For local OpenAI-compatible servers that ignore authentication, use any non-empty API key. OpenAI-compatible endpoints must support `POST /responses`, including function tool calls.
+
 ## Requirements
 
 - Go 1.26 or newer
@@ -78,23 +95,6 @@ fn --session <UUID>
 
 Conversation context and per-response token usage are stored in `session.json`.
 Python REPL variables are restored on a best-effort basis using Python's standard `pickle` support; values that cannot be pickled are skipped. Sessions must be resumed from the directory where they were created.
-
-## Configuration
-
-Set `OPENAI_API_KEY`, `GEMINI_API_KEY`, or `ANTHROPIC_API_KEY` for the corresponding provider. Model names beginning with `gemini-` select Google's native Generative AI API; names beginning with `claude-` select Anthropic's native Messages API. Gemini and Anthropic use API-key authentication directly; OAuth and Vertex AI are not used.
-
-| Variable | Default |
-| --- | --- |
-| `FN_PROVIDER` | inferred from `FN_MODEL` (`openai`, `gemini`, or `anthropic`) |
-| `FN_BASE_URL` | provider API URL |
-| `FN_MODEL` | `gpt-5.6-sol` |
-| `FN_REASONING_EFFORT` | `medium` |
-
-When a model rejects a request because its context limit was reached, fn agent
-summarizes older context, preserves approximately 20,000 recent tokens verbatim,
-and retries once.
-
-For local OpenAI-compatible servers that ignore authentication, use any non-empty API key. OpenAI-compatible endpoints must support `POST /responses`, including function tool calls.
 
 ## Persistent REPL
 
