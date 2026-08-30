@@ -31,6 +31,14 @@ fn is evaluated against Pi and Codex with `gpt-5.6-sol` at medium reasoning.
 fn scored competitively while using 55–74% fewer tokens on HarnessBench and
 69% fewer than Codex on SWE Atlas. See [BENCHMARKS.md](BENCHMARKS.md) for details.
 
+## Run
+
+Start fn from a repository or other working directory:
+
+```sh
+fn
+```
+
 ## Install
 
 Install the latest version with Go:
@@ -45,6 +53,12 @@ Make sure Go's binary directory is in your `PATH`. By default, this is
 ```sh
 export PATH="$PATH:$(go env GOPATH)/bin"
 ```
+
+## Requirements
+
+- Go 1.26 or newer
+- Python 3.10 or newer (`python3`)
+- An API key for the configured model provider
 
 ## Configuration
 
@@ -62,28 +76,6 @@ summarizes older context, preserves approximately 20,000 recent tokens verbatim,
 and retries once.
 
 For local OpenAI-compatible servers that ignore authentication, use any non-empty API key. OpenAI-compatible endpoints must support `POST /responses`, including function tool calls.
-
-## Requirements
-
-- Go 1.26 or newer
-- Python 3.10 or newer (`python3`)
-- An API key for the configured model provider
-
-## Run
-
-```sh
-cd src
-export OPENAI_API_KEY='...'
-go run ./cmd/fn
-
-# Gemini (API-key authentication)
-export GEMINI_API_KEY='...'
-FN_MODEL=gemini-3.7-flash go run ./cmd/fn
-
-# Anthropic (API-key authentication)
-export ANTHROPIC_API_KEY='...'
-FN_MODEL=claude-sonnet-5 go run ./cmd/fn
-```
 
 ## Sessions
 
