@@ -76,6 +76,14 @@ func TestUndoSelectorEscapeCancels(t *testing.T) {
 	}
 }
 
+func TestExitCommandQuits(t *testing.T) {
+	s, _ := newState(nil)
+	s.textarea.SetText("/exit")
+	if s.handleKey(tui.KeyEvent{Key: tui.KeyEnter}) {
+		t.Fatal("exit command did not quit")
+	}
+}
+
 func TestForkCommandUpdatesSession(t *testing.T) {
 	s, _ := newState(nil)
 	s.commands.Fork = func() (string, error) { return "new-session", nil }

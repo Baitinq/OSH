@@ -157,27 +157,26 @@ func (s *fnUI) setTextareaWidth(width int) {
 	s.textareaWidth = width
 }
 
-func (s *fnUI) submitInput(text string, queue bool) {
+func (s *fnUI) submitInput(text string, queue bool) bool {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return
+		return true
 	}
-	if text == "/undo" || text == "/fork" {
-		s.runCommand(text)
-		return
+	if text == "/undo" || text == "/fork" || text == "/exit" {
+		return s.runCommand(text)
 	}
 	s.inputHistory = append(s.inputHistory, text)
 	s.historyIndex, s.historyDraft = -1, ""
 	s.textarea.Clear()
 	if !s.responding {
 		s.startRequest(text, true)
-		return
+		return true
 	}
 	if queue {
 		s.queued = append(s.queued, text)
 		s.pendingInputs = append(s.pendingInputs, pendingInput{"queued", text})
 		s.markDirty()
-		return
+		return true
 	}
 	s.pendingSteer = append(s.pendingSteer, text)
 	s.pendingInputs = append(s.pendingInputs, pendingInput{"steer", text})
@@ -188,15 +187,19 @@ func (s *fnUI) submitInput(text string, queue bool) {
 		}
 	}
 	s.markDirty()
+	return true
 }
 
-func (s *fnUI) runCommand(command string) {
-	assert.That(command == "/undo" || command == "/fork", "unknown session command")
+func (s *fnUI) runCommand(command string) bool {
+	assert.That(command == "/undo" || command == "/fork" || command == "/exit", "unknown session command")
 	s.textarea.Clear()
 	s.historyIndex, s.historyDraft = -1, ""
+	if command == "/exit" {
+		return false
+	}
 	if s.responding {
 		s.addMessage(message{role: "error", text: command + " is unavailable while a response is running."})
-		return
+		return true
 	}
 	switch command {
 	case "/undo":
@@ -209,7 +212,7 @@ func (s *fnUI) runCommand(command string) {
 		}
 		if len(s.undoOptions) == 0 {
 			s.addMessage(message{role: "error", text: "nothing to undo"})
-			return
+			return true
 		}
 		s.undoSelected = len(s.undoOptions) - 1
 		s.markDirty()
@@ -218,13 +221,14 @@ func (s *fnUI) runCommand(command string) {
 		id, err := s.commands.Fork()
 		if err != nil {
 			s.addMessage(message{role: "error", text: err.Error()})
-			return
+			return true
 		}
 		assert.That(id != "", "fork command returned an empty session ID")
 		assert.That(id != s.sessionID, "fork command returned the current session ID")
 		s.sessionID = id
 		s.addMessage(message{role: "system", text: "Forked session " + id + "."})
 	}
+	return true
 }
 
 func (s *fnUI) startRequest(text string, showUser bool) {
@@ -771,12 +775,10 @@ func (s *fnUI) handleKey(k tui.KeyEvent) bool {
 		return true
 	}
 	if k.Key == tui.KeyEnter && k.Mod.Has(tui.ModShift) {
-		s.submitInput(s.textarea.Text(), true)
-		return true
+		return s.submitInput(s.textarea.Text(), true)
 	}
 	if k.Key == tui.KeyEnter && k.Mod == tui.ModNone {
-		s.submitInput(s.textarea.Text(), false)
-		return true
+		return s.submitInput(s.textarea.Text(), false)
 	}
 	if k.Key == tui.KeyUp && k.Mod.Has(tui.ModCtrl) && s.restorePendingInputs() {
 		return true

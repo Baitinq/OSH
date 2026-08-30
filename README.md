@@ -148,6 +148,9 @@ ranked titles, URLs, and snippets; full pages can still be inspected with
 - `Ctrl+↑` — move all queued messages back to the editor
 - `Ctrl+C` — cancel the active response; press twice within one second to quit
 - `Escape` — clear the editor
+- `/undo` — rewind to an earlier user turn
+- `/fork` — continue the conversation in a new session
+- `/exit` — exit fn
 - `Ctrl/Alt+←/→` or `Alt+B/F` — move by word
 - `Ctrl+W`, `Alt+D`, `Ctrl+U`, `Ctrl+K` — delete words or surrounding text
 
