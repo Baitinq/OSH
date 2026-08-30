@@ -116,6 +116,41 @@ func TestUserMessageCheckpointsAreUnique(t *testing.T) {
 	}
 }
 
+func TestPythonCheckpointsReuseUnchangedValues(t *testing.T) {
+	a := &Agent{}
+	startTestSession(t, a)
+	defer a.Close()
+	if _, _, err := a.pythonREPL().execute(t.Context(), "value = 'unchanged'"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.appendUserMessage("first"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.appendUserMessage("second"); err != nil {
+		t.Fatal(err)
+	}
+	objects, err := os.ReadDir(filepath.Join(a.sessionDir, "repl-objects"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(objects) != 1 {
+		t.Fatalf("stored objects = %d, want 1", len(objects))
+	}
+	if _, _, err := a.pythonREPL().execute(t.Context(), "value = 'changed'"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.appendUserMessage("third"); err != nil {
+		t.Fatal(err)
+	}
+	objects, err = os.ReadDir(filepath.Join(a.sessionDir, "repl-objects"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(objects) != 2 {
+		t.Fatalf("stored objects after change = %d, want 2", len(objects))
+	}
+}
+
 func TestFailedUndoRestoresPythonState(t *testing.T) {
 	a := &Agent{}
 	startTestSession(t, a)
@@ -180,6 +215,9 @@ func TestForkCopiesSessionState(t *testing.T) {
 	if err := a.appendUserMessage("hello"); err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err := a.pythonREPL().execute(t.Context(), "fork_value = 8"); err != nil {
+		t.Fatal(err)
+	}
 	if err := a.Fork(newID, root); err != nil {
 		t.Fatal(err)
 	}
@@ -195,8 +233,15 @@ func TestForkCopiesSessionState(t *testing.T) {
 		t.Fatal(err)
 	}
 	output, failed, err := loaded.pythonREPL().execute(t.Context(), "fork_value")
-	if err != nil || failed || output != "7" || loaded.compaction == nil || loaded.compaction.Summary != "checkpoint" || len(loaded.history) != 1 || loaded.TokensUsed() != 42 {
+	if err != nil || failed || output != "8" || loaded.compaction == nil || loaded.compaction.Summary != "checkpoint" || len(loaded.history) != 1 || loaded.TokensUsed() != 42 {
 		t.Fatalf("forked state: output=%q failed=%v err=%v summary=%q history=%#v tokens=%d", output, failed, err, loaded.compaction.Summary, loaded.history, loaded.TokensUsed())
+	}
+	if _, err := loaded.Undo(0); err != nil {
+		t.Fatal(err)
+	}
+	output, failed, err = loaded.pythonREPL().execute(t.Context(), "fork_value")
+	if err != nil || failed || output != "7" {
+		t.Fatalf("forked checkpoint state: output=%q failed=%v err=%v", output, failed, err)
 	}
 }
 

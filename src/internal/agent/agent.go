@@ -365,11 +365,11 @@ func (a *Agent) snapshotREPL() (string, error) {
 	if _, err := cryptorand.Read(id[:]); err != nil {
 		return "", err
 	}
-	checkpoint := filepath.Join("repl-checkpoints", fmt.Sprintf("%x.pickle", id))
+	checkpoint := filepath.Join("repl-checkpoints", fmt.Sprintf("%x.json", id))
 	if err := os.MkdirAll(filepath.Join(a.sessionDir, "repl-checkpoints"), 0700); err != nil {
 		return "", err
 	}
-	if err := a.pythonREPL().snapshot(filepath.Join(a.sessionDir, checkpoint)); err != nil {
+	if err := a.pythonREPL().snapshot(filepath.Join(a.sessionDir, checkpoint), filepath.Join(a.sessionDir, "repl-objects")); err != nil {
 		return "", fmt.Errorf("checkpoint Python state: %w", err)
 	}
 	return checkpoint, nil

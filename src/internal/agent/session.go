@@ -86,7 +86,7 @@ func (a *Agent) Undo(steps int) (string, error) {
 				return "", err
 			}
 			defer os.Remove(filepath.Join(a.sessionDir, rollbackCheckpoint))
-			if err := a.pythonREPL().restore(filepath.Join(a.sessionDir, checkpoint)); err != nil {
+			if err := a.pythonREPL().restore(filepath.Join(a.sessionDir, checkpoint), filepath.Join(a.sessionDir, "repl-objects")); err != nil {
 				return "", fmt.Errorf("restore Python checkpoint: %w", err)
 			}
 		}
@@ -98,10 +98,10 @@ func (a *Agent) Undo(steps int) (string, error) {
 		if err := a.SaveSession(); err != nil {
 			a.history, a.compaction = history, compaction
 			if rollbackCheckpoint != "" {
-				if rollbackErr := a.pythonREPL().restore(filepath.Join(a.sessionDir, rollbackCheckpoint)); rollbackErr != nil {
+				if rollbackErr := a.pythonREPL().restore(filepath.Join(a.sessionDir, rollbackCheckpoint), filepath.Join(a.sessionDir, "repl-objects")); rollbackErr != nil {
 					return "", fmt.Errorf("%w; restore Python state after failed undo: %v", err, rollbackErr)
 				}
-				if rollbackErr := a.pythonREPL().snapshot(filepath.Join(a.sessionDir, "repl.pickle")); rollbackErr != nil {
+				if rollbackErr := a.pythonREPL().snapshot(filepath.Join(a.sessionDir, "repl.json"), filepath.Join(a.sessionDir, "repl-objects")); rollbackErr != nil {
 					return "", fmt.Errorf("%w; save Python state after failed undo: %v", err, rollbackErr)
 				}
 			}
@@ -132,6 +132,25 @@ func copyFile(source, destination string) error {
 	return output.Close()
 }
 
+func copyDirectory(source, destination string) error {
+	entries, err := os.ReadDir(source)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if err := copyFile(filepath.Join(source, entry.Name()), filepath.Join(destination, entry.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Fork continues the current agent state in a new session.
 func (a *Agent) Fork(id, sessionsDir string) error {
 	a.assertSessionInitialized()
@@ -142,6 +161,10 @@ func (a *Agent) Fork(id, sessionsDir string) error {
 	oldID, oldDir := a.sessionID, a.sessionDir
 	a.sessionID = id
 	a.sessionDir = filepath.Join(sessionsDir, id)
+	if err := copyDirectory(filepath.Join(oldDir, "repl-objects"), filepath.Join(a.sessionDir, "repl-objects")); err != nil {
+		a.sessionID, a.sessionDir = oldID, oldDir
+		return err
+	}
 	for _, item := range a.history {
 		if item.REPLCheckpoint == "" {
 			continue
@@ -158,7 +181,7 @@ func (a *Agent) Fork(id, sessionsDir string) error {
 	return nil
 }
 
-const sessionVersion = 4
+const sessionVersion = 5
 
 type sessionFile struct {
 	Version    int              `json:"version,omitempty"`
@@ -235,9 +258,9 @@ func (a *Agent) ResumeSession(id, sessionsDir string) error {
 	for _, usage := range saved.Usage {
 		a.tokensUsed += usage.TotalTokens
 	}
-	statePath := filepath.Join(dir, "repl.pickle")
+	statePath := filepath.Join(dir, "repl.json")
 	if _, err := os.Stat(statePath); err == nil {
-		if err := a.pythonREPL().restore(statePath); err != nil {
+		if err := a.pythonREPL().restore(statePath, filepath.Join(dir, "repl-objects")); err != nil {
 			return fmt.Errorf("restore Python state: %w", err)
 		}
 	}
@@ -260,7 +283,7 @@ func (a *Agent) SaveSession() error {
 		return err
 	}
 	if a.repl != nil {
-		if err := a.repl.snapshot(filepath.Join(a.sessionDir, "repl.pickle")); err != nil {
+		if err := a.repl.snapshot(filepath.Join(a.sessionDir, "repl.json"), filepath.Join(a.sessionDir, "repl-objects")); err != nil {
 			return fmt.Errorf("save Python state: %w", err)
 		}
 	}

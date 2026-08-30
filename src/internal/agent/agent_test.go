@@ -442,6 +442,110 @@ func TestRespondDropsCompletedToolHistoryFromLaterTurns(t *testing.T) {
 	}
 }
 
+func TestREPLCheckpointUndoResumeEndToEnd(t *testing.T) {
+	var requests []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Errorf("decode request: %v", err)
+			return
+		}
+		requests = append(requests, request)
+
+		var output []any
+		switch len(requests) {
+		case 1:
+			output = []any{map[string]any{
+				"id": "fc_first", "type": "function_call", "call_id": "call_first",
+				"name": "repl", "arguments": `{"code":"value = 1"}`, "status": "completed",
+			}}
+		case 2:
+			output = testAssistantOutput("msg_first", "set to one")
+		case 3:
+			output = []any{map[string]any{
+				"id": "fc_second", "type": "function_call", "call_id": "call_second",
+				"name": "repl", "arguments": `{"code":"value = 2; added = True"}`, "status": "completed",
+			}}
+		case 4:
+			output = testAssistantOutput("msg_second", "set to two")
+		case 5:
+			output = []any{map[string]any{
+				"id": "fc_inspect", "type": "function_call", "call_id": "call_inspect",
+				"name": "repl", "arguments": `{"code":"value, 'added' in globals()"}`, "status": "completed",
+			}}
+		case 6:
+			input, _ := json.Marshal(request["input"])
+			if !strings.Contains(string(input), "(1, False)") {
+				t.Errorf("model did not observe restored REPL state: %s", input)
+			}
+			output = testAssistantOutput("msg_inspect", "state is restored")
+		default:
+			t.Errorf("unexpected request %d", len(requests))
+		}
+		payload, _ := json.Marshal(map[string]any{
+			"type": "response.completed", "sequence_number": 1,
+			"response": map[string]any{
+				"id": "resp_test", "object": "response", "model": "test", "status": "completed", "output": output,
+			},
+		})
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "event: response.completed\ndata: %s\n\n", payload)
+	}))
+	defer server.Close()
+
+	root, cwd := t.TempDir(), t.TempDir()
+	id := "550e8400-e29b-41d4-a716-446655440000"
+	a := &Agent{
+		client:       openai.NewClient(option.WithAPIKey("test"), option.WithBaseURL(server.URL+"/"), option.WithMaxRetries(0)),
+		modelName:    "test",
+		provider:     "openai",
+		instructions: "test",
+		cwd:          cwd,
+		maxRetries:   0,
+	}
+	if err := a.StartSession(id, root); err != nil {
+		t.Fatal(err)
+	}
+	for _, prompt := range []string{"set one", "change it"} {
+		if response := a.Respond(prompt, nil, func(ToolEvent) {}, t.Context()); response.Err != nil {
+			t.Fatal(response.Err)
+		}
+		if err := a.SaveSession(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if text, err := a.Undo(0); err != nil || text != "change it" {
+		t.Fatalf("Undo() = %q, %v", text, err)
+	}
+	if response := a.Respond("inspect it", nil, func(ToolEvent) {}, t.Context()); response.Err != nil {
+		t.Fatal(response.Err)
+	}
+	if err := a.SaveSession(); err != nil {
+		t.Fatal(err)
+	}
+	a.Close()
+
+	loaded := &Agent{cwd: cwd, provider: "openai", modelName: "test"}
+	defer loaded.Close()
+	if err := loaded.ResumeSession(id, root); err != nil {
+		t.Fatal(err)
+	}
+	output, failed, err := loaded.pythonREPL().execute(t.Context(), "value, 'added' in globals()")
+	if err != nil || failed || output != "(1, False)" {
+		t.Fatalf("resumed state = %q, failed %v, err %v", output, failed, err)
+	}
+	if len(requests) != 6 {
+		t.Fatalf("requests = %d, want 6", len(requests))
+	}
+}
+
+func testAssistantOutput(id, text string) []any {
+	return []any{map[string]any{
+		"id": id, "type": "message", "role": "assistant", "status": "completed",
+		"content": []any{map[string]any{"type": "output_text", "text": text, "annotations": []any{}}},
+	}}
+}
+
 func TestRetryDelayUsesEqualJitterAndCapsBackoff(t *testing.T) {
 	a := &Agent{
 		retryBaseDelay: 2 * time.Second,

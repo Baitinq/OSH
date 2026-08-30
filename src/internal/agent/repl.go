@@ -19,6 +19,7 @@ const pythonREPLScript = `
 import ast
 import contextlib
 import dataclasses
+import hashlib
 import html
 import io
 import json
@@ -168,29 +169,40 @@ def web_search(query, max_results=8):
 _user_globals = {}
 _builtin_names = {"shell", "web_search", "llm", "ShellResult", "SearchResult", "__builtins__"}
 
-def _snapshot(path):
+def _snapshot(path, objects_path):
+    os.makedirs(objects_path, mode=0o700, exist_ok=True)
     values = {}
     for name, value in _user_globals.items():
         if name in _builtin_names:
             continue
         try:
-            values[name] = pickle.dumps(value)
+            data = pickle.dumps(value)
         except Exception:
-            pass
-    with open(path, "wb") as state:
-        pickle.dump(values, state)
+            continue
+        digest = hashlib.sha256(data).hexdigest()
+        object_path = os.path.join(objects_path, digest)
+        if not os.path.exists(object_path):
+            temporary_path = object_path + ".tmp"
+            with open(temporary_path, "wb") as object_file:
+                object_file.write(data)
+            os.chmod(temporary_path, 0o600)
+            os.replace(temporary_path, object_path)
+        values[name] = digest
+    with open(path, "w") as state:
+        json.dump(values, state)
     os.chmod(path, 0o600)
     return {"output": ""}
 
-def _restore(path):
-    with open(path, "rb") as state:
-        values = pickle.load(state)
+def _restore(path, objects_path):
+    with open(path) as state:
+        values = json.load(state)
     for name in list(_user_globals):
         if name not in _builtin_names:
             del _user_globals[name]
-    for name, value in values.items():
+    for name, digest in values.items():
         try:
-            _user_globals[name] = pickle.loads(value)
+            with open(os.path.join(objects_path, digest), "rb") as object_file:
+                _user_globals[name] = pickle.load(object_file)
         except Exception:
             pass
     return {"output": ""}
@@ -229,9 +241,9 @@ for line in _protocol_in:
         _executing = True
         operation = request.get("op", "execute")
         if operation == "snapshot":
-            response = _snapshot(request["path"])
+            response = _snapshot(request["path"], request["objects_path"])
         elif operation == "restore":
-            response = _restore(request["path"])
+            response = _restore(request["path"], request["objects_path"])
         else:
             response = _execute(request.get("code", ""))
     except BaseException:
@@ -330,16 +342,16 @@ func (r *pythonREPL) execute(ctx context.Context, code string) (string, bool, er
 	return r.readResult(ctx)
 }
 
-func (r *pythonREPL) snapshot(path string) error {
+func (r *pythonREPL) snapshot(path, objectsPath string) error {
 	tmp := path + ".tmp"
-	if err := r.operation(map[string]string{"op": "snapshot", "path": tmp}); err != nil {
+	if err := r.operation(map[string]string{"op": "snapshot", "path": tmp, "objects_path": objectsPath}); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
 }
 
-func (r *pythonREPL) restore(path string) error {
-	return r.operation(map[string]string{"op": "restore", "path": path})
+func (r *pythonREPL) restore(path, objectsPath string) error {
+	return r.operation(map[string]string{"op": "restore", "path": path, "objects_path": objectsPath})
 }
 
 func (r *pythonREPL) operation(request map[string]string) error {
