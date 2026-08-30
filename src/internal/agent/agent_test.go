@@ -42,6 +42,7 @@ func TestNewUsesEnvironmentOverrides(t *testing.T) {
 	}))
 	defer server.Close()
 
+	t.Setenv("FN_PROVIDER", "openai")
 	t.Setenv("OPENAI_API_KEY", "test-key")
 	t.Setenv("FN_BASE_URL", server.URL+"/custom/v1/")
 	t.Setenv("FN_MODEL", "override-model")

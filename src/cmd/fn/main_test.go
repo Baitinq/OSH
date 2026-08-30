@@ -30,6 +30,7 @@ func TestRequireAPIKey(t *testing.T) {
 	}
 	t.Setenv("FN_PROVIDER", "gemini")
 	t.Setenv("GEMINI_API_KEY", "")
+	t.Setenv("FN_API_KEY", "")
 	if err := requireAPIKey(); err == nil || !strings.Contains(err.Error(), "GEMINI_API_KEY") {
 		t.Fatalf("Gemini error = %v", err)
 	}
@@ -182,6 +183,7 @@ func TestRunJSONWritesStructuredUsage(t *testing.T) {
 	defer server.Close()
 
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("FN_PROVIDER", "openai")
 	t.Setenv("OPENAI_API_KEY", "test-key")
 	t.Setenv("FN_BASE_URL", server.URL+"/")
 	t.Setenv("FN_MODEL", "test")

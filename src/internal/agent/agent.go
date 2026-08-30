@@ -608,10 +608,16 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 	assert.That(ctx != nil, "respond without context")
 	a.respondMu.Lock()
 	defer a.respondMu.Unlock()
+	turnStart := len(a.history)
 	if err := a.appendUserMessage(msg); err != nil {
 		return Response{Err: err}
 	}
-	defer a.pruneTransientHistory()
+	defer func() {
+		if ctx.Err() != nil {
+			a.history = a.history[:turnStart+1]
+		}
+		a.pruneTransientHistory()
+	}()
 	var text string
 	var contextTokens int64
 	overflowRecoveryAttempted := false
@@ -722,6 +728,9 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 				emit(ToolEvent{Kind: ToolEventError, Name: call.Name, ID: call.CallID, Detail: output})
 			}
 			a.history = append(a.history, historyItem{Type: "tool_result", CallID: call.CallID, Name: call.Name, Text: output, ToolError: failed})
+			if ctx.Err() != nil {
+				return Response{}
+			}
 		}
 		if _, err := a.consumeSteering(steer, emit); err != nil {
 			return Response{Err: err}

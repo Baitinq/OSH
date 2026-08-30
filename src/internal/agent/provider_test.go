@@ -179,3 +179,81 @@ func TestGeminiGatewayUsesBearerHeadersAndOmitsToolCallIDs(t *testing.T) {
 		t.Fatalf("text = %q", response.Text)
 	}
 }
+
+func TestGeminiCancellationWhileToolRunning(t *testing.T) {
+	var requests []geminiRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request geminiRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		requests = append(requests, request)
+		w.Header().Set("Content-Type", "text/event-stream")
+		if len(requests) == 1 {
+			fmt.Fprintln(w, `data: {"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"repl","args":{"code":"import time\ntime.sleep(1)"}}}]}}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1,"totalTokenCount":2}}`)
+		} else {
+			fmt.Fprintln(w, `data: {"candidates":[{"content":{"role":"model","parts":[{"text":"answer"}]}}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1,"totalTokenCount":2}}`)
+		}
+	}))
+	defer server.Close()
+
+	a := &Agent{provider: "gemini", baseURL: server.URL, httpClient: server.Client(), modelName: "gemini-3.7-flash", maxRetries: 0}
+	startTestSession(t, a)
+	a.repl = newPythonREPL(a.callLLM)
+	if err := a.repl.start(); err != nil {
+		t.Fatal(err)
+	}
+	defer a.repl.close()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	a.Respond("first question", nil, func(event ToolEvent) {
+		if event.Kind == ToolEventCall {
+			cancel()
+		}
+	}, ctx)
+
+	response := a.Respond("second question", nil, func(ToolEvent) {}, t.Context())
+	if response.Err != nil || response.Text != "answer" {
+		t.Fatalf("response = %#v", response)
+	}
+	if len(requests) != 2 {
+		t.Fatalf("requests count = %d, want 2", len(requests))
+	}
+	contents := requests[1].Contents
+	last := contents[len(contents)-1]
+	if last.Role != "user" {
+		t.Fatalf("request ended with %q turn: %#v", last.Role, contents)
+	}
+	for _, c := range contents {
+		if c.Role == "user" {
+			hasFuncResp, hasText := false, false
+			for _, p := range c.Parts {
+				if p.FunctionResponse != nil {
+					hasFuncResp = true
+				}
+				if p.Text != "" {
+					hasText = true
+				}
+			}
+			if hasFuncResp && hasText {
+				t.Fatalf("user content has both functionResponse and text: %#v", c)
+			}
+		}
+	}
+}
+
+func TestGeminiContentsSeparatesFunctionResponseAndText(t *testing.T) {
+	history := []historyItem{
+		{Type: "message", Role: "user", Text: "first"},
+		{Type: "tool_call", CallID: "call_1", Name: "repl", Arguments: json.RawMessage(`{}`)},
+		{Type: "tool_result", CallID: "call_1", Name: "repl", Text: "out"},
+		{Type: "message", Role: "user", Text: "second"},
+	}
+	contents := geminiContents(history, "gemini", "model", true)
+	if len(contents) != 4 {
+		t.Fatalf("contents len = %d, want 4: %#v", len(contents), contents)
+	}
+	if contents[2].Parts[0].FunctionResponse == nil || contents[3].Parts[0].Text != "second" {
+		t.Fatalf("contents structure incorrect: %#v", contents)
+	}
+}
