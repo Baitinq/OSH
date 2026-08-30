@@ -151,18 +151,9 @@ and model-visible output is capped at 2,000 lines or 50KB. Primary-screen render
 keeps terminal scrollback, selection, search, and copying native. Distinguishing
 `Shift+Enter` requires terminal keyboard-enhancement support.
 
-## Build and non-interactive use
+## Non-interactive use
 
-To build a local binary:
-
-```sh
-cd src
-go build -o fn ./cmd/fn
-./fn
-```
-
-For non-interactive use, print only the final response to stdout. Piped input is
-appended to the prompt:
+Print only the final response to stdout. Piped input is appended to the prompt:
 
 ```sh
 fn -p "summarize the changes in this repository"
@@ -176,6 +167,16 @@ result:
 
 ```sh
 fn -p --json "summarize the changes in this repository"
+```
+
+## Build
+
+To build a local binary:
+
+```sh
+cd src
+go build -o fn ./cmd/fn
+./fn
 ```
 
 ## Test
