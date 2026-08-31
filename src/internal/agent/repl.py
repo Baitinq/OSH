@@ -5,6 +5,7 @@ import dataclasses
 import hashlib
 from html.parser import HTMLParser
 import io
+import itertools
 import json
 import math
 import os
@@ -20,7 +21,10 @@ _protocol_in = sys.stdin
 _protocol_out = sys.stdout
 _active_processes = set()
 _executing = False
-_llm_lock = asyncio.Lock()
+_execution_task = None
+_llm_request_ids = itertools.count()
+_llm_responses = {}
+_llm_response_reader = None
 _web_search_url = "https://html.duckduckgo.com/html/"
 
 @dataclasses.dataclass
@@ -48,10 +52,10 @@ def _stop_repl(*_):
     os._exit(143)
 
 def _interrupt_execution(*_):
-    if not _executing:
+    if _execution_task is None:
         return
     _kill_active_processes()
-    raise KeyboardInterrupt
+    _execution_task.cancel()
 
 signal.signal(signal.SIGTERM, _stop_repl)
 signal.signal(signal.SIGINT, _interrupt_execution)
@@ -131,14 +135,31 @@ def _result_url(value):
         return None
     return urllib.parse.urlunparse(parsed)
 
+async def _read_llm_responses():
+    global _llm_response_reader
+    try:
+        while _llm_responses:
+            response = json.loads(await asyncio.to_thread(_protocol_in.readline))
+            future = _llm_responses.pop(response["id"])
+            if not future.cancelled():
+                future.set_result(response)
+    finally:
+        _llm_response_reader = None
+
+
 async def llm(prompt: str) -> str:
     """Run one fresh, tool-free model call and return its response as a string."""
+    global _llm_response_reader
     if not isinstance(prompt, str):
         raise TypeError("llm() prompt must be a string")
-    async with _llm_lock:
-        _protocol_out.write(json.dumps({"host_call": "llm", "prompt": prompt}) + "\n")
-        _protocol_out.flush()
-        response = json.loads(await asyncio.to_thread(_protocol_in.readline))
+    request_id = next(_llm_request_ids)
+    response_future = asyncio.get_running_loop().create_future()
+    _llm_responses[request_id] = response_future
+    _protocol_out.write(json.dumps({"host_call": "llm", "id": request_id, "prompt": prompt}) + "\n")
+    _protocol_out.flush()
+    if _llm_response_reader is None or _llm_response_reader.done():
+        _llm_response_reader = asyncio.create_task(_read_llm_responses())
+    response = await asyncio.shield(response_future)
     if "error" in response:
         raise RuntimeError(response["error"])
     return response["result"]
@@ -221,7 +242,7 @@ async def _run_code(tree):
         await result
 
 async def _execute(code):
-    global _executing
+    global _executing, _llm_response_reader
     _executing = True
     _user_globals.update(
         shell=shell,
@@ -252,9 +273,15 @@ async def _execute(code):
     except BaseException:
         return {"output": output.getvalue() + traceback.format_exc(), "error": True}
     finally:
+        if _llm_response_reader is not None:
+            if _llm_response_reader.done():
+                _llm_response_reader.result()
+            else:
+                await _llm_response_reader
         _executing = False
 
 async def _main():
+    global _execution_task
     while line := await asyncio.to_thread(_protocol_in.readline):
         request = json.loads(line)
         operation = request.get("op", "execute")
@@ -263,7 +290,9 @@ async def _main():
         elif operation == "restore":
             response = _restore(request["path"], request["objects_path"])
         else:
-            response = await _execute(request.get("code", ""))
+            _execution_task = asyncio.create_task(_execute(request.get("code", "")))
+            response = await _execution_task
+            _execution_task = None
         _protocol_out.write(json.dumps(response) + "\n")
         _protocol_out.flush()
 

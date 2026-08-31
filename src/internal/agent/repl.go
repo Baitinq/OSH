@@ -21,6 +21,7 @@ var pythonREPLScript string
 
 type pythonREPL struct {
 	mu      sync.Mutex
+	stdinMu sync.Mutex
 	llm     func(context.Context, string) (string, error)
 	cmd     *exec.Cmd
 	stdin   io.WriteCloser
@@ -33,6 +34,7 @@ type replResult struct {
 	Output   string `json:"output"`
 	Error    bool   `json:"error"`
 	HostCall string `json:"host_call"`
+	ID       int    `json:"id"`
 	Prompt   string `json:"prompt"`
 }
 
@@ -66,7 +68,9 @@ func (r *pythonREPL) stop() {
 		return
 	}
 	cmd := r.cmd
+	r.stdinMu.Lock()
 	_ = r.stdin.Close()
+	r.stdinMu.Unlock()
 	_ = cmd.Process.Signal(syscall.SIGTERM)
 	done := make(chan struct{})
 	go func() {
@@ -103,7 +107,7 @@ func (r *pythonREPL) execute(ctx context.Context, code string) (string, bool, er
 	if err != nil {
 		return "", true, err
 	}
-	if _, err := r.stdin.Write(append(data, '\n')); err != nil {
+	if _, err := r.write(append(data, '\n')); err != nil {
 		r.stop()
 		return "", true, err
 	}
@@ -137,7 +141,7 @@ func (r *pythonREPL) operation(request map[string]string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := r.stdin.Write(append(data, '\n')); err != nil {
+	if _, err := r.write(append(data, '\n')); err != nil {
 		r.stop()
 		return err
 	}
@@ -145,54 +149,81 @@ func (r *pythonREPL) operation(request map[string]string) error {
 	return err
 }
 
+func (r *pythonREPL) write(data []byte) (int, error) {
+	return r.writeTo(r.stdin, data)
+}
+
+func (r *pythonREPL) writeTo(stdin io.Writer, data []byte) (int, error) {
+	r.stdinMu.Lock()
+	defer r.stdinMu.Unlock()
+	return stdin.Write(data)
+}
+
 func (r *pythonREPL) readResult(ctx context.Context) (string, bool, error) {
 	type readResult struct {
 		line []byte
 		err  error
 	}
+	hostCallError := make(chan error, 1)
+	cancel := ctx.Done()
+	var canceled error
 	for {
 		read := make(chan readResult, 1)
 		go func() {
 			line, err := r.stdout.ReadBytes('\n')
 			read <- readResult{line: line, err: err}
 		}()
-		select {
-		case <-ctx.Done():
-			_ = r.cmd.Process.Signal(syscall.SIGINT)
+
+		var result readResult
+		for {
 			select {
-			case <-read:
-				return "", true, ctx.Err()
-			case <-time.After(500 * time.Millisecond):
+			case <-cancel:
+				canceled = ctx.Err()
+				cancel = nil
+				_ = r.cmd.Process.Signal(syscall.SIGINT)
+			case err := <-hostCallError:
 				r.stop()
-				return "", true, ctx.Err()
+				return "", true, err
+			case result = <-read:
+				goto received
 			}
-		case result := <-read:
-			if result.err != nil {
-				r.stop()
-				if stderr := strings.TrimSpace(r.stderr.String()); stderr != "" {
-					return "", true, fmt.Errorf("Python REPL stopped: %s", stderr)
-				}
-				return "", true, fmt.Errorf("Python REPL stopped: %w", result.err)
+		}
+
+	received:
+		if result.err != nil {
+			r.stop()
+			if stderr := strings.TrimSpace(r.stderr.String()); stderr != "" {
+				return "", true, fmt.Errorf("Python REPL stopped: %s", stderr)
 			}
-			var response replResult
-			if err := json.Unmarshal(result.line, &response); err != nil {
-				r.stop()
-				return "", true, fmt.Errorf("invalid Python REPL response: %w", err)
-			}
-			if response.HostCall == "llm" {
-				text, err := r.llm(ctx, response.Prompt)
-				hostResponse := map[string]string{"result": text}
-				if err != nil {
-					hostResponse = map[string]string{"error": err.Error()}
-				}
-				data, _ := json.Marshal(hostResponse)
-				if _, err := r.stdin.Write(append(data, '\n')); err != nil {
-					r.stop()
-					return "", true, err
-				}
-				continue
-			}
-			return response.Output, response.Error, nil
+			return "", true, fmt.Errorf("Python REPL stopped: %w", result.err)
+		}
+		var response replResult
+		if err := json.Unmarshal(result.line, &response); err != nil {
+			r.stop()
+			return "", true, fmt.Errorf("invalid Python REPL response: %w", err)
+		}
+		if response.HostCall == "llm" {
+			go r.runLLMHostCall(ctx, r.stdin, response.ID, response.Prompt, hostCallError)
+			continue
+		}
+		if canceled != nil {
+			return "", true, canceled
+		}
+		return response.Output, response.Error, nil
+	}
+}
+
+func (r *pythonREPL) runLLMHostCall(ctx context.Context, stdin io.Writer, id int, prompt string, hostCallError chan<- error) {
+	text, callErr := r.llm(ctx, prompt)
+	hostResponse := map[string]any{"id": id, "result": text}
+	if callErr != nil {
+		hostResponse = map[string]any{"id": id, "error": callErr.Error()}
+	}
+	data, _ := json.Marshal(hostResponse)
+	if _, err := r.writeTo(stdin, append(data, '\n')); err != nil {
+		select {
+		case hostCallError <- err:
+		default:
 		}
 	}
 }

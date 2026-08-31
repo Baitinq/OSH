@@ -356,7 +356,9 @@ func (a *Agent) streamGemini(ctx context.Context, request modelRequest, emit fun
 	return result, nil
 }
 func (a *Agent) recordUsage(usage Usage, emit func(ToolEvent)) {
+	a.usageMu.Lock()
 	a.usage = append(a.usage, usage)
 	a.tokensUsed += usage.TotalTokens
+	a.usageMu.Unlock()
 	emit(ToolEvent{Kind: ToolEventContextTokens, ContextTokens: usage.TotalTokens})
 }

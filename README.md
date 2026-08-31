@@ -99,13 +99,13 @@ status.stdout
 hits = await web_search("latest Go release")
 [(hit.title, hit.url) for hit in hits]
 
-reviews = [await llm(f"Classify this report:\n{report}") for report in reports]
+reviews = await asyncio.gather(*(llm(f"Classify this report:\n{report}") for report in reports))
 ```
 
 - `await shell()` returns a `ShellResult` with `stdout`, `exit_code`, and `error` fields.
 - `await web_search()` returns `SearchResult` values with `title`, `url`, and `snippet`.
 - `await llm()` runs one fresh, tool-free model call and returns its response as a string.
-- Use `asyncio.gather()` to run independent shell and web search calls concurrently. `llm()` calls are serialized.
+- Use `asyncio.gather()` to run independent host-function calls concurrently.
 - Await async work within the current execution; detached background tasks are unsupported.
 
 Assignments stay in the REPL; only printed output and the final expression enter

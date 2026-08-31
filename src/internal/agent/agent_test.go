@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -671,6 +672,189 @@ func TestPythonREPLExposesLLM(t *testing.T) {
 	}
 	if strings.Join(prompts, ",") != "first,second" {
 		t.Fatalf("llm prompts = %#v", prompts)
+	}
+}
+
+func TestPythonREPLRunsLLMCallsConcurrently(t *testing.T) {
+	var started atomic.Int32
+	release := make(chan struct{})
+	repl := newPythonREPL(func(ctx context.Context, prompt string) (string, error) {
+		if started.Add(1) == 2 {
+			close(release)
+		}
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+		if prompt == "first" {
+			time.Sleep(20 * time.Millisecond)
+		}
+		return "result for " + prompt, nil
+	})
+	t.Cleanup(repl.close)
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	output, failed, err := repl.execute(ctx, `import asyncio; await asyncio.gather(llm("first"), llm("second"))`)
+	if err != nil || failed || output != "['result for first', 'result for second']" {
+		t.Fatalf("llm result = %q, failed=%v, error=%v", output, failed, err)
+	}
+}
+
+func TestPythonREPLDrainsConcurrentLLMCallsAfterError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	secondStarted := make(chan struct{})
+	releaseSecond := make(chan struct{})
+	repl := newPythonREPL(func(ctx context.Context, prompt string) (string, error) {
+		if prompt == "first" {
+			select {
+			case <-secondStarted:
+				return "", errors.New("first failed")
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
+		close(secondStarted)
+		select {
+		case <-releaseSecond:
+			return "second result", nil
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	})
+	t.Cleanup(repl.close)
+
+	type executionResult struct {
+		output string
+		failed bool
+		err    error
+	}
+	resultCh := make(chan executionResult, 1)
+	go func() {
+		output, failed, err := repl.execute(ctx, `import asyncio; await asyncio.gather(llm("first"), llm("second"))`)
+		resultCh <- executionResult{output, failed, err}
+	}()
+	select {
+	case <-secondStarted:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	select {
+	case got := <-resultCh:
+		t.Fatalf("execute returned before pending LLM call completed: %#v", got)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(releaseSecond)
+	var got executionResult
+	select {
+	case got = <-resultCh:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if got.err != nil || !got.failed || !strings.Contains(got.output, "RuntimeError: first failed") {
+		t.Fatalf("llm result = %q, failed=%v, error=%v", got.output, got.failed, got.err)
+	}
+
+	output, failed, err := repl.execute(t.Context(), "42")
+	if err != nil || failed || output != "42" {
+		t.Fatalf("result after failed concurrent call = %q, failed=%v, error=%v", output, failed, err)
+	}
+}
+
+func TestPythonREPLDrainsCanceledLLMCall(t *testing.T) {
+	started := make(chan struct{})
+	finished := make(chan struct{})
+	repl := newPythonREPL(func(ctx context.Context, prompt string) (string, error) {
+		if prompt != "stale" {
+			return "result for " + prompt, nil
+		}
+		close(started)
+		<-ctx.Done()
+		close(finished)
+		return "", ctx.Err()
+	})
+	t.Cleanup(repl.close)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	go func() {
+		<-started
+		cancel()
+	}()
+	output, failed, err := repl.execute(ctx, `preserved = 42; await llm("stale")`)
+	if !errors.Is(err, context.Canceled) || !failed || output != "" {
+		t.Fatalf("canceled result = %q, failed=%v, error=%v", output, failed, err)
+	}
+
+	<-finished
+	output, failed, err = repl.execute(t.Context(), `(preserved, await llm("fresh"))`)
+	if err != nil || failed || output != "(42, 'result for fresh')" {
+		t.Fatalf("fresh result = %q, failed=%v, error=%v", output, failed, err)
+	}
+}
+
+func TestPythonREPLPreservesStateWhenCancellationOvertakesLLMDispatch(t *testing.T) {
+	marker := t.TempDir() + "/host-call"
+	release := t.TempDir() + "/release"
+	repl := newPythonREPL(func(_ context.Context, prompt string) (string, error) {
+		return "result for " + prompt, nil
+	})
+	t.Cleanup(repl.close)
+
+	code := fmt.Sprintf(`
+import os, signal, time
+protocol_out = llm.__globals__["_protocol_out"]
+class DelayedHostCall:
+    def write(self, data):
+        if '"host_call"' in data:
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            open(%q, "w").close()
+            while not os.path.exists(%q):
+                time.sleep(0.001)
+        return protocol_out.write(data)
+    def flush(self):
+        protocol_out.flush()
+llm.__globals__["_protocol_out"] = DelayedHostCall()
+preserved = 42
+await llm("stale")`, marker, release)
+
+	type executionResult struct {
+		output string
+		failed bool
+		err    error
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	resultCh := make(chan executionResult, 1)
+	go func() {
+		output, failed, err := repl.execute(ctx, code)
+		resultCh <- executionResult{output, failed, err}
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		if _, err := os.Stat(marker); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Python did not emit host call")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	if err := os.WriteFile(release, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := <-resultCh
+	if !errors.Is(got.err, context.Canceled) || !got.failed || got.output != "" {
+		t.Fatalf("canceled result = %q, failed=%v, error=%v", got.output, got.failed, got.err)
+	}
+
+	nextCtx, nextCancel := context.WithTimeout(t.Context(), time.Second)
+	defer nextCancel()
+	output, failed, err := repl.execute(nextCtx, `(preserved, await llm("fresh"))`)
+	if err != nil || failed || output != "(42, 'result for fresh')" {
+		t.Fatalf("fresh result = %q, failed=%v, error=%v", output, failed, err)
 	}
 }
 
