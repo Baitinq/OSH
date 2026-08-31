@@ -549,7 +549,7 @@ func TestRenderedMessagesUsePiDarkTheme(t *testing.T) {
 		{message{role: "tool", toolResult: "/tmp", toolState: "success"}, "38;2;128;128;128;48;2;38;40;46"},
 		{message{role: "error", text: "failed"}, "38;2;204;102;102"},
 		{message{role: "system", text: "cancelled"}, "38;5;242"},
-		{message{role: "status", text: "Done in 1.2s"}, "38;5;70"},
+		{message{role: "status", text: "Done in 1.2s"}, "38;2;181;189;104"},
 	}
 	for _, test := range tests {
 		if got := renderedMessage(test.message, 80); !strings.Contains(got, test.code) {
@@ -1035,26 +1035,13 @@ func TestShortDocumentFillsAndBottomAlignsViewport(t *testing.T) {
 	}
 }
 
-func TestFooterUsesPiThemeColors(t *testing.T) {
+func TestFooterIsSimplifiedAndQuiet(t *testing.T) {
 	footer := renderFooter("gpt-5", "high", 12345, "/tmp/project", "abc123", 100)
-	for _, want := range []string{
-		"38;2;212;212;212m", // model
-		"38;2;178;148;187m", // high reasoning
-		"38;2;181;189;104m", // context tokens
-		"38;2;138;190;183m", // working directory
-	} {
-		if !strings.Contains(footer, want) {
-			t.Errorf("footer missing Pi theme color %q: %q", want, footer)
-		}
-	}
-	if got, want := stripANSI(footer), "gpt-5 (high)  ·  context 12k tokens  ·  /tmp/project  ·  abc123"; got != want {
+	if got, want := stripANSI(footer), "gpt-5 (high)  ·  12k context  ·  /tmp/project  ·  abc123"; got != want {
 		t.Fatalf("footer text = %q, want %q", got, want)
 	}
-	if !strings.Contains(footer, ansiRGBStyle(piDim, "", false, false, " (")+ansiRGBStyle(reasoningEffortColor("high"), "", false, false, "high")+ansiRGBStyle(piDim, "", false, false, ")  ·  context ")) {
-		t.Fatalf("reasoning effort parentheses are not both dim: %q", footer)
-	}
-	if !strings.Contains(footer, ansiRGBStyle(piDim, "", false, false, "abc123")) {
-		t.Fatalf("session ID is not dim: %q", footer)
+	if strings.Contains(footer, "38;2;181;189;104") || strings.Contains(footer, "38;2;138;190;183") {
+		t.Fatalf("footer uses decorative accents: %q", footer)
 	}
 }
 
@@ -1362,7 +1349,7 @@ func TestRenderedMarkdownUsesPiColors(t *testing.T) {
 		"heading":     "38;2;240;198;116",
 		"link":        "38;2;129;162;190",
 		"link URL":    "38;2;102;102;102",
-		"list bullet": "38;2;138;190;183",
+		"list bullet": "38;2;128;128;128",
 		"quote":       "38;2;128;128;128",
 	} {
 		if !strings.Contains(rendered, color) {

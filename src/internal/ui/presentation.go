@@ -49,10 +49,10 @@ func (s *fnUI) render(width int, viewportHeight ...int) ([]string, int, int) {
 			seconds := int((remaining + time.Second - 1) / time.Second)
 			status := fmt.Sprintf(" Retrying (%d/%d) in %ds... (Esc to cancel)", s.retryAttempt, s.retryMaxAttempts, seconds)
 			status += workingDurationLabel(s.requestStartedAt, time.Now())
-			lines = append(lines, ansi256FG(214, spinnerFrames[s.spinnerFrame])+ansi256FG(242, status))
+			lines = append(lines, ansiRGBStyle(piAmber, "", false, false, spinnerFrames[s.spinnerFrame])+ansi256FG(242, status))
 		} else {
 			status := " Working…" + workingDurationLabel(s.requestStartedAt, time.Now())
-			lines = append(lines, ansi256FG(39, spinnerFrames[s.spinnerFrame])+ansi256FG(242, status))
+			lines = append(lines, ansiRGBStyle(piAccent, "", false, false, spinnerFrames[s.spinnerFrame])+ansi256FG(242, status))
 		}
 	}
 	for _, p := range s.pendingInputs {
@@ -83,14 +83,14 @@ func (s *fnUI) renderUndoSelector(width, height int) ([]string, int, int) {
 	start := max(0, s.undoSelected-visible/2)
 	start = min(start, max(0, len(s.undoOptions)-visible))
 	end := min(len(s.undoOptions), start+visible)
-	lines := []string{ansi256FG(39, " Select a turn to undo to"), ""}
+	lines := []string{ansiRGBStyle(piBlue, "", false, false, " Select a turn to undo to"), ""}
 	for i := start; i < end; i++ {
-		prefix, color := "  ", 245
+		prefix, color := "  ", piGray
 		if i == s.undoSelected {
-			prefix, color = "› ", 39
+			prefix, color = "› ", piBlue
 		}
 		text := strings.ReplaceAll(sanitizeTerminalText(s.undoOptions[i].text), "\n", " ")
-		lines = append(lines, ansi256FG(color, truncateCells(prefix+text, width)))
+		lines = append(lines, ansiRGBStyle(color, "", false, false, truncateCells(prefix+text, width)))
 	}
 	lines = append(lines, "", ansi256FG(245, truncateCells(" ↑/↓ select · Enter undo · Esc cancel", width)))
 	if filler := max(height-len(lines), 0); filler > 0 {
@@ -144,7 +144,7 @@ func renderedMessageAt(msg message, width int, now time.Time) string {
 		}
 	case "status":
 		for _, line := range wrapPlain(msg.text, contentWidth) {
-			lines = append(lines, " "+ansi256FG(70, "✓")+ansi256FG(242, " "+line))
+			lines = append(lines, " "+ansiRGBStyle(piGreen, "", false, false, "✓")+ansi256FG(242, " "+line))
 		}
 	case "error":
 		for _, line := range wrapPlain(msg.text, contentWidth) {
@@ -166,17 +166,7 @@ type footerPart struct {
 }
 
 func renderFooter(model, effort string, contextTokens int64, cwd, sessionID string, width int) string {
-	parts := []footerPart{
-		{model, piText},
-		{" (", piDim},
-		{effort, reasoningEffortColor(effort)},
-		{")  ·  context ", piDim},
-		{formatTokenCount(contextTokens), piGreen},
-		{" tokens  ·  ", piDim},
-		{cwd, piAccent},
-		{"  ·  ", piDim},
-		{sessionID, piDim},
-	}
+	parts := []footerPart{{model, piText}, {" (", piDim}, {effort, piGray}, {")  ·  ", piDim}, {formatTokenCount(contextTokens) + " context", piGray}, {"  ·  ", piDim}, {cwd, piGray}, {"  ·  ", piDim}, {sessionID, piGray}}
 	var out strings.Builder
 	for _, part := range parts {
 		if width <= 0 {
@@ -189,21 +179,8 @@ func renderFooter(model, effort string, contextTokens int64, cwd, sessionID stri
 	return out.String()
 }
 
-func reasoningEffortColor(effort string) string {
-	switch effort {
-	case "minimal":
-		return "110;110;110"
-	case "low":
-		return "95;135;175"
-	case "medium":
-		return "129;162;190"
-	case "high":
-		return "178;148;187"
-	case "xhigh":
-		return "209;131;232"
-	default:
-		return piGray
-	}
+func reasoningEffortColor(string) string {
+	return piGray
 }
 
 const (
@@ -213,6 +190,7 @@ const (
 	piAccent        = "138;190;183"
 	piBlue          = "129;162;190"
 	piGreen         = "181;189;104"
+	piAmber         = "240;198;116"
 	piError         = "204;102;102"
 	piUserMessageBg = "52;53;65"
 	piToolBg        = "38;40;46"
@@ -281,7 +259,7 @@ func renderedMarkdownLines(text string, width int) []string {
 	style.Link.Color = stringPointer("#666666")
 	style.LinkText.Color = stringPointer("#81A2BE")
 	style.LinkText.Underline = boolPointer(true)
-	style.List.Color = stringPointer("#8ABEB7")
+	style.List.Color = stringPointer("#808080")
 	style.BlockQuote.Color = stringPointer("#808080")
 	style.BlockQuote.Italic = boolPointer(true)
 	style.HorizontalRule.Color = stringPointer("#808080")

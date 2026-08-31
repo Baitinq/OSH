@@ -31,7 +31,7 @@ wait_for '│ STARTUP-DRAFT'
 # Stream past the viewport and verify both ends reached native tmux history.
 "${tmux[@]}" send-keys -t "$session" -l stream
 "${tmux[@]}" send-keys -t "$session" Enter
-wait_for 'context 321 tokens'
+wait_for '321 context'
 all=$(capture)
 grep -q 'STREAM-LINE-01' <<<"$all"
 grep -q 'STREAM-LINE-32' <<<"$all"
@@ -85,7 +85,7 @@ wait_for 'ECHO<alpha'
 "${tmux[@]}" send-keys -t "$session" -l tools
 "${tmux[@]}" send-keys -t "$session" Enter
 wait_for 'LIVE-PARTIAL'
-wait_for 'context 654 tokens'
+wait_for '654 context'
 all=$(capture)
 grep -q '\$ printf tool-output' <<<"$all"
 grep -q '^ tool-output' <<<"$all"
@@ -98,7 +98,7 @@ wait_for 'STEER-WAIT'
 "${tmux[@]}" send-keys -t "$session" -l change-direction
 "${tmux[@]}" send-keys -t "$session" Enter
 wait_for 'STEERED<change-direction>'
-wait_for 'context 901 tokens'
+wait_for '901 context'
 
 # A sustained tool stream remains live without rendering every individual
 # chunk. Capture raw pane output and count synchronized renderer frames.
@@ -109,8 +109,8 @@ printf -v pipe_command 'cat > %q' "$render_log"
 sleep .05
 "${tmux[@]}" send-keys -t "$session" Enter
 wait_for 'BURST-60'
-! capture | grep -q 'context 876 tokens'
-wait_for 'context 876 tokens'
+! capture | grep -q '876 context'
+wait_for '876 context'
 "${tmux[@]}" pipe-pane -t "$session"
 sleep .05
 read -r render_frames render_replays render_bytes < <(python3 - "$render_log" <<'PY'
@@ -181,7 +181,7 @@ wait_for '│ EDIT-14'
 visible=$("${tmux[@]}" capture-pane -p -t "$session")
 grep -q '│ EDIT-14' <<<"$visible"
 "${tmux[@]}" send-keys -t "$session" Enter
-wait_for 'context 777 tokens'
+wait_for '777 context'
 all=$(capture)
 grep -q 'EDIT-01' <<<"$all"
 grep -q 'EDIT-14' <<<"$all"
