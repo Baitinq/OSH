@@ -545,8 +545,8 @@ func TestRenderedMessagesUsePiDarkTheme(t *testing.T) {
 		{message{role: "you", text: "hello"}, "38;2;212;212;212;48;2;52;53;65"},
 		{message{role: "agent", text: "hello"}, "38;2;212;212;212"},
 		{message{role: "reasoning", text: "thinking"}, "3;38;2;128;128;128"},
-		{message{role: "tool", toolCommand: "pwd", toolState: "pending"}, "1;38;2;212;212;212;48;2;40;40;50"},
-		{message{role: "tool", toolResult: "/tmp", toolState: "success"}, "38;2;128;128;128;48;2;40;50;40"},
+		{message{role: "tool", toolCommand: "pwd", toolState: "pending"}, "48;2;38;40;46"},
+		{message{role: "tool", toolResult: "/tmp", toolState: "success"}, "38;2;128;128;128;48;2;38;40;46"},
 		{message{role: "error", text: "failed"}, "38;2;204;102;102"},
 		{message{role: "system", text: "cancelled"}, "38;5;242"},
 		{message{role: "status", text: "Done in 1.2s"}, "38;5;70"},
@@ -581,14 +581,14 @@ func TestToolOutputCannotEmitTerminalControlSequences(t *testing.T) {
 	}
 }
 
-func TestToolCardPreviewsLastFiveVisualLines(t *testing.T) {
+func TestToolCardPreviewsHeadAndTail(t *testing.T) {
 	got := stripANSI(renderedMessage(message{
 		role: "tool", toolCommand: "many", toolResult: buildNumberedLines("OUTPUT", 12), toolState: "success",
 	}, 40))
-	if strings.Contains(got, "OUTPUT-01") || !strings.Contains(got, "OUTPUT-12") {
-		t.Fatalf("tool preview did not keep the tail: %q", got)
+	if !strings.Contains(got, "OUTPUT-01") || !strings.Contains(got, "OUTPUT-12") || strings.Contains(got, "OUTPUT-06") {
+		t.Fatalf("tool preview did not keep head and tail: %q", got)
 	}
-	if !strings.Contains(got, "... (7 earlier lines)") {
+	if !strings.Contains(got, "⋯ 7 lines omitted ⋯") {
 		t.Fatalf("tool preview lacks omitted-line count: %q", got)
 	}
 }
@@ -690,9 +690,9 @@ func TestToolEventsRecordDuration(t *testing.T) {
 }
 
 func TestPiBoxLineRestoresBackgroundAfterNestedStyle(t *testing.T) {
-	nested := ansiRGBStyle(piGreen, piToolSuccessBg, false, false, "✓ ") + "repl"
-	got := piBoxLine(nested, 20, piGray, piToolSuccessBg, false)
-	baseStyle := strings.TrimSuffix(ansiRGBStyle(piGray, piToolSuccessBg, false, false, ""), "\x1b[0m")
+	nested := ansiRGBStyle(piGreen, piToolBg, false, false, "✓ ") + "repl"
+	got := piBoxLine(nested, 20, piGray, piToolBg, false)
+	baseStyle := strings.TrimSuffix(ansiRGBStyle(piGray, piToolBg, false, false, ""), "\x1b[0m")
 	if !strings.Contains(got, "✓ "+baseStyle+"repl") {
 		t.Fatalf("box line does not restore its background after nested style: %q", got)
 	}
@@ -701,15 +701,18 @@ func TestPiBoxLineRestoresBackgroundAfterNestedStyle(t *testing.T) {
 	}
 }
 
-func TestToolCardChangesBackgroundWithState(t *testing.T) {
-	for state, color := range map[string]string{
-		"pending": "48;2;40;40;50",
-		"success": "48;2;40;50;40",
-		"error":   "48;2;60;40;40",
-	} {
-		got := renderedMessage(message{role: "tool", toolCommand: "pwd", toolState: state}, 40)
-		if !strings.Contains(got, color) {
-			t.Errorf("%s tool card missing background %q: %q", state, color, got)
+func TestToolCardClarifiesContextOmission(t *testing.T) {
+	got := stripANSI(renderedMessage(message{role: "tool", toolName: "repl", toolCommand: "print(1)", toolResult: "[output omitted]", toolState: "success"}, 60))
+	if !strings.Contains(got, "[result omitted from model context]") {
+		t.Fatalf("tool card omission = %q", got)
+	}
+}
+
+func TestToolCardUsesNeutralBackgroundAndStateColor(t *testing.T) {
+	for state, color := range map[string]string{"success": piGreen, "error": piError} {
+		got := renderedMessage(message{role: "tool", toolName: "repl", toolCommand: "print(1)", toolState: state}, 40)
+		if !strings.Contains(got, "48;2;"+piToolBg) || !strings.Contains(got, "38;2;"+color) {
+			t.Errorf("%s tool card lacks neutral background or state color: %q", state, got)
 		}
 	}
 }
@@ -1370,7 +1373,7 @@ func TestRenderedMarkdownUsesPiColors(t *testing.T) {
 
 func TestHighlightPythonLines(t *testing.T) {
 	line := `result = shell("pwd") # comment`
-	highlighted := highlightedPythonLines(line, 80, piToolSuccessBg)
+	highlighted := highlightedPythonLines(line, 80, piToolBg)
 	if len(highlighted) != 1 || stripANSI(highlighted[0]) != line || !strings.Contains(highlighted[0], "\x1b[38;2;") {
 		t.Fatalf("highlighted Python = %#v", highlighted)
 	}

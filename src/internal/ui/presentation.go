@@ -215,9 +215,7 @@ const (
 	piGreen         = "181;189;104"
 	piError         = "204;102;102"
 	piUserMessageBg = "52;53;65"
-	piToolPendingBg = "40;40;50"
-	piToolSuccessBg = "40;50;40"
-	piToolErrorBg   = "60;40;40"
+	piToolBg        = "38;40;46"
 )
 
 func workingDurationLabel(startedAt, now time.Time) string {
@@ -392,28 +390,30 @@ func escapeMarkdownHTML(source string) string {
 }
 
 func renderedToolMessage(msg message, width int, now time.Time) string {
-	bg := piToolPendingBg
-	if msg.toolState == "success" {
-		bg = piToolSuccessBg
-	} else if msg.toolState == "error" {
-		bg = piToolErrorBg
-	}
+	bg := piToolBg
 	inner := max(width-2, 1)
 	lines := []string{piBoxLine("", width, piText, bg, false)}
 	duration := toolDurationLabel(msg, now)
+	state, stateColor := "", piGray
+	if msg.toolState == "success" {
+		state, stateColor = "✓ ", piGreen
+	} else if msg.toolState == "error" {
+		state, stateColor = "✕ ", piError
+	}
 	if msg.toolCommand != "" {
 		command := sanitizeTerminalText(msg.toolCommand)
 		var commandLines []string
 		bold := true
 		if msg.toolName == "repl" {
-			lines = append(lines, piBoxLine(" repl"+duration, width, piGray, bg, true))
-			commandLines = highlightedPythonLines(command, inner, bg)
-			bold = false
+			header := " repl" + duration
+			if state != "" {
+				header = " " + ansiRGBStyle(stateColor, bg, false, false, state) + ansiRGBStyle(piGray, bg, false, false, "repl"+duration)
+			}
+			lines = append(lines, piBoxLine(header, width, piGray, bg, false))
+			commandLines, bold = highlightedPythonLines(command, inner, bg), false
 		} else {
 			if duration != "" {
-				// Keep timing metadata on its own line above the command so it cannot
-				// be mistaken for part of a long or wrapped invocation.
-				lines = append(lines, piBoxLine(" "+strings.TrimSpace(duration), width, piText, bg, true))
+				lines = append(lines, piBoxLine(" "+strings.TrimSpace(duration), width, piGray, bg, false))
 			}
 			command = "$ " + command
 			if msg.toolName == "web_search" {
@@ -425,18 +425,22 @@ func renderedToolMessage(msg message, width int, now time.Time) string {
 			lines = append(lines, piBoxLine(" "+line, width, piText, bg, bold))
 		}
 	} else if msg.toolName != "" {
-		lines = append(lines, piBoxLine(" "+sanitizeTerminalText(msg.toolName)+duration, width, piText, bg, true))
+		lines = append(lines, piBoxLine(" "+sanitizeTerminalText(msg.toolName)+duration, width, piGray, bg, false))
 	}
 	if msg.toolResult != "" {
-		outputLines := wrapPlain(strings.TrimSuffix(sanitizeTerminalText(msg.toolResult), "\n"), inner)
-		skipped := max(len(outputLines)-toolPreviewLines, 0)
-		if skipped > 0 {
-			outputLines = outputLines[skipped:]
+		result := strings.TrimSuffix(sanitizeTerminalText(msg.toolResult), "\n")
+		if result == "[output omitted]" {
+			result = "[result omitted from model context]"
 		}
+		outputLines := wrapPlain(result, inner)
 		lines = append(lines, piBoxLine("", width, piGray, bg, false))
-		if skipped > 0 {
-			hint := fmt.Sprintf(" ... (%d earlier lines)", skipped)
-			lines = append(lines, piBoxLine(hint, width, piGray, bg, false))
+		if len(outputLines) > toolPreviewLines {
+			head, tail := toolPreviewLines/2, toolPreviewLines-toolPreviewLines/2
+			for _, line := range outputLines[:head] {
+				lines = append(lines, piBoxLine(" "+line, width, piGray, bg, false))
+			}
+			lines = append(lines, piBoxLine(fmt.Sprintf(" ⋯ %d lines omitted ⋯", len(outputLines)-toolPreviewLines), width, piDim, bg, false))
+			outputLines = outputLines[len(outputLines)-tail:]
 		}
 		for _, line := range outputLines {
 			lines = append(lines, piBoxLine(" "+line, width, piGray, bg, false))

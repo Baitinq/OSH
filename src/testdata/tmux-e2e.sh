@@ -133,8 +133,8 @@ if [[ "$render_bytes" -gt 40000 ]]; then
   exit 1
 fi
 all=$(capture)
-! grep -q 'BURST-01' <<<"$all"
-grep -q 'earlier lines' <<<"$all"
+grep -q 'BURST-01' <<<"$all"
+grep -q 'lines omitted' <<<"$all"
 grep -q 'BURST-60' <<<"$all"
 grep -q 'burst complete' <<<"$all"
 
