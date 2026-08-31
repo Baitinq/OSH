@@ -689,6 +689,18 @@ func TestToolEventsRecordDuration(t *testing.T) {
 	}
 }
 
+func TestPiBoxLineRestoresBackgroundAfterNestedStyle(t *testing.T) {
+	nested := ansiRGBStyle(piGreen, piToolSuccessBg, false, false, "✓ ") + "repl"
+	got := piBoxLine(nested, 20, piGray, piToolSuccessBg, false)
+	baseStyle := strings.TrimSuffix(ansiRGBStyle(piGray, piToolSuccessBg, false, false, ""), "\x1b[0m")
+	if !strings.Contains(got, "✓ "+baseStyle+"repl") {
+		t.Fatalf("box line does not restore its background after nested style: %q", got)
+	}
+	if lineWidth(got) != 20 {
+		t.Fatalf("box line width = %d, want 20", lineWidth(got))
+	}
+}
+
 func TestToolCardChangesBackgroundWithState(t *testing.T) {
 	for state, color := range map[string]string{
 		"pending": "48;2;40;40;50",

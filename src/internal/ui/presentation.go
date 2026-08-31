@@ -458,6 +458,8 @@ func highlightedPythonLines(code string, width int, bg string) []string {
 
 func piBoxLine(text string, width int, fg, bg string, bold bool) string {
 	text += strings.Repeat(" ", max(width-lineWidth(text), 0))
+	baseStyle := strings.TrimSuffix(ansiRGBStyle(fg, bg, bold, false, ""), "\x1b[0m")
+	text = strings.ReplaceAll(text, "\x1b[0m", baseStyle)
 	return ansiRGBStyle(fg, bg, bold, false, text)
 }
 
