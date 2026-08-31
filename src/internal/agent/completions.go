@@ -117,7 +117,7 @@ func (a *Agent) streamCompletions(ctx context.Context, request modelRequest, emi
 			"type": "function",
 			"function": map[string]any{
 				"name":        "repl",
-				"description": "Execute Python code in a persistent REPL with preloaded shell(), web_search(), and llm() host functions.",
+				"description": "Execute Python code in a persistent REPL with preloaded shell(), web_search(), llm(), and mcp host functions.",
 				"parameters": map[string]any{
 					"type": "object",
 					"properties": map[string]any{"code": map[string]any{

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -122,8 +123,8 @@ func TestBuildSystemPrompt(t *testing.T) {
 		"Only printed output and the final expression enter model context",
 		"Old REPL outputs are replaced with [output omitted] after each turn; Python state persists",
 		"For independent commands, you may use Python concurrency when it materially reduces wait time",
-		"npx -y mcporter@latest list",
-		"npx -y mcporter@latest call <server>.<tool>",
+		"mcp.servers()",
+		"mcp.call(\"<server>.<tool>\"",
 		"https://github.com/Baitinq/fn-agent",
 		"~/.fn/sessions/<UUID>/session.json",
 		"fn --session <UUID>",
@@ -688,13 +689,69 @@ func TestPythonREPLIsolatesRuntimeAndRestoresHostFunctions(t *testing.T) {
 	repl := newPythonREPL(nil)
 	t.Cleanup(repl.close)
 
-	_, failed, err := repl.execute(t.Context(), `json = "user value"; _protocol_out = None; shell = "shadowed"`)
+	_, failed, err := repl.execute(t.Context(), `json = "user value"; _protocol_out = None; shell = "shadowed"; mcp = "shadowed"`)
 	if err != nil || failed {
 		t.Fatalf("shadowing result: failed=%v, error=%v", failed, err)
 	}
-	output, failed, err := repl.execute(t.Context(), `(json, _protocol_out, callable(shell))`)
-	if err != nil || failed || output != "('user value', None, True)" {
+	output, failed, err := repl.execute(t.Context(), `(json, _protocol_out, callable(shell), type(mcp).__name__)`)
+	if err != nil || failed || output != "('user value', None, True, '_MCP')" {
 		t.Fatalf("isolated result = %q, failed=%v, error=%v", output, failed, err)
+	}
+}
+
+func TestPythonREPLMCPConfigDoesNotFallBackToMCPorter(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("FN_MCP_CONFIG", "")
+	repl := newPythonREPL(nil)
+	t.Cleanup(repl.close)
+	expected := filepath.Join(os.Getenv("HOME"), ".fn", "mcp.json")
+	output, failed, err := repl.execute(t.Context(), `mcp._config_path()`)
+	if err != nil || failed || output != "'"+expected+"'" {
+		t.Fatalf("config path = %q, failed=%v, error=%v", output, failed, err)
+	}
+}
+
+func TestPythonREPLExposesMCP(t *testing.T) {
+	writeTestFile := func(path, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	modules := t.TempDir()
+	writeTestFile(filepath.Join(modules, "fastmcp", "__init__.py"), `
+from types import SimpleNamespace
+class Tool:
+    def model_dump(self, **kwargs):
+        return {"name": "echo", "description": "Echo a value", "inputSchema": {"type": "object"}}
+class Client:
+    def __init__(self, transport): self.transport = transport
+    async def __aenter__(self): return self
+    async def __aexit__(self, *args): pass
+    async def list_tools(self): return [Tool()]
+    async def call_tool(self, name, arguments):
+        return SimpleNamespace(is_error=False, data={"tool": name, **arguments}, structured_content=None, content=[])
+`)
+	writeTestFile(filepath.Join(modules, "fastmcp", "client", "__init__.py"), "")
+	writeTestFile(filepath.Join(modules, "fastmcp", "client", "transports.py"), `
+class StdioTransport:
+    def __init__(self, **kwargs): self.options = kwargs
+class StreamableHttpTransport(StdioTransport): pass
+class SSETransport(StdioTransport): pass
+`)
+	config := filepath.Join(t.TempDir(), "mcp.json")
+	writeTestFile(config, `{"mcpServers":{"demo":{"command":"demo-server"}}}`)
+	t.Setenv("FN_MCP_CONFIG", config)
+	t.Setenv("PYTHONPATH", modules+string(os.PathListSeparator)+os.Getenv("PYTHONPATH"))
+
+	repl := newPythonREPL(nil)
+	t.Cleanup(repl.close)
+	output, failed, err := repl.execute(t.Context(), `(mcp.servers(), mcp.search("echo", "demo"), mcp.schema("demo.echo"), mcp.call("demo.echo", value=42))`)
+	if err != nil || failed || !strings.Contains(output, "{'tool': 'echo', 'value': 42}") || !strings.Contains(output, "'server': 'demo'") {
+		t.Fatalf("MCP result = %q, failed=%v, error=%v", output, failed, err)
 	}
 }
 

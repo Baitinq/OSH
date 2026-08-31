@@ -113,17 +113,31 @@ code, and Python state persist.
 
 ## MCP
 
-fn agent keeps MCP out of its core. It uses
-[MCPorter](https://mcporter.sh) through `shell()` to discover and invoke configured
-servers only when needed:
+Install the optional Python dependencies:
 
 ```sh
-npx -y mcporter@latest list
-npx -y mcporter@latest call <server>.<tool> key=value
+python3 -m pip install 'fastmcp-slim[client]>=3.4,<4' 'websockets>=15'
 ```
 
-MCPorter manages its own configuration and credentials. It requires Node.js and may
-download the package on first use.
+Configure servers in `~/.fn/mcp.json` using the standard `mcpServers` format:
+
+```json
+{
+  "mcpServers": {
+    "example": {
+      "url": "https://example.com/mcp",
+      "auth": "oauth"
+    }
+  }
+}
+```
+
+Set `FN_MCP_CONFIG` to use another configuration file. OAuth authorization starts
+automatically on the first tool discovery or call and tokens are stored under
+`~/.fn/mcp-auth`.
+
+The REPL exposes `mcp.servers()`, `mcp.tools(server)`, `mcp.search(query)`,
+`mcp.schema("server.tool")`, and `mcp.call("server.tool", **arguments)`.
 
 ## Web search
 

@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-const pythonREPLScript = `
+const pythonREPLPrelude = `
 import ast
 import contextlib
 import dataclasses
@@ -166,8 +166,10 @@ def web_search(query, max_results=8):
             break
     return results
 
-_user_globals = {}
-_builtin_names = {"shell", "web_search", "llm", "ShellResult", "SearchResult", "__builtins__"}
+_user_globals = {}`
+
+const pythonREPLScript = pythonREPLPrelude + pythonMCPScript + `
+_builtin_names = {"shell", "web_search", "llm", "mcp", "ShellResult", "SearchResult", "__builtins__"}
 
 def _snapshot(path, objects_path):
     os.makedirs(objects_path, mode=0o700, exist_ok=True)
@@ -212,6 +214,7 @@ def _execute(code):
         shell=shell,
         web_search=web_search,
         llm=llm,
+        mcp=mcp,
         ShellResult=ShellResult,
         SearchResult=SearchResult,
     )
