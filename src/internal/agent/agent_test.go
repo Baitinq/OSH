@@ -699,7 +699,7 @@ func TestPythonREPLIsolatesRuntimeAndRestoresHostFunctions(t *testing.T) {
 	}
 }
 
-func TestPythonREPLMCPConfigDoesNotFallBackToMCPorter(t *testing.T) {
+func TestPythonREPLUsesFNConfigPath(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("FN_MCP_CONFIG", "")
 	repl := newPythonREPL(nil)
