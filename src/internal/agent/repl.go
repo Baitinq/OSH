@@ -20,13 +20,12 @@ import ast
 import contextlib
 import dataclasses
 import hashlib
-import html
+from html.parser import HTMLParser
 import io
 import json
 import math
 import os
 import pickle
-import re
 import signal
 import subprocess
 import sys
@@ -106,15 +105,39 @@ def shell(command, timeout=None):
     finally:
         _active_process = None
 
-_result_link_re = re.compile(r'<a[^>]+class="[^"]*\bresult__a\b[^"]*"[^>]+href="([^"]+)"[^>]*>(.*?)</a>', re.I | re.S)
-_snippet_re = re.compile(r'<(?:a|div)[^>]+class="[^"]*\bresult__snippet\b[^"]*"[^>]*>(.*?)</(?:a|div)>', re.I | re.S)
-_tag_re = re.compile(r'<[^>]*>', re.S)
+class _SearchParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.results = []
+        self.result = None
+        self.capture = None
+        self.capture_tag = None
 
-def _html_text(value):
-    return " ".join(html.unescape(_tag_re.sub(" ", value)).split())
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        classes = attrs.get("class", "").split()
+        if "result__a" in classes:
+            self.result = {"href": attrs.get("href", ""), "title": [], "snippet": []}
+            self.results.append(self.result)
+            self.capture = self.result["title"]
+            self.capture_tag = tag
+        elif self.result is not None and "result__snippet" in classes:
+            self.capture = self.result["snippet"]
+            self.capture_tag = tag
+
+    def handle_endtag(self, tag):
+        if tag == self.capture_tag:
+            self.capture = None
+            self.capture_tag = None
+
+    def handle_data(self, data):
+        if self.capture is not None:
+            self.capture.append(data)
+
+def _search_text(parts):
+    return " ".join("".join(parts).split())
 
 def _result_url(value):
-    value = html.unescape(value)
     if value.startswith("//"):
         value = "https:" + value
     parsed = urllib.parse.urlparse(value)
@@ -153,15 +176,14 @@ def web_search(query, max_results=8):
     )
     with urllib.request.urlopen(request) as response:
         body = response.read().decode("utf-8", errors="replace")
-    links = _result_link_re.findall(body)
-    snippets = _snippet_re.findall(body)
+    parser = _SearchParser()
+    parser.feed(body)
     results = []
-    for index, (href, title) in enumerate(links):
-        url = _result_url(href)
+    for result in parser.results:
+        url = _result_url(result["href"])
         if url is None:
             continue
-        snippet = _html_text(snippets[index]) if index < len(snippets) else ""
-        results.append(SearchResult(_html_text(title), url, snippet))
+        results.append(SearchResult(_search_text(result["title"]), url, _search_text(result["snippet"])))
         if len(results) == max_results:
             break
     return results

@@ -755,17 +755,22 @@ class SSETransport(StdioTransport): pass
 	}
 }
 
-func TestPythonREPLWebSearchReturnsValues(t *testing.T) {
+func TestPythonREPLWebSearchParsesResults(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, `<a class="result__a" href="https://example.com">Example</a><div class="result__snippet">A result.</div>`)
+		fmt.Fprint(w, `<div data-kind='web' class='results_links result web-result'>
+<h2><a href='//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fdocs' class='result__a'>Example <strong>&amp; docs</strong></a></h2>
+<a class='result__snippet'>A <b>nested</b> result.</a>
+</div>
+<div class="result"><h2><a class="result__a" href="https://example.org">Second</a></h2></div>`)
 	}))
 	defer server.Close()
 
 	repl := newPythonREPL(nil)
 	t.Cleanup(repl.close)
-	code := fmt.Sprintf(`web_search.__globals__["_web_search_url"] = %q; hits = web_search("test", 1); (hits[0].title, hits[0].url, hits[0].snippet)`, server.URL)
+	code := fmt.Sprintf(`web_search.__globals__["_web_search_url"] = %q; hits = web_search("test", 2); [(hit.title, hit.url, hit.snippet) for hit in hits]`, server.URL)
 	output, failed, err := repl.execute(t.Context(), code)
-	if err != nil || failed || output != "('Example', 'https://example.com', 'A result.')" {
+	want := "[('Example & docs', 'https://example.com/docs', 'A nested result.'), ('Second', 'https://example.org', '')]"
+	if err != nil || failed || output != want {
 		t.Fatalf("search result = %q, failed=%v, error=%v", output, failed, err)
 	}
 }
