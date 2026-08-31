@@ -1369,7 +1369,7 @@ func TestRenderREPLToolAsCodeCell(t *testing.T) {
 		role: "tool", toolName: "repl", toolCommand: "value = shell(\"pwd\")", toolState: "success",
 	}
 	plain := stripANSI(renderedMessage(msg, 80))
-	if !strings.Contains(plain, "python") || !strings.Contains(plain, `value = shell("pwd")`) || strings.Contains(plain, ">>>") {
+	if !strings.Contains(plain, "repl") || !strings.Contains(plain, `value = shell("pwd")`) || strings.Contains(plain, ">>>") {
 		t.Fatalf("REPL tool rendering = %q", plain)
 	}
 }

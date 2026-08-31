@@ -406,7 +406,7 @@ func renderedToolMessage(msg message, width int, now time.Time) string {
 		var commandLines []string
 		bold := true
 		if msg.toolName == "repl" {
-			lines = append(lines, piBoxLine(" python"+duration, width, piGray, bg, true))
+			lines = append(lines, piBoxLine(" repl"+duration, width, piGray, bg, true))
 			commandLines = highlightedPythonLines(command, inner, bg)
 			bold = false
 		} else {
