@@ -5,4 +5,4 @@
 - An agent scratchpad with optional user-visible progress.
 - Self-inspection and customization.
 - Subagents and awareness of other running agents.
-- TODO: CHange a bit the design (colors etc)
+- ASYNC repl?
