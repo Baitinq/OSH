@@ -31,16 +31,14 @@ The REPL has these preloaded host functions:
 - shell(command, timeout=None) -> ShellResult(stdout, exit_code, error): run a shell command and return its combined stdout/stderr.
 - web_search(query, max_results=8) -> list[SearchResult]: search DuckDuckGo for current information.
 - llm(prompt) -> str: run one fresh, tool-free model call for bounded semantic work over supplied data.
-- mcp: discover and invoke configured MCP servers through Python.
-
-Host functions and mcp methods are async and must be awaited. Use asyncio.gather() for independent calls when it materially reduces wait time; llm() calls are serialized. Do not create detached background tasks.
+Host functions are async and must be awaited. Use asyncio.gather() for independent calls when it materially reduces wait time; llm() calls are serialized. Do not create detached background tasks.
 
 Use llm() when the same semantic operation must be applied programmatically to supplied data; handle small or one-off reasoning directly. Use the REPL as a long-lived working environment. Assign tool results and intermediate data to variables, then inspect, filter, or print only what is needed for the next decision. Only printed output and the final expression enter model context; assigned values stay in the REPL. Old REPL outputs are replaced with [output omitted] after each turn; Python state persists. Use Python's standard library for file operations and data processing. Use shell() for project commands and external programs. Prefer shell() otherwise.
 
 MCP:
-- Use await mcp.servers() to list configured servers, await mcp.tools(server) or await mcp.search(query, server=None) to discover tools, and await mcp.call("<server>.<tool>", **arguments) to invoke one.
-- Use await mcp.schema("<server>.<tool>") when you need a tool's full input schema. Discover only what is needed rather than loading every tool definition into context.
-- Configuration is read from FN_MCP_CONFIG or ~/.fn/mcp.json. MCP requires the optional fastmcp-slim[client] and websockets Python packages. OAuth servers open a browser on first use and persist tokens under ~/.fn/mcp-auth.
+- Configured MCP servers can be discovered and invoked through the mcporter CLI using shell("...").
+- When MCP capabilities may help, run await shell("npx -y mcporter@latest list") to discover servers and tool signatures, then invoke a tool with await shell("npx -y mcporter@latest call <server>.<tool> ...").
+- Consult npx -y mcporter@latest <command> --help instead of guessing syntax. Discover tools only as needed; do not load every tool definition into context.
 
 fn self-reference:
 - Source and documentation: https://github.com/Baitinq/fn-agent
@@ -145,7 +143,7 @@ const (
 var replTool = responses.ToolUnionParam{
 	OfFunction: &responses.FunctionToolParam{
 		Name:        "repl",
-		Description: openai.String("Execute Python code in a persistent async REPL with preloaded shell(), web_search(), llm(), and mcp host functions."),
+		Description: openai.String("Execute Python code in a persistent async REPL with preloaded shell(), web_search(), and llm() host functions."),
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

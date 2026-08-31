@@ -182,7 +182,7 @@ func (a *Agent) streamAnthropic(ctx context.Context, request modelRequest, emit 
 	if request.Tools {
 		payload.Tools = []any{map[string]any{
 			"name":        "repl",
-			"description": "Execute Python code in a persistent async REPL with preloaded shell(), web_search(), llm(), and mcp host functions.",
+			"description": "Execute Python code in a persistent async REPL with preloaded shell(), web_search(), and llm() host functions.",
 			"input_schema": map[string]any{
 				"type":       "object",
 				"properties": map[string]any{"code": map[string]any{"type": "string", "description": "Python code to execute. Variables and imports persist across calls."}},

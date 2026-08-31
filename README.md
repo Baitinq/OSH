@@ -105,7 +105,7 @@ reviews = [await llm(f"Classify this report:\n{report}") for report in reports]
 - `await shell()` returns a `ShellResult` with `stdout`, `exit_code`, and `error` fields.
 - `await web_search()` returns `SearchResult` values with `title`, `url`, and `snippet`.
 - `await llm()` runs one fresh, tool-free model call and returns its response as a string.
-- Use `asyncio.gather()` to run independent shell, web search, and MCP calls concurrently. `llm()` calls are serialized.
+- Use `asyncio.gather()` to run independent shell and web search calls concurrently. `llm()` calls are serialized.
 - Await async work within the current execution; detached background tasks are unsupported.
 
 Assignments stay in the REPL; only printed output and the final expression enter
@@ -115,32 +115,17 @@ code, and Python state persist.
 
 ## MCP
 
-Install the optional Python dependencies:
+fn agent keeps MCP out of its core. It uses
+[MCPorter](https://mcporter.sh) through `shell()` to discover and invoke configured
+servers only when needed:
 
-```sh
-python3 -m pip install 'fastmcp-slim[client]>=3.4,<4' 'websockets>=15'
+```python
+await shell("npx -y mcporter@latest list")
+await shell("npx -y mcporter@latest call <server>.<tool> key=value")
 ```
 
-Configure servers in `~/.fn/mcp.json` using the standard `mcpServers` format:
-
-```json
-{
-  "mcpServers": {
-    "example": {
-      "url": "https://example.com/mcp",
-      "auth": "oauth"
-    }
-  }
-}
-```
-
-Set `FN_MCP_CONFIG` to use another configuration file. OAuth authorization starts
-automatically on the first tool discovery or call and tokens are stored under
-`~/.fn/mcp-auth`.
-
-The REPL exposes `await mcp.servers()`, `await mcp.tools(server)`,
-`await mcp.search(query)`, `await mcp.schema("server.tool")`, and
-`await mcp.call("server.tool", **arguments)`.
+MCPorter manages its own configuration and credentials. It requires Node.js and may
+download the package on first use.
 
 ## Web search
 
