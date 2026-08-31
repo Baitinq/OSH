@@ -129,12 +129,8 @@ func renderedMessageAt(msg message, width int, now time.Time) string {
 	case "you":
 		rail := ansiRGBStyle(piAccent, piUserMessageBg, false, false, "▌")
 		lines = append(lines, piBoxLine(rail, width, piText, piUserMessageBg, false))
-		for i, line := range wrapPlain(msg.text, max(contentWidth-4, 1)) {
-			prompt := "   "
-			if i == 0 {
-				prompt = ansiRGBStyle(piAccent, piUserMessageBg, true, false, " ❯ ")
-			}
-			lines = append(lines, piBoxLine(rail+prompt+line, width, piText, piUserMessageBg, false))
+		for _, line := range wrapPlain(msg.text, max(contentWidth-1, 1)) {
+			lines = append(lines, piBoxLine(rail+" "+line, width, piText, piUserMessageBg, false))
 		}
 		lines = append(lines, piBoxLine(rail, width, piText, piUserMessageBg, false))
 	case "reasoning":

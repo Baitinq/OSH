@@ -733,28 +733,22 @@ func TestUserMessageUsesFullWidthPiBoxWithoutTimestamp(t *testing.T) {
 	}
 }
 
-func TestUserMessageUsesAccentPrompt(t *testing.T) {
-	got := renderedMessage(message{role: "you", text: "hello"}, 30)
-	if plain := stripANSI(got); !strings.Contains(plain, "▌ ❯ hello") {
-		t.Fatalf("user message lacks prompt marker: %q", plain)
-	}
-	if !strings.Contains(got, "\x1b[1;38;2;"+piAccent+";48;2;"+piUserMessageBg+"m ❯ ") {
-		t.Fatalf("user prompt does not use accent color: %q", got)
-	}
-}
-
 func TestUserMessageUsesDistinctBackgroundAndRail(t *testing.T) {
 	got := renderedMessage(message{role: "you", text: "hello"}, 30)
-	if !strings.Contains(got, "48;2;"+piUserMessageBg) || !strings.Contains(stripANSI(got), "▌") {
+	plain := stripANSI(got)
+	if !strings.Contains(got, "48;2;"+piUserMessageBg) || !strings.Contains(plain, "▌") {
 		t.Fatalf("user message lacks distinct background or rail: %q", got)
+	}
+	if strings.Contains(plain, "❯") {
+		t.Fatalf("user message contains redundant prompt marker: %q", plain)
 	}
 }
 
-func TestUserMessageAlignsWrappedLinesAfterPrompt(t *testing.T) {
+func TestUserMessageAlignsWrappedLinesAfterRail(t *testing.T) {
 	got := stripANSI(renderedMessage(message{role: "you", text: strings.Repeat("word ", 12)}, 20))
 	lines := strings.Split(got, "\n")
-	if len(lines) < 4 || !strings.HasPrefix(lines[1], "▌ ❯ ") || !strings.HasPrefix(lines[2], "▌   ") {
-		t.Fatalf("wrapped user message is not aligned after prompt: %q", got)
+	if len(lines) < 4 || !strings.HasPrefix(lines[1], "▌ ") || !strings.HasPrefix(lines[2], "▌ ") {
+		t.Fatalf("wrapped user message is not aligned after rail: %q", got)
 	}
 }
 
