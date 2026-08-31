@@ -520,7 +520,7 @@ func TestCancelIgnoresStaleResponse(t *testing.T) {
 }
 
 func TestFormatTokenCount(t *testing.T) {
-	for input, want := range map[int64]string{0: "0", 999: "999", 1000: "1,000", 1234567: "1,234,567"} {
+	for input, want := range map[int64]string{0: "0", 999: "999", 1000: "1k", 12345: "12k", 12500: "13k", 1234567: "1235k"} {
 		if got := formatTokenCount(input); got != want {
 			t.Fatalf("formatTokenCount(%d) = %q, want %q", input, got, want)
 		}
@@ -1032,7 +1032,7 @@ func TestFooterUsesPiThemeColors(t *testing.T) {
 			t.Errorf("footer missing Pi theme color %q: %q", want, footer)
 		}
 	}
-	if got, want := stripANSI(footer), "gpt-5 (high)  ·  context 12,345 tokens  ·  /tmp/project  ·  abc123"; got != want {
+	if got, want := stripANSI(footer), "gpt-5 (high)  ·  context 12k tokens  ·  /tmp/project  ·  abc123"; got != want {
 		t.Fatalf("footer text = %q, want %q", got, want)
 	}
 	if !strings.Contains(footer, ansiRGBStyle(piDim, "", false, false, " (")+ansiRGBStyle(reasoningEffortColor("high"), "", false, false, "high")+ansiRGBStyle(piDim, "", false, false, ")  ·  context ")) {

@@ -644,9 +644,8 @@ func ansiRGBStyle(fg, bg string, bold, italic bool, text string) string {
 	return "\x1b[0m\x1b[" + strings.Join(codes, ";") + "m" + text + "\x1b[0m"
 }
 func formatTokenCount(n int64) string {
-	d := fmt.Sprintf("%d", n)
-	for i := len(d) - 3; i > 0; i -= 3 {
-		d = d[:i] + "," + d[i:]
+	if n < 1000 {
+		return fmt.Sprintf("%d", n)
 	}
-	return d
+	return fmt.Sprintf("%dk", (n+500)/1000)
 }
