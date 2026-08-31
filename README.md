@@ -62,11 +62,11 @@ export PATH="$PATH:$(go env GOPATH)/bin"
 
 ## Configuration
 
-Set `OPENAI_API_KEY`, `GEMINI_API_KEY`, or `ANTHROPIC_API_KEY` for the corresponding provider. Set `FN_PROVIDER` to `gemini` for Google's native Generative AI API or `anthropic` for Anthropic's native Messages API. Gemini and Anthropic use API-key authentication directly; OAuth and Vertex AI are not used.
+Set `OPENAI_API_KEY`, `GEMINI_API_KEY`, or `ANTHROPIC_API_KEY` for the corresponding provider. Set `FN_PROVIDER` to `openai-completions` for OpenAI-compatible Chat Completions, `gemini` for Google's native Generative AI API, or `anthropic` for Anthropic's native Messages API. Gemini and Anthropic use API-key authentication directly; OAuth and Vertex AI are not used.
 
 | Variable | Default |
 | --- | --- |
-| `FN_PROVIDER` | `openai` (`openai`, `gemini`, or `anthropic`) |
+| `FN_PROVIDER` | `openai` (`openai`, `openai-completions`, `gemini`, or `anthropic`) |
 | `FN_BASE_URL` | provider API URL |
 | `FN_MODEL` | `gpt-5.6-sol` |
 | `FN_REASONING_EFFORT` | `medium` |
@@ -75,7 +75,7 @@ When a model rejects a request because its context limit was reached, fn agent
 summarizes older context, preserves approximately 20,000 recent tokens verbatim,
 and retries once.
 
-For local OpenAI-compatible servers that ignore authentication, use any non-empty API key. OpenAI-compatible endpoints must support `POST /responses`, including function tool calls.
+For local OpenAI-compatible servers that ignore authentication, use any non-empty API key. The `openai` provider requires `POST /responses`; use `openai-completions` for servers exposing `POST /chat/completions`. Both providers support function tool calls.
 
 ## Sessions
 

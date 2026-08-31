@@ -31,8 +31,8 @@ func requireAPIKey() error {
 		}
 		return nil
 	}
-	if os.Getenv("OPENAI_API_KEY") == "" {
-		return fmt.Errorf("OPENAI_API_KEY must be set")
+	if os.Getenv("OPENAI_API_KEY") == "" && os.Getenv("FN_API_KEY") == "" {
+		return fmt.Errorf("OPENAI_API_KEY or FN_API_KEY must be set")
 	}
 	return nil
 }

@@ -417,6 +417,13 @@ func isRetryableLLMError(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}
+	var completionsErr *completionAPIError
+	if errors.As(err, &completionsErr) {
+		if completionsErr.StatusCode == http.StatusTooManyRequests && isQuotaError(completionsErr.Message) {
+			return false
+		}
+		return completionsErr.StatusCode == 0 || completionsErr.StatusCode == http.StatusRequestTimeout || completionsErr.StatusCode == http.StatusConflict || completionsErr.StatusCode == http.StatusTooManyRequests || completionsErr.StatusCode >= http.StatusInternalServerError
+	}
 	var anthropicErr *anthropicAPIError
 	if errors.As(err, &anthropicErr) {
 		if anthropicErr.StatusCode == http.StatusTooManyRequests && isQuotaError(anthropicErr.Message) {

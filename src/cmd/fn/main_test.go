@@ -28,6 +28,12 @@ func TestRequireAPIKey(t *testing.T) {
 	if err := requireAPIKey(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	t.Setenv("FN_PROVIDER", "openai-completions")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("FN_API_KEY", "gateway-token")
+	if err := requireAPIKey(); err != nil {
+		t.Fatalf("unexpected completions error: %v", err)
+	}
 	t.Setenv("FN_PROVIDER", "gemini")
 	t.Setenv("GEMINI_API_KEY", "")
 	t.Setenv("FN_API_KEY", "")

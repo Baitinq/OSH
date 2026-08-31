@@ -50,6 +50,8 @@ type modelResponse struct {
 
 func (a *Agent) streamModel(ctx context.Context, request modelRequest, emit func(ToolEvent)) (modelResponse, error) {
 	switch a.provider {
+	case "openai-completions":
+		return a.streamCompletions(ctx, request, emit)
 	case "gemini":
 		return a.streamGemini(ctx, request, emit)
 	case "anthropic":
