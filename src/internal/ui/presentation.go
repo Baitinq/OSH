@@ -127,11 +127,16 @@ func renderedMessageAt(msg message, width int, now time.Time) string {
 	var lines []string
 	switch msg.role {
 	case "you":
-		lines = append(lines, piBoxLine("", width, piText, piUserMessageBg, false))
-		for _, line := range wrapPlain(msg.text, contentWidth) {
-			lines = append(lines, piBoxLine(" "+line, width, piText, piUserMessageBg, false))
+		rail := ansiRGBStyle(piAccent, piUserMessageBg, false, false, "▌")
+		lines = append(lines, piBoxLine(rail, width, piText, piUserMessageBg, false))
+		for i, line := range wrapPlain(msg.text, max(contentWidth-4, 1)) {
+			prompt := "   "
+			if i == 0 {
+				prompt = ansiRGBStyle(piAccent, piUserMessageBg, true, false, " ❯ ")
+			}
+			lines = append(lines, piBoxLine(rail+prompt+line, width, piText, piUserMessageBg, false))
 		}
-		lines = append(lines, piBoxLine("", width, piText, piUserMessageBg, false))
+		lines = append(lines, piBoxLine(rail, width, piText, piUserMessageBg, false))
 	case "reasoning":
 		for _, line := range wrapPlain(msg.text, contentWidth) {
 			lines = append(lines, " "+ansiRGBStyle(piGray, "", false, true, line))
@@ -192,7 +197,7 @@ const (
 	piGreen         = "181;189;104"
 	piAmber         = "240;198;116"
 	piError         = "204;102;102"
-	piUserMessageBg = "52;53;65"
+	piUserMessageBg = "36;44;56"
 	piToolBg        = "38;40;46"
 )
 
