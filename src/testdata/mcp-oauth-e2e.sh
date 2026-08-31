@@ -130,7 +130,7 @@ class Handler(BaseHTTPRequestHandler):
             ok = "'authenticated': True" in tools[-1]
             chunks = [{"choices":[{"delta":{"content":"OAuth MCP E2E passed." if ok else "OAuth MCP E2E failed: " + tools[-1]}}]}]
         else:
-            arguments = json.dumps({"code": "mcp.call('secure.secret')"})
+            arguments = json.dumps({"code": "await mcp.call('secure.secret')"})
             chunks = [{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"oauth_e2e","type":"function","function":{"name":"repl","arguments":arguments}}]}}]}]
         self.send_response(200); self.send_header("Content-Type", "text/event-stream"); self.end_headers()
         for chunk in chunks: self.wfile.write(b"data: " + json.dumps(chunk).encode() + b"\n\n")

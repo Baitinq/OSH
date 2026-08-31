@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -122,7 +123,9 @@ func TestBuildSystemPrompt(t *testing.T) {
 		"llm(prompt) -> str",
 		"Only printed output and the final expression enter model context",
 		"Old REPL outputs are replaced with [output omitted] after each turn; Python state persists",
-		"For independent commands, you may use Python concurrency when it materially reduces wait time",
+		"Host functions and mcp methods are async and must be awaited",
+		"Use asyncio.gather() for independent calls",
+		"Do not create detached background tasks",
 		"mcp.servers()",
 		"mcp.call(\"<server>.<tool>\"",
 		"https://github.com/Baitinq/fn-agent",
@@ -649,7 +652,7 @@ func TestPythonREPLPersistsStateAndExposesShell(t *testing.T) {
 	if err != nil || failed || output != "42" {
 		t.Fatalf("persistent result = %q, failed=%v, error=%v", output, failed, err)
 	}
-	output, failed, err = repl.execute(t.Context(), `result = shell("printf hello; exit 7"); (result.stdout, result.exit_code, result.error)`)
+	output, failed, err = repl.execute(t.Context(), `result = await shell("printf hello; exit 7"); (result.stdout, result.exit_code, result.error)`)
 	if err != nil || failed || !strings.Contains(output, "('hello', 7, 'exit status 7')") {
 		t.Fatalf("shell result = %q, failed=%v, error=%v", output, failed, err)
 	}
@@ -663,12 +666,26 @@ func TestPythonREPLExposesLLM(t *testing.T) {
 	})
 	t.Cleanup(repl.close)
 
-	output, failed, err := repl.execute(t.Context(), `[llm(item) for item in ["first", "second"]]`)
+	output, failed, err := repl.execute(t.Context(), `[await llm(item) for item in ["first", "second"]]`)
 	if err != nil || failed || output != "['result for first', 'result for second']" {
 		t.Fatalf("llm result = %q, failed=%v, error=%v", output, failed, err)
 	}
 	if strings.Join(prompts, ",") != "first,second" {
 		t.Fatalf("llm prompts = %#v", prompts)
+	}
+}
+
+func TestPythonREPLRunsAsyncShellCallsConcurrently(t *testing.T) {
+	repl := newPythonREPL(nil)
+	t.Cleanup(repl.close)
+
+	dir := t.TempDir()
+	first := fmt.Sprintf(`touch %q; while [ ! -e %q ]; do sleep 0.01; done; printf first`, dir+"/first", dir+"/second")
+	second := fmt.Sprintf(`touch %q; while [ ! -e %q ]; do sleep 0.01; done; printf second`, dir+"/second", dir+"/first")
+	code := fmt.Sprintf(`import asyncio; results = await asyncio.gather(shell(%q, 1), shell(%q, 1)); [(result.stdout, result.exit_code, result.error) for result in results]`, first, second)
+	output, failed, err := repl.execute(t.Context(), code)
+	if err != nil || failed || output != "[('first', 0, None), ('second', 0, None)]" {
+		t.Fatalf("result = %q, failed=%v, error=%v", output, failed, err)
 	}
 }
 
@@ -679,7 +696,7 @@ func TestPythonREPLRequiresStringLLMPrompt(t *testing.T) {
 	})
 	t.Cleanup(repl.close)
 
-	output, failed, err := repl.execute(t.Context(), `llm(42)`)
+	output, failed, err := repl.execute(t.Context(), `await llm(42)`)
 	if err != nil || !failed || !strings.Contains(output, "TypeError: llm() prompt must be a string") {
 		t.Fatalf("llm result = %q, failed=%v, error=%v", output, failed, err)
 	}
@@ -723,13 +740,19 @@ func TestPythonREPLExposesMCP(t *testing.T) {
 	}
 	modules := t.TempDir()
 	writeTestFile(filepath.Join(modules, "fastmcp", "__init__.py"), `
+import asyncio
 from types import SimpleNamespace
 class Tool:
     def model_dump(self, **kwargs):
         return {"name": "echo", "description": "Echo a value", "inputSchema": {"type": "object"}}
 class Client:
-    def __init__(self, transport): self.transport = transport
-    async def __aenter__(self): return self
+    created = 0
+    def __init__(self, transport):
+        self.transport = transport
+        Client.created += 1
+    async def __aenter__(self):
+        await asyncio.sleep(0.01)
+        return self
     async def __aexit__(self, *args): pass
     async def list_tools(self): return [Tool()]
     async def call_tool(self, name, arguments):
@@ -749,7 +772,11 @@ class SSETransport(StdioTransport): pass
 
 	repl := newPythonREPL(nil)
 	t.Cleanup(repl.close)
-	output, failed, err := repl.execute(t.Context(), `(mcp.servers(), mcp.search("echo", "demo"), mcp.schema("demo.echo"), mcp.call("demo.echo", value=42))`)
+	output, failed, err := repl.execute(t.Context(), `import asyncio; calls = await asyncio.gather(mcp.call("demo.echo", value=1), mcp.call("demo.echo", value=2)); (calls, __import__("fastmcp").Client.created)`)
+	if err != nil || failed || output != "([{'tool': 'echo', 'value': 1}, {'tool': 'echo', 'value': 2}], 1)" {
+		t.Fatalf("concurrent MCP result = %q, failed=%v, error=%v", output, failed, err)
+	}
+	output, failed, err = repl.execute(t.Context(), `(await mcp.servers(), await mcp.search("echo", "demo"), await mcp.schema("demo.echo"), await mcp.call("demo.echo", value=42))`)
 	if err != nil || failed || !strings.Contains(output, "{'tool': 'echo', 'value': 42}") || !strings.Contains(output, "'server': 'demo'") {
 		t.Fatalf("MCP result = %q, failed=%v, error=%v", output, failed, err)
 	}
@@ -767,7 +794,7 @@ func TestPythonREPLWebSearchParsesResults(t *testing.T) {
 
 	repl := newPythonREPL(nil)
 	t.Cleanup(repl.close)
-	code := fmt.Sprintf(`web_search.__globals__["_web_search_url"] = %q; hits = web_search("test", 2); [(hit.title, hit.url, hit.snippet) for hit in hits]`, server.URL)
+	code := fmt.Sprintf(`web_search.__globals__["_web_search_url"] = %q; hits = await web_search("test", 2); [(hit.title, hit.url, hit.snippet) for hit in hits]`, server.URL)
 	output, failed, err := repl.execute(t.Context(), code)
 	want := "[('Example & docs', 'https://example.com/docs', 'A nested result.'), ('Second', 'https://example.org', '')]"
 	if err != nil || failed || output != want {
@@ -795,7 +822,7 @@ func TestPythonREPLCancellationPreservesState(t *testing.T) {
 	_, _, _ = repl.execute(t.Context(), "saved = 42")
 	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	defer cancel()
-	_, _, err := repl.execute(ctx, `shell("sleep 10 | cat")`)
+	_, _, err := repl.execute(ctx, `await shell("sleep 10 | cat")`)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("cancellation error = %v", err)
 	}
@@ -805,10 +832,46 @@ func TestPythonREPLCancellationPreservesState(t *testing.T) {
 	}
 }
 
+func TestPythonREPLCancellationStopsConcurrentShellCalls(t *testing.T) {
+	repl := newPythonREPL(nil)
+	t.Cleanup(repl.close)
+
+	if _, _, err := repl.execute(t.Context(), "1"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	_, _, err := repl.execute(ctx, `import asyncio; await asyncio.gather(shell("sleep 10"), shell("sleep 10"))`)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("cancellation error = %v", err)
+	}
+	output, failed, err := repl.execute(t.Context(), "42")
+	if err != nil || failed || output != "42" {
+		t.Fatalf("result after cancellation = %q, failed=%v, error=%v", output, failed, err)
+	}
+}
+
+func TestPythonREPLIgnoresInterruptWhileIdle(t *testing.T) {
+	repl := newPythonREPL(nil)
+	t.Cleanup(repl.close)
+
+	if _, _, err := repl.execute(t.Context(), "1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repl.cmd.Process.Signal(syscall.SIGINT); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	output, failed, err := repl.execute(t.Context(), "42")
+	if err != nil || failed || output != "42" {
+		t.Fatalf("result = %q, failed=%v, error=%v", output, failed, err)
+	}
+}
+
 func TestPythonREPLShellDoesNotInheritProtocolInput(t *testing.T) {
 	repl := newPythonREPL(nil)
 	t.Cleanup(repl.close)
-	output, failed, err := repl.execute(t.Context(), `result = shell("if read line; then printf data; else printf eof; fi", 0.1); (result.stdout, result.exit_code, result.error)`)
+	output, failed, err := repl.execute(t.Context(), `result = await shell("if read line; then printf data; else printf eof; fi", 0.1); (result.stdout, result.exit_code, result.error)`)
 	if err != nil || failed || output != "('eof', 0, None)" {
 		t.Fatalf("shell result = %q, failed=%v, error=%v", output, failed, err)
 	}
@@ -818,7 +881,7 @@ func TestPythonREPLShellTimeout(t *testing.T) {
 	repl := newPythonREPL(nil)
 	t.Cleanup(repl.close)
 	started := time.Now()
-	output, failed, err := repl.execute(t.Context(), `result = shell("sleep 10 | cat", 0.05); (result.exit_code, result.error)`)
+	output, failed, err := repl.execute(t.Context(), `result = await shell("sleep 10 | cat", 0.05); (result.exit_code, result.error)`)
 	if err != nil || failed || output != "(-1, 'timeout:0.05')" {
 		t.Fatalf("timeout result = %q, failed=%v, error=%v", output, failed, err)
 	}

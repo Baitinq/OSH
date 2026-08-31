@@ -17,6 +17,7 @@ import (
 
 const pythonREPLPrelude = `
 import ast
+import asyncio
 import contextlib
 import dataclasses
 import hashlib
@@ -27,7 +28,6 @@ import math
 import os
 import pickle
 import signal
-import subprocess
 import sys
 import traceback
 from typing import Optional
@@ -36,8 +36,9 @@ import urllib.request
 
 _protocol_in = sys.stdin
 _protocol_out = sys.stdout
-_active_process = None
+_active_processes = set()
 _executing = False
+_llm_lock = asyncio.Lock()
 _web_search_url = "https://html.duckduckgo.com/html/"
 
 @dataclasses.dataclass
@@ -52,58 +53,56 @@ class SearchResult:
     url: str
     snippet: str
 
-def _kill_active_process():
-    if _active_process is not None and _active_process.poll() is None:
-        try:
-            os.killpg(_active_process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+def _kill_active_processes():
+    for process in _active_processes:
+        if process.returncode is None:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
 
 def _stop_repl(*_):
-    _kill_active_process()
+    _kill_active_processes()
     os._exit(143)
 
 def _interrupt_execution(*_):
-    global _executing
     if not _executing:
         return
-    _executing = False
-    _kill_active_process()
+    _kill_active_processes()
     raise KeyboardInterrupt
 
 signal.signal(signal.SIGTERM, _stop_repl)
 signal.signal(signal.SIGINT, _interrupt_execution)
 
-def shell(command, timeout=None):
+async def shell(command, timeout=None):
     """Run a shell command and return ShellResult with combined stdout/stderr."""
-    global _active_process
     if timeout is not None and (not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0):
         raise ValueError("timeout must be a positive finite number of seconds")
-    process = subprocess.Popen(
+    process = await asyncio.create_subprocess_shell(
         command,
-        shell=True,
         executable="/bin/sh",
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
         start_new_session=True,
     )
-    _active_process = process
+    _active_processes.add(process)
     try:
         try:
-            output, _ = process.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
+            output, _ = await asyncio.wait_for(process.communicate(), timeout)
+        except asyncio.TimeoutError:
             os.killpg(process.pid, signal.SIGKILL)
-            output, _ = process.communicate()
-            return ShellResult(output, -1, f"timeout:{timeout:g}")
-        except KeyboardInterrupt:
-            process.wait()
+            output, _ = await process.communicate()
+            return ShellResult(output.decode(errors="replace"), -1, f"timeout:{timeout:g}")
+        except asyncio.CancelledError:
+            if process.returncode is None:
+                os.killpg(process.pid, signal.SIGKILL)
+                await process.wait()
             raise
         error: Optional[str] = None if process.returncode == 0 else f"exit status {process.returncode}"
-        return ShellResult(output, process.returncode, error)
+        return ShellResult(output.decode(errors="replace"), process.returncode, error)
     finally:
-        _active_process = None
+        _active_processes.discard(process)
 
 class _SearchParser(HTMLParser):
     def __init__(self):
@@ -150,24 +149,19 @@ def _result_url(value):
         return None
     return urllib.parse.urlunparse(parsed)
 
-def llm(prompt: str) -> str:
+async def llm(prompt: str) -> str:
     """Run one fresh, tool-free model call and return its response as a string."""
     if not isinstance(prompt, str):
         raise TypeError("llm() prompt must be a string")
-    _protocol_out.write(json.dumps({"host_call": "llm", "prompt": prompt}) + "\n")
-    _protocol_out.flush()
-    response = json.loads(_protocol_in.readline())
+    async with _llm_lock:
+        _protocol_out.write(json.dumps({"host_call": "llm", "prompt": prompt}) + "\n")
+        _protocol_out.flush()
+        response = json.loads(await asyncio.to_thread(_protocol_in.readline))
     if "error" in response:
         raise RuntimeError(response["error"])
     return response["result"]
 
-def web_search(query, max_results=8):
-    """Search DuckDuckGo and return a list of SearchResult values."""
-    query = query.strip()
-    if not query:
-        raise ValueError("query must not be empty")
-    if not isinstance(max_results, int) or not 1 <= max_results <= 20:
-        raise ValueError("max_results must be between 1 and 20")
+def _web_search(query, max_results):
     data = urllib.parse.urlencode({"q": query}).encode()
     request = urllib.request.Request(
         _web_search_url,
@@ -187,6 +181,15 @@ def web_search(query, max_results=8):
         if len(results) == max_results:
             break
     return results
+
+async def web_search(query, max_results=8):
+    """Search DuckDuckGo and return a list of SearchResult values."""
+    query = query.strip()
+    if not query:
+        raise ValueError("query must not be empty")
+    if not isinstance(max_results, int) or not 1 <= max_results <= 20:
+        raise ValueError("max_results must be between 1 and 20")
+    return await asyncio.to_thread(_web_search, query, max_results)
 
 _user_globals = {}`
 
@@ -231,7 +234,14 @@ def _restore(path, objects_path):
             pass
     return {"output": ""}
 
-def _execute(code):
+async def _run_code(tree):
+    result = eval(compile(tree, "<fn-repl>", "exec", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT), _user_globals)
+    if result is not None:
+        await result
+
+async def _execute(code):
+    global _executing
+    _executing = True
     _user_globals.update(
         shell=shell,
         web_search=web_search,
@@ -248,35 +258,37 @@ def _execute(code):
             if tree.body and isinstance(tree.body[-1], ast.Expr):
                 prefix = ast.Module(body=tree.body[:-1], type_ignores=[])
                 if prefix.body:
-                    exec(compile(prefix, "<fn-repl>", "exec"), _user_globals)
+                    await _run_code(prefix)
                 expression = ast.Expression(tree.body[-1].value)
-                value = eval(compile(expression, "<fn-repl>", "eval"), _user_globals)
+                value = eval(compile(expression, "<fn-repl>", "eval", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT), _user_globals)
+                if asyncio.iscoroutine(value):
+                    value = await value
             else:
-                exec(compile(tree, "<fn-repl>", "exec"), _user_globals)
+                await _run_code(tree)
         rendered = output.getvalue()
         if value is not None:
             rendered += repr(value)
         return {"output": rendered}
     except BaseException:
         return {"output": output.getvalue() + traceback.format_exc(), "error": True}
+    finally:
+        _executing = False
 
-for line in _protocol_in:
-    try:
+async def _main():
+    while line := await asyncio.to_thread(_protocol_in.readline):
         request = json.loads(line)
-        _executing = True
         operation = request.get("op", "execute")
         if operation == "snapshot":
             response = _snapshot(request["path"], request["objects_path"])
         elif operation == "restore":
             response = _restore(request["path"], request["objects_path"])
         else:
-            response = _execute(request.get("code", ""))
-    except BaseException:
-        response = {"output": traceback.format_exc(), "error": True}
-    finally:
-        _executing = False
-    _protocol_out.write(json.dumps(response) + "\n")
-    _protocol_out.flush()
+            response = await _execute(request.get("code", ""))
+        _protocol_out.write(json.dumps(response) + "\n")
+        _protocol_out.flush()
+    await mcp.close()
+
+asyncio.run(_main())
 `
 
 type pythonREPL struct {
@@ -349,6 +361,9 @@ func (r *pythonREPL) close() {
 }
 
 func (r *pythonREPL) execute(ctx context.Context, code string) (string, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return "", true, err
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.cmd == nil {
@@ -415,20 +430,13 @@ func (r *pythonREPL) readResult(ctx context.Context) (string, bool, error) {
 		}()
 		select {
 		case <-ctx.Done():
-			ticker := time.NewTicker(10 * time.Millisecond)
-			defer ticker.Stop()
-			timeout := time.NewTimer(500 * time.Millisecond)
-			defer timeout.Stop()
-			for {
-				_ = r.cmd.Process.Signal(syscall.SIGINT)
-				select {
-				case <-read:
-					return "", true, ctx.Err()
-				case <-ticker.C:
-				case <-timeout.C:
-					r.stop()
-					return "", true, ctx.Err()
-				}
+			_ = r.cmd.Process.Signal(syscall.SIGINT)
+			select {
+			case <-read:
+				return "", true, ctx.Err()
+			case <-time.After(500 * time.Millisecond):
+				r.stop()
+				return "", true, ctx.Err()
 			}
 		case result := <-read:
 			if result.err != nil {

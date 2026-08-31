@@ -93,18 +93,20 @@ Python REPL variables are restored on a best-effort basis using Python's standar
 The model works through a persistent Python REPL with three preloaded functions:
 
 ```python
-status = shell("git status --short")
+status = await shell("git status --short")
 status.stdout
 
-hits = web_search("latest Go release")
+hits = await web_search("latest Go release")
 [(hit.title, hit.url) for hit in hits]
 
-reviews = [llm(f"Classify this report:\n{report}") for report in reports]
+reviews = [await llm(f"Classify this report:\n{report}") for report in reports]
 ```
 
-- `shell()` returns a `ShellResult` with `stdout`, `exit_code`, and `error` fields.
-- `web_search()` returns `SearchResult` values with `title`, `url`, and `snippet`.
-- `llm()` runs one fresh, tool-free model call and returns its response as a string.
+- `await shell()` returns a `ShellResult` with `stdout`, `exit_code`, and `error` fields.
+- `await web_search()` returns `SearchResult` values with `title`, `url`, and `snippet`.
+- `await llm()` runs one fresh, tool-free model call and returns its response as a string.
+- Use `asyncio.gather()` to run independent shell, web search, and MCP calls concurrently. `llm()` calls are serialized.
+- Await async work within the current execution; detached background tasks are unsupported.
 
 Assignments stay in the REPL; only printed output and the final expression enter
 model context. After a turn, its reasoning and REPL results remain visible in the
@@ -136,14 +138,15 @@ Set `FN_MCP_CONFIG` to use another configuration file. OAuth authorization start
 automatically on the first tool discovery or call and tokens are stored under
 `~/.fn/mcp-auth`.
 
-The REPL exposes `mcp.servers()`, `mcp.tools(server)`, `mcp.search(query)`,
-`mcp.schema("server.tool")`, and `mcp.call("server.tool", **arguments)`.
+The REPL exposes `await mcp.servers()`, `await mcp.tools(server)`,
+`await mcp.search(query)`, `await mcp.schema("server.tool")`, and
+`await mcp.call("server.tool", **arguments)`.
 
 ## Web search
 
 `web_search()` is backed by DuckDuckGo and requires no separate API key. It returns
 ranked titles, URLs, and snippets; full pages can still be inspected with
-`shell("curl ...")`.
+`await shell("curl ...")`.
 
 ## Controls
 

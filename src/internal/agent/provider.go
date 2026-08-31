@@ -261,7 +261,7 @@ func (a *Agent) streamGemini(ctx context.Context, request modelRequest, emit fun
 	if request.Tools {
 		declaration := map[string]any{
 			"name":        "repl",
-			"description": "Execute Python code in a persistent REPL with preloaded shell(), web_search(), llm(), and mcp host functions.",
+			"description": "Execute Python code in a persistent async REPL with preloaded shell(), web_search(), llm(), and mcp host functions.",
 			"parameters": map[string]any{
 				"type":       "OBJECT",
 				"properties": map[string]any{"code": map[string]any{"type": "STRING", "description": "Python code to execute. Variables and imports persist across calls."}},

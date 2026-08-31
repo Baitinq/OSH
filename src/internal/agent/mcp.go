@@ -3,9 +3,8 @@ package agent
 const pythonMCPScript = `
 class _MCP:
     def __init__(self):
-        self._loop = None
-        self._thread = None
         self._clients = {}
+        self._client_locks = {}
 
     def _config_path(self):
         configured = os.environ.get("FN_MCP_CONFIG")
@@ -18,23 +17,9 @@ class _MCP:
             config = json.load(config_file)
         return config.get("mcpServers", config.get("servers", config))
 
-    def servers(self):
+    async def servers(self):
         """Return the names of configured MCP servers."""
         return list(self._config())
-
-    def _ensure_loop(self):
-        if self._loop is not None:
-            return
-        import asyncio
-        import threading
-        self._loop = asyncio.new_event_loop()
-        self._thread = threading.Thread(target=self._loop.run_forever, daemon=True)
-        self._thread.start()
-
-    def _run(self, coroutine):
-        import asyncio
-        self._ensure_loop()
-        return asyncio.run_coroutine_threadsafe(coroutine, self._loop).result()
 
     def _expand(self, value):
         if isinstance(value, str):
@@ -89,17 +74,21 @@ class _MCP:
     async def _client(self, server):
         if server in self._clients:
             return self._clients[server]
-        try:
-            from fastmcp import Client
-        except ImportError as error:
-            raise RuntimeError(
-                "MCP requires fastmcp: python3 -m pip install 'fastmcp-slim[client]>=3.4,<4' 'websockets>=15'"
-            ) from error
-        config = self._config()[server]
-        client = Client(self._transport(config))
-        await client.__aenter__()
-        self._clients[server] = client
-        return client
+        lock = self._client_locks.setdefault(server, asyncio.Lock())
+        async with lock:
+            if server in self._clients:
+                return self._clients[server]
+            try:
+                from fastmcp import Client
+            except ImportError as error:
+                raise RuntimeError(
+                    "MCP requires fastmcp: python3 -m pip install 'fastmcp-slim[client]>=3.4,<4' 'websockets>=15'"
+                ) from error
+            config = self._config()[server]
+            client = Client(self._transport(config))
+            await client.__aenter__()
+            self._clients[server] = client
+            return client
 
     def _plain(self, value):
         if hasattr(value, "model_dump"):
@@ -116,17 +105,17 @@ class _MCP:
         client = await self._client(server)
         return [self._plain(tool) for tool in await client.list_tools()]
 
-    def tools(self, server):
+    async def tools(self, server):
         """Return tool definitions for one MCP server."""
-        return self._run(self._tools(server))
+        return await self._tools(server)
 
-    def search(self, query, server=None):
+    async def search(self, query, server=None):
         """Search tool names and descriptions, optionally within one server."""
         words = query.lower().split()
-        servers = [server] if server else self.servers()
+        servers = [server] if server else await self.servers()
         matches = []
         for server_name in servers:
-            for tool in self.tools(server_name):
+            for tool in await self.tools(server_name):
                 text = (tool.get("name", "") + " " + tool.get("description", "")).lower()
                 score = sum(word in text for word in words)
                 if score:
@@ -135,16 +124,16 @@ class _MCP:
         return [dict(match[2], server=match[1]) for match in matches]
 
     def _split_name(self, name):
-        for server in self.servers():
+        for server in self._config():
             prefix = server + "."
             if name.startswith(prefix):
                 return server, name[len(prefix):]
         raise ValueError("MCP tool names must be <server>.<tool>")
 
-    def schema(self, name):
+    async def schema(self, name):
         """Return the definition of an MCP tool named <server>.<tool>."""
         server, tool_name = self._split_name(name)
-        for tool in self.tools(server):
+        for tool in await self.tools(server):
             if tool.get("name") == tool_name:
                 return tool
         raise KeyError(name)
@@ -167,22 +156,22 @@ class _MCP:
                 return text
         return self._plain(result.content)
 
-    def call(self, name, arguments=None, **kwargs):
+    async def call(self, name, arguments=None, **kwargs):
         """Call an MCP tool named <server>.<tool>. Pass arguments as a dict or keywords."""
         server, tool = self._split_name(name)
         values = {} if arguments is None else dict(arguments)
         values.update(kwargs)
-        return self._run(self._call(server, tool, values))
+        return await self._call(server, tool, values)
 
     async def _close(self):
         for client in reversed(list(self._clients.values())):
             await client.__aexit__(None, None, None)
         self._clients.clear()
+        self._client_locks.clear()
 
-    def close(self):
+    async def close(self):
         """Close all active MCP connections."""
-        if self._loop is not None:
-            self._run(self._close())
+        await self._close()
 
 mcp = _MCP()
 `

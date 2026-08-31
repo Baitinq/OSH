@@ -34,7 +34,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         if Handler.calls == 1:
             assert request["tools"][0]["function"]["name"] == "repl"
-            code = "servers = mcp.servers()\nmatches = mcp.search('sequence call', 'e2e')\nfirst = mcp.call('e2e.sequence', label='first')\nsecond = mcp.call('e2e.sequence', label='second')\n(servers, matches[0]['name'], first, second)"
+            code = "servers = await mcp.servers()\nmatches = await mcp.search('sequence call', 'e2e')\nfirst = await mcp.call('e2e.sequence', label='first')\nsecond = await mcp.call('e2e.sequence', label='second')\n(servers, matches[0]['name'], first, second)"
             arguments = json.dumps({"code": code})
             chunks = [
                 {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"mcp_e2e","type":"function","function":{"name":"repl","arguments":arguments}}]}}]},
