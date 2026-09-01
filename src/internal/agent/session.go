@@ -248,8 +248,8 @@ func (a *Agent) ResumeSession(id, sessionsDir string) error {
 	if saved.CWD != a.cwd {
 		return fmt.Errorf("session %s belongs to %s", id, saved.CWD)
 	}
-	if saved.Provider != "" && (saved.Provider != a.provider || saved.Model != a.modelName) {
-		return fmt.Errorf("session %s uses %s/%s, current model is %s/%s", id, saved.Provider, saved.Model, a.provider, a.modelName)
+	if saved.Provider != "" && (saved.Provider != a.provider || saved.Model != a.modelName) && (os.Getenv("FN_PROVIDER") == "" || os.Getenv("FN_MODEL") == "") {
+		return fmt.Errorf("session %s uses %s/%s, set both FN_PROVIDER and FN_MODEL to resume with %s/%s", id, saved.Provider, saved.Model, a.provider, a.modelName)
 	}
 	a.sessionID, a.sessionDir = id, dir
 	a.compaction = saved.Compaction

@@ -11,6 +11,22 @@ import (
 	"testing"
 )
 
+func TestOpenAIInputDropsForeignOpaqueReasoning(t *testing.T) {
+	input := openAIInput([]historyItem{
+		{Type: "reasoning", Provider: "openai", Model: "old", ProviderData: json.RawMessage(`{"id":"foreign-reasoning"}`)},
+		{Type: "reasoning", Provider: "anthropic", Model: "claude", Text: "readable reasoning"},
+		{Type: "message", Role: "assistant", Provider: "openai", Model: "old", Text: "answer", ProviderData: json.RawMessage(`{"id":"foreign-message"}`)},
+	}, "new")
+	data, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if strings.Contains(got, "foreign-reasoning") || strings.Contains(got, "foreign-message") || !strings.Contains(got, "readable reasoning") || !strings.Contains(got, "answer") {
+		t.Fatalf("input = %s", got)
+	}
+}
+
 func TestGeminiRespondExecutesToolAndPreservesThoughtSignature(t *testing.T) {
 	t.Setenv("GEMINI_API_KEY", "test-key")
 	var calls atomic.Int32

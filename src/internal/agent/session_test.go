@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -379,5 +380,41 @@ func TestUndoCompactedTurnUsesCanonicalHistory(t *testing.T) {
 	}
 	if len(loaded.history) != 2 || loaded.compaction != nil {
 		t.Fatalf("loaded history = %#v, compaction = %#v", loaded.history, loaded.compaction)
+	}
+}
+
+func TestResumeSessionAllowsDifferentModel(t *testing.T) {
+	t.Setenv("FN_PROVIDER", "anthropic")
+	t.Setenv("FN_MODEL", "claude-test")
+	root, cwd := t.TempDir(), t.TempDir()
+	id := "550e8400-e29b-41d4-a716-446655440000"
+	original := &Agent{cwd: cwd, provider: "openai", modelName: "gpt-test"}
+	if err := original.StartSession(id, root); err != nil {
+		t.Fatal(err)
+	}
+
+	resumed := &Agent{cwd: cwd, provider: "anthropic", modelName: "claude-test"}
+	if err := resumed.ResumeSession(id, root); err != nil {
+		t.Fatal(err)
+	}
+	if resumed.provider != "anthropic" || resumed.modelName != "claude-test" {
+		t.Fatalf("resumed with %s/%s", resumed.provider, resumed.modelName)
+	}
+}
+
+func TestResumeSessionRejectsImplicitDifferentModel(t *testing.T) {
+	t.Setenv("FN_PROVIDER", "")
+	t.Setenv("FN_MODEL", "")
+	root, cwd := t.TempDir(), t.TempDir()
+	id := "550e8400-e29b-41d4-a716-446655440000"
+	original := &Agent{cwd: cwd, provider: "openai", modelName: "gpt-test"}
+	if err := original.StartSession(id, root); err != nil {
+		t.Fatal(err)
+	}
+
+	resumed := &Agent{cwd: cwd, provider: "anthropic", modelName: "claude-test"}
+	err := resumed.ResumeSession(id, root)
+	if err == nil || !strings.Contains(err.Error(), "set both FN_PROVIDER and FN_MODEL") {
+		t.Fatalf("ResumeSession() error = %v", err)
 	}
 }

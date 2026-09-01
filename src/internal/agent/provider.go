@@ -61,7 +61,7 @@ func (a *Agent) streamModel(ctx context.Context, request modelRequest, emit func
 	}
 }
 
-func openAIInput(history []historyItem) responses.ResponseInputParam {
+func openAIInput(history []historyItem, model string) responses.ResponseInputParam {
 	input := make(responses.ResponseInputParam, 0, len(history))
 	for _, h := range history {
 		var item responses.ResponseInputItemUnionParam
@@ -69,15 +69,21 @@ func openAIInput(history []historyItem) responses.ResponseInputParam {
 		case "message":
 			if h.Role == "user" {
 				item = responses.ResponseInputItemParamOfMessage(h.Text, responses.EasyInputMessageRoleUser)
-			} else if h.Provider == "openai" && len(h.ProviderData) > 0 {
+			} else if h.Provider == "openai" && h.Model == model && len(h.ProviderData) > 0 {
 				item.OfOutputMessage = &responses.ResponseOutputMessageParam{}
 				_ = json.Unmarshal(h.ProviderData, item.OfOutputMessage)
 			} else {
 				item.OfOutputMessage = &responses.ResponseOutputMessageParam{Content: []responses.ResponseOutputMessageContentUnionParam{{OfOutputText: &responses.ResponseOutputTextParam{Text: h.Text}}}}
 			}
 		case "reasoning":
-			item.OfReasoning = &responses.ResponseReasoningItemParam{}
-			_ = json.Unmarshal(h.ProviderData, item.OfReasoning)
+			if h.Provider == "openai" && h.Model == model && len(h.ProviderData) > 0 {
+				item.OfReasoning = &responses.ResponseReasoningItemParam{}
+				_ = json.Unmarshal(h.ProviderData, item.OfReasoning)
+			} else if h.Text != "" {
+				item.OfOutputMessage = &responses.ResponseOutputMessageParam{Content: []responses.ResponseOutputMessageContentUnionParam{{OfOutputText: &responses.ResponseOutputTextParam{Text: h.Text}}}}
+			} else {
+				continue
+			}
 		case "tool_call":
 			item = responses.ResponseInputItemParamOfFunctionCall(string(h.Arguments), h.CallID, h.Name)
 		case "tool_result":
@@ -89,7 +95,7 @@ func openAIInput(history []historyItem) responses.ResponseInputParam {
 }
 
 func (a *Agent) streamOpenAI(ctx context.Context, request modelRequest, emit func(ToolEvent)) (modelResponse, error) {
-	params := responses.ResponseNewParams{Model: a.modelName, Input: responses.ResponseNewParamsInputUnion{OfInputItemList: openAIInput(request.History)}, Store: openai.Bool(false)}
+	params := responses.ResponseNewParams{Model: a.modelName, Input: responses.ResponseNewParamsInputUnion{OfInputItemList: openAIInput(request.History, a.modelName)}, Store: openai.Bool(false)}
 	if request.Instructions != "" {
 		params.Instructions = openai.String(request.Instructions)
 	}
