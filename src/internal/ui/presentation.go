@@ -406,9 +406,6 @@ func renderedToolMessage(msg message, width int, now time.Time) string {
 	}
 	if msg.toolResult != "" {
 		result := strings.TrimSuffix(sanitizeTerminalText(msg.toolResult), "\n")
-		if result == "[output omitted]" {
-			result = "[result omitted from model context]"
-		}
 		outputLines := wrapPlain(result, inner)
 		lines = append(lines, piBoxLine("", width, piGray, bg, false))
 		if len(outputLines) > toolPreviewLines {

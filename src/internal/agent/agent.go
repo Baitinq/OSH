@@ -33,7 +33,7 @@ The REPL has these preloaded host functions:
 - llm(prompt) -> str: run one fresh, tool-free model call for bounded semantic work over supplied data.
 Host functions are async and must be awaited. Use asyncio.gather() for independent calls when it materially reduces wait time. Do not create detached background tasks.
 
-Use llm() when the same semantic operation must be applied programmatically to supplied data; handle small or one-off reasoning directly. Use the REPL as a long-lived working environment. Assign tool results and intermediate data to variables, then inspect, filter, or print only what is needed for the next decision. Only printed output and the final expression enter model context; assigned values stay in the REPL. Old REPL outputs are replaced with [output omitted] after each turn; Python state persists. Use Python's standard library for file operations and data processing. Use shell() for project commands and external programs. Prefer shell() otherwise.
+Use llm() when the same semantic operation must be applied programmatically to supplied data; handle small or one-off reasoning directly. Use the REPL as a long-lived working environment. Assign tool results and intermediate data to variables, then inspect, filter, or print only what is needed for the next decision. Only printed output and the final expression enter model context; assigned values stay in the REPL. Old REPL outputs are replaced with [tool output omitted after use] after each turn; Python state persists. Use Python's standard library for file operations and data processing. Use shell() for project commands and external programs. Prefer shell() otherwise.
 
 MCP:
 - Configured MCP servers can be discovered and invoked through the mcporter CLI using shell("...").
@@ -43,8 +43,8 @@ MCP:
 fn self-reference:
 - Source and documentation: https://github.com/Baitinq/fn-agent
 - When asked about fn itself, inspect the repository instead of guessing.
-- Sessions are stored under ~/.fn/sessions/<UUID>/session.json. Each file contains the conversation and the working directory where the session was created.
-- To find a previous session, search those session.json files for relevant conversation text, inspect the matching sessions, and resume one with fn --session <UUID>.
+- Sessions are stored under ~/.fn/sessions/<UUID>/session.jsonl. Each file contains the conversation and the working directory where the session was created.
+- To find a previous session, search those session.jsonl files for relevant conversation text, inspect the matching sessions, and resume one with fn --session <UUID>.
 
 Guidelines:
 - Complete requested tasks directly when possible. Ask for clarification only when a consequential ambiguity cannot be resolved safely.
@@ -169,6 +169,8 @@ const (
 	ToolEventRetry
 	ToolEventRetryDone
 	ToolEventTextReset
+	ToolEventToolResultsPruned
+	ToolEventTransientHistoryPruned
 	ToolEventReasoningDelta
 	ToolEventReasoningDone
 	ToolEventSteerConsumed
@@ -248,6 +250,9 @@ type Agent struct {
 	compaction      *compactionState
 	tokensUsed      int64
 	usage           []Usage
+	savedHistory    []historyItem
+	savedUsage      []Usage
+	savedCompaction *compactionState
 	usageMu         sync.Mutex
 	repl            *pythonREPL
 	respondMu       sync.Mutex
@@ -587,7 +592,15 @@ func (a *Agent) streamResponse(ctx context.Context, params responses.ResponseNew
 	return resp, nil
 }
 
-const omittedREPLResult = "[output omitted]"
+const OmittedToolResult = "[tool output omitted after use]"
+
+func (a *Agent) pruneToolResults() {
+	for i := range a.history {
+		if a.history[i].Type == "tool_result" {
+			a.history[i].Text = OmittedToolResult
+		}
+	}
+}
 
 func (a *Agent) pruneTransientHistory() {
 	kept := a.history[:0]
@@ -597,7 +610,7 @@ func (a *Agent) pruneTransientHistory() {
 			continue
 		}
 		if item.Type == "tool_result" {
-			item.Text = omittedREPLResult
+			item.Text = OmittedToolResult
 		}
 		kept = append(kept, item)
 		if a.compaction != nil && i < a.compaction.FirstKeptItem {
@@ -633,6 +646,8 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 	}
 	defer func() {
 		a.pruneTransientHistory()
+		emit(ToolEvent{Kind: ToolEventToolResultsPruned})
+		emit(ToolEvent{Kind: ToolEventTransientHistoryPruned})
 		if err := a.SaveSession(); err != nil && result.Err == nil {
 			result.Err = fmt.Errorf("save session: %w", err)
 		}
@@ -689,6 +704,8 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 		if ctx.Err() != nil {
 			return Response{}
 		}
+		a.pruneToolResults()
+		emit(ToolEvent{Kind: ToolEventToolResultsPruned})
 		a.history = append(a.history, resp.Items...)
 		if err := a.SaveSession(); err != nil {
 			return Response{Err: fmt.Errorf("save session: %w", err)}

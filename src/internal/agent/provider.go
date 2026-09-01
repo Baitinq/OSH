@@ -128,8 +128,17 @@ func (a *Agent) streamOpenAI(ctx context.Context, request modelRequest, emit fun
 			data, _ := json.Marshal(message.ToParam())
 			result.Items = append(result.Items, historyItem{Type: "message", Role: "assistant", Text: text, Provider: "openai", Model: a.modelName, ProviderData: data})
 		case "reasoning":
-			data, _ := json.Marshal(output.AsReasoning().ToParam())
-			result.Items = append(result.Items, historyItem{Type: "reasoning", Provider: "openai", Model: a.modelName, ProviderData: data})
+			reasoning := output.AsReasoning()
+			var textParts []string
+			for _, summary := range reasoning.Summary {
+				textParts = append(textParts, summary.Text)
+			}
+			for _, content := range reasoning.Content {
+				textParts = append(textParts, content.Text)
+			}
+			text := strings.Join(textParts, "\n")
+			data, _ := json.Marshal(reasoning.ToParam())
+			result.Items = append(result.Items, historyItem{Type: "reasoning", Text: text, Provider: "openai", Model: a.modelName, ProviderData: data})
 		case "function_call":
 			fc := output.AsFunctionCall()
 			item := historyItem{Type: "tool_call", CallID: fc.CallID, Name: fc.Name, Arguments: json.RawMessage(fc.Arguments), Provider: "openai", Model: a.modelName}

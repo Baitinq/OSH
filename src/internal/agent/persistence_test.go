@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -18,7 +17,7 @@ import (
 func TestRespondSavesEachModelTurn(t *testing.T) {
 	root, cwd := t.TempDir(), t.TempDir()
 	id := "test"
-	sessionPath := filepath.Join(root, id, "session.json")
+	sessionPath := filepath.Join(root, id, sessionFilename)
 	secondRequest := make(chan struct{})
 	releaseSecond := make(chan struct{})
 	requests := 0
@@ -26,12 +25,8 @@ func TestRespondSavesEachModelTurn(t *testing.T) {
 		requests++
 		var output []any
 		if requests == 1 {
-			data, err := os.ReadFile(sessionPath)
-			if err != nil {
-				t.Errorf("read session before first model call: %v", err)
-			}
-			var saved sessionFile
-			if err := json.Unmarshal(data, &saved); err != nil || len(saved.History) != 1 || saved.History[0].Role != "user" {
+			saved, err := readSession(sessionPath)
+			if err != nil || len(saved.History) != 1 || saved.History[0].Role != "user" {
 				t.Errorf("session before first model call = %#v, %v", saved.History, err)
 			}
 			output = []any{map[string]any{
@@ -73,12 +68,8 @@ func TestRespondSavesEachModelTurn(t *testing.T) {
 	go func() { response <- a.Respond("run it", nil, func(ToolEvent) {}, t.Context()) }()
 	<-secondRequest
 
-	data, err := os.ReadFile(sessionPath)
+	saved, err := readSession(sessionPath)
 	if err != nil {
-		t.Fatal(err)
-	}
-	var saved sessionFile
-	if err := json.Unmarshal(data, &saved); err != nil {
 		t.Fatal(err)
 	}
 	if len(saved.History) != 3 || saved.History[1].Type != "tool_call" || saved.History[2].Type != "tool_result" {
@@ -89,11 +80,8 @@ func TestRespondSavesEachModelTurn(t *testing.T) {
 	if result := <-response; result.Err != nil || result.Text != "done" {
 		t.Fatalf("Respond() = %#v", result)
 	}
-	data, err = os.ReadFile(sessionPath)
+	saved, err = readSession(sessionPath)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(data, &saved); err != nil {
 		t.Fatal(err)
 	}
 	if len(saved.History) != 4 || saved.History[3].Text != "done" {
@@ -140,12 +128,8 @@ func TestRespondCancellationPreservesCompletedWork(t *testing.T) {
 		t.Fatalf("Respond() = %#v", result)
 	}
 
-	data, err := os.ReadFile(filepath.Join(root, "test", "session.json"))
+	saved, err := readSession(filepath.Join(root, "test", sessionFilename))
 	if err != nil {
-		t.Fatal(err)
-	}
-	var saved sessionFile
-	if err := json.Unmarshal(data, &saved); err != nil {
 		t.Fatal(err)
 	}
 	if len(saved.History) != 3 || saved.History[1].Type != "tool_call" || saved.History[2].Type != "tool_result" {

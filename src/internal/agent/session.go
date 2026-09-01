@@ -1,11 +1,13 @@
 package agent
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -13,8 +15,13 @@ import (
 )
 
 type ConversationMessage struct {
-	Role string
-	Text string
+	Type      string
+	Role      string
+	Text      string
+	ToolID    string
+	ToolName  string
+	ToolInput string
+	ToolError bool
 }
 
 func (a *Agent) assertSessionInitialized() {
@@ -39,16 +46,30 @@ func assertSessionArguments(id, sessionsDir string) {
 func (a *Agent) Conversation() []ConversationMessage {
 	var conversation []ConversationMessage
 	for _, item := range a.history {
-		if item.Type != "message" {
+		restored := ConversationMessage{Type: item.Type, Role: item.Role, Text: item.Text, ToolID: item.CallID, ToolName: item.Name, ToolError: item.ToolError}
+		switch item.Type {
+		case "message":
+			if item.Role == "user" {
+				restored.Text = userMessageText(item.Text)
+			}
+			if restored.Text == "" {
+				continue
+			}
+		case "reasoning":
+			if restored.Text == "" {
+				continue
+			}
+		case "tool_call":
+			var arguments struct {
+				Code string `json:"code"`
+			}
+			_ = json.Unmarshal(item.Arguments, &arguments)
+			restored.ToolInput = arguments.Code
+		case "tool_result":
+		default:
 			continue
 		}
-		text := item.Text
-		if item.Role == "user" {
-			text = userMessageText(text)
-		}
-		if text != "" {
-			conversation = append(conversation, ConversationMessage{Role: item.Role, Text: text})
-		}
+		conversation = append(conversation, restored)
 	}
 	return conversation
 }
@@ -159,10 +180,15 @@ func (a *Agent) Fork(id, sessionsDir string) error {
 	a.respondMu.Lock()
 	defer a.respondMu.Unlock()
 	oldID, oldDir := a.sessionID, a.sessionDir
+	oldHistory, oldUsage, oldCompaction := a.savedHistory, a.savedUsage, a.savedCompaction
+	restoreSession := func() {
+		a.sessionID, a.sessionDir = oldID, oldDir
+		a.savedHistory, a.savedUsage, a.savedCompaction = oldHistory, oldUsage, oldCompaction
+	}
 	a.sessionID = id
 	a.sessionDir = filepath.Join(sessionsDir, id)
 	if err := copyDirectory(filepath.Join(oldDir, "repl-objects"), filepath.Join(a.sessionDir, "repl-objects")); err != nil {
-		a.sessionID, a.sessionDir = oldID, oldDir
+		restoreSession()
 		return err
 	}
 	for _, item := range a.history {
@@ -170,27 +196,74 @@ func (a *Agent) Fork(id, sessionsDir string) error {
 			continue
 		}
 		if err := copyFile(filepath.Join(oldDir, item.REPLCheckpoint), filepath.Join(a.sessionDir, item.REPLCheckpoint)); err != nil {
-			a.sessionID, a.sessionDir = oldID, oldDir
+			restoreSession()
 			return err
 		}
 	}
+	a.savedHistory, a.savedUsage, a.savedCompaction = nil, nil, nil
+	if err := a.createSessionLog(); err != nil {
+		restoreSession()
+		return err
+	}
 	if err := a.SaveSession(); err != nil {
-		a.sessionID, a.sessionDir = oldID, oldDir
+		restoreSession()
 		return err
 	}
 	return nil
 }
 
-const sessionVersion = 5
+const sessionVersion = 1
+const sessionFilename = "session.jsonl"
+
+type sessionHeader struct {
+	Type     string `json:"type"`
+	Version  int    `json:"version"`
+	CWD      string `json:"cwd"`
+	Provider string `json:"provider,omitempty"`
+	Model    string `json:"model,omitempty"`
+}
+
+type sessionUpdate struct {
+	Type        string           `json:"type"`
+	HistoryFrom int              `json:"history_from"`
+	History     []historyItem    `json:"history"`
+	UsageFrom   int              `json:"usage_from"`
+	Usage       []Usage          `json:"usage"`
+	Compaction  *compactionState `json:"compaction"`
+}
 
 type sessionFile struct {
-	Version    int              `json:"version,omitempty"`
-	CWD        string           `json:"cwd"`
-	Provider   string           `json:"provider,omitempty"`
-	Model      string           `json:"model,omitempty"`
-	Compaction *compactionState `json:"compaction,omitempty"`
-	History    []historyItem    `json:"history"`
-	Usage      []Usage          `json:"usage,omitempty"`
+	Version    int
+	CWD        string
+	Provider   string
+	Model      string
+	Compaction *compactionState
+	History    []historyItem
+	Usage      []Usage
+}
+
+func (a *Agent) createSessionLog() error {
+	if err := os.MkdirAll(a.sessionDir, 0700); err != nil {
+		return err
+	}
+	header := sessionHeader{Type: "session", Version: sessionVersion, CWD: a.cwd, Provider: a.provider, Model: a.modelName}
+	data, err := json.Marshal(header)
+	if err != nil {
+		return err
+	}
+	file, err := os.OpenFile(filepath.Join(a.sessionDir, sessionFilename), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	if _, err := file.Write(append(data, '\n')); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
 }
 
 func (a *Agent) StartSession(id, sessionsDir string) error {
@@ -198,6 +271,9 @@ func (a *Agent) StartSession(id, sessionsDir string) error {
 	assertSessionArguments(id, sessionsDir)
 	a.sessionID = id
 	a.sessionDir = filepath.Join(sessionsDir, id)
+	if err := a.createSessionLog(); err != nil {
+		return err
+	}
 	return a.SaveSession()
 }
 
@@ -230,16 +306,76 @@ func (a *Agent) completeInterruptedToolCalls() bool {
 	return changed
 }
 
+func readSession(path string) (sessionFile, error) {
+	file, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return sessionFile{}, err
+	}
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+	var saved sessionFile
+	lineNumber := 0
+	var validBytes int64
+	for {
+		line, readErr := reader.ReadBytes('\n')
+		if len(line) == 0 && readErr == io.EOF {
+			break
+		}
+		if readErr == io.EOF {
+			if err := file.Truncate(validBytes); err != nil {
+				return sessionFile{}, err
+			}
+			break
+		}
+		validBytes += int64(len(line))
+		lineNumber++
+		var envelope struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(line, &envelope); err != nil {
+			return sessionFile{}, fmt.Errorf("line %d: %w", lineNumber, err)
+		}
+		switch envelope.Type {
+		case "session":
+			if lineNumber != 1 {
+				return sessionFile{}, fmt.Errorf("line %d: unexpected session header", lineNumber)
+			}
+			var header sessionHeader
+			if err := json.Unmarshal(line, &header); err != nil {
+				return sessionFile{}, fmt.Errorf("line %d: %w", lineNumber, err)
+			}
+			saved.Version, saved.CWD, saved.Provider, saved.Model = header.Version, header.CWD, header.Provider, header.Model
+		case "update":
+			var update sessionUpdate
+			if err := json.Unmarshal(line, &update); err != nil {
+				return sessionFile{}, fmt.Errorf("line %d: %w", lineNumber, err)
+			}
+			if update.HistoryFrom < 0 || update.HistoryFrom > len(saved.History) || update.UsageFrom < 0 || update.UsageFrom > len(saved.Usage) {
+				return sessionFile{}, fmt.Errorf("line %d: invalid update", lineNumber)
+			}
+			saved.History = append(saved.History[:update.HistoryFrom], update.History...)
+			saved.Usage = append(saved.Usage[:update.UsageFrom], update.Usage...)
+			saved.Compaction = update.Compaction
+		default:
+			return sessionFile{}, fmt.Errorf("line %d: unknown entry type %q", lineNumber, envelope.Type)
+		}
+		if readErr != nil {
+			return sessionFile{}, readErr
+		}
+	}
+	if lineNumber == 0 {
+		return sessionFile{}, fmt.Errorf("empty session log")
+	}
+	return saved, nil
+}
+
 func (a *Agent) ResumeSession(id, sessionsDir string) error {
 	a.assertSessionUninitialized()
 	assertSessionArguments(id, sessionsDir)
 	dir := filepath.Join(sessionsDir, id)
-	data, err := os.ReadFile(filepath.Join(dir, "session.json"))
+	saved, err := readSession(filepath.Join(dir, sessionFilename))
 	if err != nil {
-		return fmt.Errorf("load session %s: %w", id, err)
-	}
-	var saved sessionFile
-	if err := json.Unmarshal(data, &saved); err != nil {
 		return fmt.Errorf("load session %s: %w", id, err)
 	}
 	if saved.Version != sessionVersion {
@@ -255,6 +391,7 @@ func (a *Agent) ResumeSession(id, sessionsDir string) error {
 	a.compaction = saved.Compaction
 	a.history = saved.History
 	a.usage = saved.Usage
+	a.markSessionSaved()
 	for _, usage := range saved.Usage {
 		a.tokensUsed += usage.TotalTokens
 	}
@@ -272,27 +409,82 @@ func (a *Agent) ResumeSession(id, sessionsDir string) error {
 	return nil
 }
 
+func commonHistoryPrefix(left, right []historyItem) int {
+	length := min(len(left), len(right))
+	for i := 0; i < length; i++ {
+		if !reflect.DeepEqual(left[i], right[i]) {
+			return i
+		}
+	}
+	return length
+}
+
+func commonUsagePrefix(left, right []Usage) int {
+	length := min(len(left), len(right))
+	for i := 0; i < length; i++ {
+		if left[i] != right[i] {
+			return i
+		}
+	}
+	return length
+}
+
+func (a *Agent) markSessionSaved() {
+	a.savedHistory = append(a.savedHistory[:0], a.history...)
+	a.savedUsage = append(a.savedUsage[:0], a.Usage()...)
+	if a.compaction == nil {
+		a.savedCompaction = nil
+	} else {
+		copy := *a.compaction
+		a.savedCompaction = &copy
+	}
+}
+
 func (a *Agent) SaveSession() error {
 	a.assertSessionInitialized()
-	if err := os.MkdirAll(a.sessionDir, 0700); err != nil {
-		return err
-	}
-	saved := sessionFile{Version: sessionVersion, CWD: a.cwd, Provider: a.provider, Model: a.modelName, Compaction: a.compaction, History: a.history, Usage: a.Usage()}
-	data, err := json.MarshalIndent(saved, "", "  ")
-	if err != nil {
-		return err
-	}
 	if a.repl != nil {
 		if err := a.repl.snapshot(filepath.Join(a.sessionDir, "repl.json"), filepath.Join(a.sessionDir, "repl-objects")); err != nil {
 			return fmt.Errorf("save Python state: %w", err)
 		}
 	}
-	tmp := filepath.Join(a.sessionDir, "session.json.tmp")
-	if err := os.WriteFile(tmp, data, 0600); err != nil {
+	usage := a.Usage()
+	historyFrom := commonHistoryPrefix(a.savedHistory, a.history)
+	usageFrom := commonUsagePrefix(a.savedUsage, usage)
+	if historyFrom == len(a.history) && historyFrom == len(a.savedHistory) &&
+		usageFrom == len(usage) && usageFrom == len(a.savedUsage) && reflect.DeepEqual(a.savedCompaction, a.compaction) {
+		return nil
+	}
+	update := sessionUpdate{
+		Type: "update", HistoryFrom: historyFrom, History: a.history[historyFrom:],
+		UsageFrom: usageFrom, Usage: usage[usageFrom:], Compaction: a.compaction,
+	}
+	data, err := json.Marshal(update)
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, filepath.Join(a.sessionDir, "session.json")); err != nil {
+	path := filepath.Join(a.sessionDir, sessionFilename)
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
 		return err
 	}
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return err
+	}
+	if _, err := file.Write(append(data, '\n')); err != nil {
+		_ = file.Truncate(info.Size())
+		_ = file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Truncate(info.Size())
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	a.markSessionSaved()
 	return nil
 }
