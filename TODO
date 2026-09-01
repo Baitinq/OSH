@@ -5,3 +5,4 @@
 - An agent scratchpad with optional user-visible progress.
 - Self-inspection and customization.
 - Subagents and awareness of other running agents.
+- Append-only session event log for explicit durability and crash recovery.
