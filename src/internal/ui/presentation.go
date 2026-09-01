@@ -244,7 +244,6 @@ func renderedMarkdownLines(text string, width int) []string {
 	style := styles.ASCIIStyleConfig
 	zero := uint(0)
 	style.Document.Margin = &zero
-	style.Document.Color = stringPointer("#D4D4D4")
 	style.Heading.Color = stringPointer("#F0C674")
 	style.Heading.Bold = boolPointer(true)
 	style.H1.Prefix, style.H2.Prefix = "", ""
@@ -260,7 +259,6 @@ func renderedMarkdownLines(text string, width int) []string {
 	style.Link.Color = stringPointer("#666666")
 	style.LinkText.Color = stringPointer("#81A2BE")
 	style.LinkText.Underline = boolPointer(true)
-	style.List.Color = stringPointer("#808080")
 	style.BlockQuote.Color = stringPointer("#808080")
 	style.BlockQuote.Italic = boolPointer(true)
 	style.HorizontalRule.Color = stringPointer("#808080")

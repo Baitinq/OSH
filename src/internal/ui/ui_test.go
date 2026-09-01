@@ -543,7 +543,6 @@ func TestRenderedMessagesUsePiDarkTheme(t *testing.T) {
 		code    string
 	}{
 		{message{role: "you", text: "hello"}, "38;2;212;212;212;48;2;36;44;56"},
-		{message{role: "agent", text: "hello"}, "38;2;212;212;212"},
 		{message{role: "reasoning", text: "thinking"}, "3;38;2;128;128;128"},
 		{message{role: "tool", toolCommand: "pwd", toolState: "pending"}, "48;2;38;40;46"},
 		{message{role: "tool", toolResult: "/tmp", toolState: "success"}, "38;2;128;128;128;48;2;38;40;46"},
@@ -555,6 +554,13 @@ func TestRenderedMessagesUsePiDarkTheme(t *testing.T) {
 		if got := renderedMessage(test.message, 80); !strings.Contains(got, test.code) {
 			t.Errorf("rendered %s message missing Pi theme %q: %q", test.message.role, test.code, got)
 		}
+	}
+}
+
+func TestAssistantPlainTextUsesTerminalForeground(t *testing.T) {
+	got := renderedMessage(message{role: "agent", text: "hello\n\n- one"}, 80)
+	if strings.Contains(got, "\x1b[38;") {
+		t.Fatalf("assistant plain text overrides terminal foreground: %q", got)
 	}
 }
 
