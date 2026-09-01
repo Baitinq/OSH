@@ -196,7 +196,7 @@ func TestGeminiGatewayUsesBearerHeadersAndOmitsToolCallIDs(t *testing.T) {
 	}
 }
 
-func TestGeminiCancellationWhileToolRunning(t *testing.T) {
+func TestGeminiCancellationPreservesCompletedToolTurn(t *testing.T) {
 	var requests []geminiRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request geminiRequest
@@ -236,7 +236,8 @@ func TestGeminiCancellationWhileToolRunning(t *testing.T) {
 		t.Fatalf("requests count = %d, want 2", len(requests))
 	}
 	contents := requests[1].Contents
-	if len(contents) != 1 || contents[0].Role != "user" {
-		t.Fatalf("expected single user content turn after cancellation: %#v", contents)
+	if len(contents) != 3 || contents[1].Role != "model" || contents[1].Parts[0].FunctionCall == nil ||
+		contents[2].Role != "user" || contents[2].Parts[0].FunctionResponse == nil || contents[2].Parts[1].Text == "" {
+		t.Fatalf("completed tool turn was not preserved after cancellation: %#v", contents)
 	}
 }

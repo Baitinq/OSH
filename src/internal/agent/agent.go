@@ -625,7 +625,6 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 	assert.That(ctx != nil, "respond without context")
 	a.respondMu.Lock()
 	defer a.respondMu.Unlock()
-	turnStart := len(a.history)
 	if err := a.appendUserMessage(msg); err != nil {
 		return Response{Err: err}
 	}
@@ -633,9 +632,6 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 		return Response{Err: fmt.Errorf("save session: %w", err)}
 	}
 	defer func() {
-		if ctx.Err() != nil {
-			a.history = a.history[:turnStart+1]
-		}
 		a.pruneTransientHistory()
 		if err := a.SaveSession(); err != nil && result.Err == nil {
 			result.Err = fmt.Errorf("save session: %w", err)

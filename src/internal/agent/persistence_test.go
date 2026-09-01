@@ -1,12 +1,14 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/openai/openai-go/v3"
@@ -96,6 +98,58 @@ func TestRespondSavesEachModelTurn(t *testing.T) {
 	}
 	if len(saved.History) != 4 || saved.History[3].Text != "done" {
 		t.Fatalf("history saved after final model turn = %#v", saved.History)
+	}
+}
+
+func TestRespondCancellationPreservesCompletedWork(t *testing.T) {
+	root, cwd := t.TempDir(), t.TempDir()
+	secondRequest := make(chan struct{})
+	releaseSecond := make(chan struct{})
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) == 2 {
+			close(secondRequest)
+			<-releaseSecond
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "event: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":1,\"response\":{\"id\":\"resp_test\",\"object\":\"response\",\"model\":\"test\",\"status\":\"completed\",\"output\":[{\"id\":\"fc_test\",\"type\":\"function_call\",\"call_id\":\"call_test\",\"name\":\"repl\",\"arguments\":\"{\\\"code\\\":\\\"value = 42\\\"}\",\"status\":\"completed\"}]}}\n\n")
+	}))
+	defer server.Close()
+
+	a := &Agent{
+		client:       openai.NewClient(option.WithAPIKey("test"), option.WithBaseURL(server.URL+"/"), option.WithMaxRetries(0)),
+		modelName:    "test",
+		provider:     "openai",
+		instructions: "test",
+		cwd:          cwd,
+		maxRetries:   0,
+	}
+	defer a.Close()
+	if err := a.StartSession("test", root); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	response := make(chan Response)
+	go func() { response <- a.Respond("run it", nil, func(ToolEvent) {}, ctx) }()
+	<-secondRequest
+	cancel()
+	result := <-response
+	close(releaseSecond)
+	if result.Err != nil {
+		t.Fatalf("Respond() = %#v", result)
+	}
+
+	data, err := os.ReadFile(filepath.Join(root, "test", "session.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved sessionFile
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if len(saved.History) != 3 || saved.History[1].Type != "tool_call" || saved.History[2].Type != "tool_result" {
+		t.Fatalf("history after cancellation = %#v", saved.History)
 	}
 }
 
