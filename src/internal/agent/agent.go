@@ -594,6 +594,14 @@ func (a *Agent) streamResponse(ctx context.Context, params responses.ResponseNew
 
 const OmittedToolResult = "[tool output omitted after use]"
 
+func (a *Agent) pruneToolResults() {
+	for i := range a.history {
+		if a.history[i].Type == "tool_result" {
+			a.history[i].Text = OmittedToolResult
+		}
+	}
+}
+
 func (a *Agent) pruneTransientHistory() {
 	kept := a.history[:0]
 	firstKeptItem := 0
@@ -638,6 +646,7 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 	}
 	defer func() {
 		a.pruneTransientHistory()
+		emit(ToolEvent{Kind: ToolEventToolResultsPruned})
 		emit(ToolEvent{Kind: ToolEventTransientHistoryPruned})
 		if err := a.SaveSession(); err != nil && result.Err == nil {
 			result.Err = fmt.Errorf("save session: %w", err)
@@ -695,6 +704,8 @@ func (a *Agent) Respond(msg string, steer <-chan string, emit func(ToolEvent), c
 		if ctx.Err() != nil {
 			return Response{}
 		}
+		a.pruneToolResults()
+		emit(ToolEvent{Kind: ToolEventToolResultsPruned})
 		a.history = append(a.history, resp.Items...)
 		if err := a.SaveSession(); err != nil {
 			return Response{Err: fmt.Errorf("save session: %w", err)}

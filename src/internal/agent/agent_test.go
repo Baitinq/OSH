@@ -129,7 +129,7 @@ func TestBuildSystemPrompt(t *testing.T) {
 		"mcporter@latest list",
 		"mcporter@latest call <server>.<tool>",
 		"https://github.com/Baitinq/fn-agent",
-		"~/.fn/sessions/<UUID>/session.json",
+		"~/.fn/sessions/<UUID>/session.jsonl",
 		"fn --session <UUID>",
 		"Prioritize fast, verifiable iteration",
 		"exercise changes end to end in the local environment",
@@ -371,7 +371,7 @@ func TestRespondCancellationDoesNotLeaveFunctionCallWithoutOutput(t *testing.T) 
 	}
 }
 
-func TestRespondDropsCompletedToolHistoryFromLaterTurns(t *testing.T) {
+func TestRespondPrunesToolResultsAfterEachModelTurn(t *testing.T) {
 	var requests []map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request map[string]any
@@ -390,10 +390,15 @@ func TestRespondDropsCompletedToolHistoryFromLaterTurns(t *testing.T) {
 			}}
 		case 2:
 			output = []any{map[string]any{
+				"id": "fc_second", "type": "function_call", "call_id": "call_second",
+				"name": "repl", "arguments": `{"code":"print(''.join(map(chr, [83, 69, 67, 79, 78, 68])))"}`, "status": "completed",
+			}}
+		case 3:
+			output = []any{map[string]any{
 				"id": "msg_first", "type": "message", "role": "assistant", "status": "completed",
 				"content": []any{map[string]any{"type": "output_text", "text": "first answer", "annotations": []any{}}},
 			}}
-		case 3:
+		case 4:
 			output = []any{map[string]any{
 				"id": "msg_second", "type": "message", "role": "assistant", "status": "completed",
 				"content": []any{map[string]any{"type": "output_text", "text": "second answer", "annotations": []any{}}},
@@ -425,19 +430,23 @@ func TestRespondDropsCompletedToolHistoryFromLaterTurns(t *testing.T) {
 		t.Fatal(response.Err)
 	}
 
-	if len(requests) != 3 {
-		t.Fatalf("requests = %d, want 3", len(requests))
+	if len(requests) != 4 {
+		t.Fatalf("requests = %d, want 4", len(requests))
 	}
-	activeTurn, _ := json.Marshal(requests[1]["input"])
-	if !strings.Contains(string(activeTurn), "function_call") || !strings.Contains(string(activeTurn), "SECRET") {
-		t.Fatalf("active turn did not include complete tool history: %s", activeTurn)
+	firstToolTurn, _ := json.Marshal(requests[1]["input"])
+	if !strings.Contains(string(firstToolTurn), "function_call") || !strings.Contains(string(firstToolTurn), "SECRET") {
+		t.Fatalf("first tool turn did not include its complete result: %s", firstToolTurn)
 	}
-	laterTurn, _ := json.Marshal(requests[2]["input"])
+	secondToolTurn, _ := json.Marshal(requests[2]["input"])
+	if strings.Contains(string(secondToolTurn), "SECRET") || !strings.Contains(string(secondToolTurn), OmittedToolResult) || !strings.Contains(string(secondToolTurn), "SECOND") {
+		t.Fatalf("second tool turn did not prune only the consumed result: %s", secondToolTurn)
+	}
+	laterTurn, _ := json.Marshal(requests[3]["input"])
 	if !strings.Contains(string(laterTurn), "function_call") || !strings.Contains(string(laterTurn), "saved =") {
 		t.Fatalf("later turn omitted the REPL code cell: %s", laterTurn)
 	}
-	if strings.Contains(string(laterTurn), "SECRET") || !strings.Contains(string(laterTurn), OmittedToolResult) {
-		t.Fatalf("later turn did not replace the REPL result: %s", laterTurn)
+	if strings.Contains(string(laterTurn), "SECRET") || strings.Contains(string(laterTurn), "SECOND") || !strings.Contains(string(laterTurn), OmittedToolResult) {
+		t.Fatalf("later turn did not replace the REPL results: %s", laterTurn)
 	}
 	for _, text := range []string{"first question", "first answer", "second question"} {
 		if !strings.Contains(string(laterTurn), text) {
