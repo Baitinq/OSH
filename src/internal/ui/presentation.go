@@ -201,12 +201,7 @@ func workingDurationLabel(startedAt, now time.Time) string {
 	if startedAt.IsZero() {
 		return ""
 	}
-	elapsed := max(now.Sub(startedAt), 0)
-	seconds := int(elapsed / time.Second)
-	if seconds < 60 {
-		return fmt.Sprintf(" (%ds)", seconds)
-	}
-	return fmt.Sprintf(" (%dm %02ds)", seconds/60, seconds%60)
+	return " (" + formatToolDuration(now.Sub(startedAt)) + ")"
 }
 
 func completedRequestMessage(startedAt, finishedAt time.Time) string {
@@ -220,12 +215,23 @@ func formatToolDuration(d time.Duration) string {
 	if d < 0 {
 		d = 0
 	}
-	if d < time.Minute {
-		return fmt.Sprintf("%ds", int(d/time.Second))
+	seconds := int(d / time.Second)
+	if seconds < 60 {
+		return fmt.Sprintf("%ds", seconds)
 	}
-	minutes := int(d / time.Minute)
-	seconds := int(d/time.Second) % 60
-	return fmt.Sprintf("%dm %02ds", minutes, seconds)
+	minutes := seconds / 60
+	if minutes < 60 {
+		return fmt.Sprintf("%dm %02ds", minutes, seconds%60)
+	}
+	hours := minutes / 60
+	if hours < 24 {
+		return fmt.Sprintf("%dh %02dm", hours, minutes%60)
+	}
+	days := hours / 24
+	if remainingHours := hours % 24; remainingHours > 0 {
+		return fmt.Sprintf("%dd %02dh", days, remainingHours)
+	}
+	return fmt.Sprintf("%dd %02dm", days, minutes%60)
 }
 
 func toolDurationLabel(msg message, now time.Time) string {

@@ -665,6 +665,8 @@ func TestWorkingDurationFormatsElapsedRequestTime(t *testing.T) {
 		{350 * time.Millisecond, " (0s)"},
 		{12 * time.Second, " (12s)"},
 		{65 * time.Second, " (1m 05s)"},
+		{3*time.Hour + 27*time.Minute + 46*time.Second, " (3h 27m)"},
+		{24*time.Hour + 26*time.Minute, " (1d 26m)"},
 	} {
 		if got := workingDurationLabel(started, started.Add(test.duration)); got != test.want {
 			t.Errorf("workingDurationLabel(%s) = %q, want %q", test.duration, got, test.want)
@@ -698,6 +700,9 @@ func TestToolDurationFormatsAndPersists(t *testing.T) {
 		{350 * time.Millisecond, "0s"},
 		{1250 * time.Millisecond, "1s"},
 		{65 * time.Second, "1m 05s"},
+		{3*time.Hour + 27*time.Minute + 46*time.Second, "3h 27m"},
+		{24*time.Hour + 26*time.Minute, "1d 26m"},
+		{25*time.Hour + 26*time.Minute, "1d 01h"},
 	} {
 		if got := formatToolDuration(test.duration); got != test.want {
 			t.Errorf("formatToolDuration(%s) = %q, want %q", test.duration, got, test.want)
