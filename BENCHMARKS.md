@@ -101,7 +101,7 @@ verifiers scored the resulting patches.
 | Harness | Passed | Pass rate | Input tokens | Output tokens | Total tokens |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | fn agent | **18/20** | **90%** | 4.01M | 0.05M | 4.06M |
-| Pi | 17/20 | 85% | **3.53M** | 0.07M | **3.59M** |
+| Pi | 17/20 | 85% | **3.87M** | 0.06M | **3.93M** |
 | Codex | 17/20 | 85% | 7.64M | **0.05M** | 7.69M |
 
 All harnesses completed all 20 tasks without infrastructure exceptions. The
