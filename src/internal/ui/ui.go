@@ -40,22 +40,24 @@ type response struct {
 type toolEvent = agent.ToolEvent
 
 const (
-	toolEventAttemptFailed    = agent.ToolEventAttemptFailed
-	toolEventCompactionStart  = agent.ToolEventCompactionStart
-	toolEventCompactionDone   = agent.ToolEventCompactionDone
-	toolEventCompactionFailed = agent.ToolEventCompactionFailed
-	toolEventRetry            = agent.ToolEventRetry
-	toolEventRetryDone        = agent.ToolEventRetryDone
-	toolEventTextReset        = agent.ToolEventTextReset
-	toolEventReasoningDelta   = agent.ToolEventReasoningDelta
-	toolEventReasoningDone    = agent.ToolEventReasoningDone
-	toolEventSteerConsumed    = agent.ToolEventSteerConsumed
-	toolEventContextTokens    = agent.ToolEventContextTokens
-	toolEventTextDelta        = agent.ToolEventTextDelta
-	toolEventCall             = agent.ToolEventCall
-	toolEventUpdate           = agent.ToolEventUpdate
-	toolEventResult           = agent.ToolEventResult
-	toolEventError            = agent.ToolEventError
+	toolEventAttemptFailed          = agent.ToolEventAttemptFailed
+	toolEventCompactionStart        = agent.ToolEventCompactionStart
+	toolEventCompactionDone         = agent.ToolEventCompactionDone
+	toolEventCompactionFailed       = agent.ToolEventCompactionFailed
+	toolEventRetry                  = agent.ToolEventRetry
+	toolEventRetryDone              = agent.ToolEventRetryDone
+	toolEventTextReset              = agent.ToolEventTextReset
+	toolEventToolResultsPruned      = agent.ToolEventToolResultsPruned
+	toolEventTransientHistoryPruned = agent.ToolEventTransientHistoryPruned
+	toolEventReasoningDelta         = agent.ToolEventReasoningDelta
+	toolEventReasoningDone          = agent.ToolEventReasoningDone
+	toolEventSteerConsumed          = agent.ToolEventSteerConsumed
+	toolEventContextTokens          = agent.ToolEventContextTokens
+	toolEventTextDelta              = agent.ToolEventTextDelta
+	toolEventCall                   = agent.ToolEventCall
+	toolEventUpdate                 = agent.ToolEventUpdate
+	toolEventResult                 = agent.ToolEventResult
+	toolEventError                  = agent.ToolEventError
 )
 
 type pendingInput struct{ kind, text string }
@@ -94,6 +96,7 @@ type fnUI struct {
 	requestStartedAt       time.Time
 	retryMessageIndex      int
 	attemptMessageStart    int
+	requestMessageStart    int
 	queued                 []string
 	pendingSteer           []string
 	steer                  chan string
@@ -245,6 +248,7 @@ func (s *fnUI) startRequest(text string, showUser bool) {
 	s.retryAttempt, s.retryMaxAttempts, s.retryDeadline = 0, 0, time.Time{}
 	s.retryMessageIndex = -1
 	s.steer = steer
+	s.requestMessageStart = len(s.messages)
 	if showUser {
 		s.addMessage(message{role: "you", text: text})
 	}
@@ -342,6 +346,28 @@ func (s *fnUI) handleToolEvent(id int, ev toolEvent) {
 		s.finishReasoning()
 		s.finishStreamingText()
 		s.attemptMessageStart = len(s.messages)
+		return
+	case toolEventToolResultsPruned:
+		for i := range s.messages {
+			msg := &s.messages[i]
+			if msg.role == "tool" && msg.toolState != "pending" && msg.toolID != "llm-retry" {
+				msg.toolResult = agent.OmittedToolResult
+				msg.invalidateRender()
+			}
+		}
+		s.markDirty()
+		return
+	case toolEventTransientHistoryPruned:
+		s.reasoningText.Reset()
+		s.resetStreamingText()
+		kept := s.messages[:s.requestMessageStart]
+		for _, msg := range s.messages[s.requestMessageStart:] {
+			if msg.role != "agent" && msg.role != "reasoning" {
+				kept = append(kept, msg)
+			}
+		}
+		s.messages = kept
+		s.markDirty()
 		return
 	case toolEventReasoningDelta:
 		s.finishStreamingText()
@@ -821,12 +847,34 @@ func (s *fnUI) handleKey(k tui.KeyEvent) bool {
 
 func (s *fnUI) restoreConversation(conversation []agent.ConversationMessage) {
 	for _, restored := range conversation {
-		role := "agent"
-		if restored.Role == "user" {
-			role = "you"
-			s.inputHistory = append(s.inputHistory, restored.Text)
+		switch restored.Type {
+		case "tool_call":
+			s.messages = append(s.messages, message{
+				role: "tool", toolID: restored.ToolID, toolName: restored.ToolName,
+				toolCommand: restored.ToolInput, toolState: "pending",
+			})
+		case "tool_result":
+			state := "success"
+			if restored.ToolError {
+				state = "error"
+			}
+			for i := len(s.messages) - 1; i >= 0; i-- {
+				if s.messages[i].role == "tool" && s.messages[i].toolState == "pending" && s.messages[i].toolID == restored.ToolID {
+					s.messages[i].toolResult = restored.Text
+					s.messages[i].toolState = state
+					break
+				}
+			}
+		case "reasoning":
+			s.messages = append(s.messages, message{role: "reasoning", text: restored.Text})
+		default:
+			role := "agent"
+			if restored.Role == "user" {
+				role = "you"
+				s.inputHistory = append(s.inputHistory, restored.Text)
+			}
+			s.messages = append(s.messages, message{role: role, text: restored.Text})
 		}
-		s.messages = append(s.messages, message{role: role, text: restored.Text})
 	}
 }
 

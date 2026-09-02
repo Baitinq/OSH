@@ -85,7 +85,7 @@ For local OpenAI-compatible servers that ignore authentication, use any non-empt
 fn --session <UUID>
 ```
 
-Conversation context and per-response token usage are stored in `session.json`.
+Conversation context and per-response token usage are appended to `session.jsonl`.
 Python REPL variables are restored on a best-effort basis using Python's standard `pickle` support; values that cannot be pickled are skipped. Sessions must be resumed from the directory where they were created.
 
 ## Persistent REPL

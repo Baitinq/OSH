@@ -65,6 +65,51 @@ func TestUndoCommandSelectsTurnAndRestoresInput(t *testing.T) {
 	}
 }
 
+func TestHistoryPruningMatchesModelContext(t *testing.T) {
+	s, _ := newState(nil)
+	s.messages = []message{
+		{role: "you", text: "prior"},
+		{role: "agent", text: "prior answer"},
+		{role: "tool", toolID: "old-tool", toolState: "success", toolResult: "old result"},
+		{role: "you", text: "current"},
+	}
+	s.requestMessageStart = 3
+	s.responding = true
+	s.messages = append(s.messages,
+		message{role: "reasoning", text: "thinking"},
+		message{role: "agent", text: "checking"},
+		message{role: "tool", toolID: "new-tool", toolState: "success", toolResult: "new result"},
+	)
+	s.streamingText.WriteString("final answer")
+
+	s.handleToolEvent(0, toolEvent{Kind: toolEventToolResultsPruned})
+	if s.messages[2].toolResult != agent.OmittedToolResult || s.messages[6].toolResult != agent.OmittedToolResult {
+		t.Fatalf("tool results were not pruned: %#v", s.messages)
+	}
+	s.handleToolEvent(0, toolEvent{Kind: toolEventTransientHistoryPruned})
+	if s.streamingText.Len() != 0 || len(s.messages) != 5 || s.messages[1].text != "prior answer" || s.messages[4].toolID != "new-tool" {
+		t.Fatalf("transient history was not pruned: %#v", s.messages)
+	}
+}
+
+func TestRestoreConversationIncludesToolCalls(t *testing.T) {
+	s, _ := newState(nil)
+	s.restoreConversation([]agent.ConversationMessage{
+		{Type: "message", Role: "user", Text: "inspect"},
+		{Type: "reasoning", Text: "I should check."},
+		{Type: "tool_call", ToolID: "call-1", ToolName: "repl", ToolInput: "print(42)"},
+		{Type: "tool_result", ToolID: "call-1", ToolName: "repl", Text: "42\n"},
+		{Type: "message", Role: "assistant", Text: "done"},
+	})
+	if len(s.messages) != 4 || s.messages[0].role != "you" || s.messages[1].role != "reasoning" || s.messages[3].text != "done" {
+		t.Fatalf("restored messages = %#v", s.messages)
+	}
+	tool := s.messages[2]
+	if tool.role != "tool" || tool.toolName != "repl" || tool.toolCommand != "print(42)" || tool.toolResult != "42\n" || tool.toolState != "success" {
+		t.Fatalf("restored tool = %#v", tool)
+	}
+}
+
 func TestUndoSelectorEscapeCancels(t *testing.T) {
 	s, _ := newState(nil)
 	s.restoreConversation([]agent.ConversationMessage{{Role: "user", Text: "first"}})
@@ -708,8 +753,8 @@ func TestPiBoxLineRestoresBackgroundAfterNestedStyle(t *testing.T) {
 }
 
 func TestToolCardClarifiesContextOmission(t *testing.T) {
-	got := stripANSI(renderedMessage(message{role: "tool", toolName: "repl", toolCommand: "print(1)", toolResult: "[output omitted]", toolState: "success"}, 60))
-	if !strings.Contains(got, "[result omitted from model context]") {
+	got := stripANSI(renderedMessage(message{role: "tool", toolName: "repl", toolCommand: "print(1)", toolResult: agent.OmittedToolResult, toolState: "success"}, 60))
+	if !strings.Contains(got, "[tool output omitted after use]") {
 		t.Fatalf("tool card omission = %q", got)
 	}
 }

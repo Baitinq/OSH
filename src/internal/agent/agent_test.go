@@ -122,7 +122,7 @@ func TestBuildSystemPrompt(t *testing.T) {
 		"web_search(query, max_results=8) -> list[SearchResult]",
 		"llm(prompt) -> str",
 		"Only printed output and the final expression enter model context",
-		"Old REPL outputs are replaced with [output omitted] after each turn; Python state persists",
+		"Old REPL outputs are replaced with [tool output omitted after use] after each turn; Python state persists",
 		"Host functions are async and must be awaited",
 		"Use asyncio.gather() for independent calls",
 		"Do not create detached background tasks",
@@ -193,7 +193,7 @@ func TestPruneTransientHistoryKeepsConversationAndREPLCalls(t *testing.T) {
 	if len(a.history) != 6 {
 		t.Fatalf("retained history = %#v", a.history)
 	}
-	if a.history[0].Text != "first" || a.history[1].Text != "prior" || a.history[3].Type != "tool_call" || a.history[4].Text != omittedREPLResult || a.history[5].Text != "final" {
+	if a.history[0].Text != "first" || a.history[1].Text != "prior" || a.history[3].Type != "tool_call" || a.history[4].Text != OmittedToolResult || a.history[5].Text != "final" {
 		t.Fatalf("retained history = %#v", a.history)
 	}
 }
@@ -436,7 +436,7 @@ func TestRespondDropsCompletedToolHistoryFromLaterTurns(t *testing.T) {
 	if !strings.Contains(string(laterTurn), "function_call") || !strings.Contains(string(laterTurn), "saved =") {
 		t.Fatalf("later turn omitted the REPL code cell: %s", laterTurn)
 	}
-	if strings.Contains(string(laterTurn), "SECRET") || !strings.Contains(string(laterTurn), omittedREPLResult) {
+	if strings.Contains(string(laterTurn), "SECRET") || !strings.Contains(string(laterTurn), OmittedToolResult) {
 		t.Fatalf("later turn did not replace the REPL result: %s", laterTurn)
 	}
 	for _, text := range []string{"first question", "first answer", "second question"} {

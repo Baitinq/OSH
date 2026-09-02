@@ -31,7 +31,7 @@ func TestSessionRoundTrip(t *testing.T) {
 	if loaded.history[1].Text != "hi" {
 		t.Fatalf("loaded output message = %#v", loaded.history[1])
 	}
-	sessionPath := filepath.Join(root, id, "session.json")
+	sessionPath := filepath.Join(root, id, sessionFilename)
 	if mode := fileMode(t, sessionPath); mode != 0o600 {
 		t.Fatalf("session mode = %o", mode)
 	}
@@ -39,12 +39,70 @@ func TestSessionRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var fields map[string]any
-	if err := json.Unmarshal(data, &fields); err != nil {
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("session entries = %d, want 2", len(lines))
+	}
+	var header sessionHeader
+	if err := json.Unmarshal([]byte(lines[0]), &header); err != nil {
 		t.Fatal(err)
 	}
-	if len(fields) != 7 || fields["version"] != float64(sessionVersion) || fields["cwd"] == nil || fields["compaction"] == nil || fields["history"] == nil || fields["usage"] == nil {
-		t.Fatalf("session fields = %#v", fields)
+	if header.Type != "session" || header.Version != sessionVersion || header.CWD != cwd {
+		t.Fatalf("session header = %#v", header)
+	}
+}
+
+func TestSessionLogRecoversFromTornFinalEntry(t *testing.T) {
+	root, cwd := t.TempDir(), t.TempDir()
+	id := "550e8400-e29b-41d4-a716-446655440000"
+	a := &Agent{cwd: cwd, provider: "openai", modelName: "test"}
+	if err := a.StartSession(id, root); err != nil {
+		t.Fatal(err)
+	}
+	a.history = append(a.history, historyMessage("user", "preserved"))
+	if err := a.SaveSession(); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, id, sessionFilename)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString(`{"type":"update","history_from":1`); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded := &Agent{cwd: cwd, provider: "openai", modelName: "test"}
+	if err := loaded.ResumeSession(id, root); err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.history) != 1 || loaded.history[0].Text != "preserved" {
+		t.Fatalf("recovered history = %#v", loaded.history)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(after), string(before)) || len(after) != len(before) {
+		t.Fatal("recovery did not remove only the torn entry")
+	}
+	loaded.history = append(loaded.history, historyMessage("assistant", "continued"))
+	if err := loaded.SaveSession(); err != nil {
+		t.Fatal(err)
+	}
+	reloaded := &Agent{cwd: cwd, provider: "openai", modelName: "test"}
+	if err := reloaded.ResumeSession(id, root); err != nil {
+		t.Fatal(err)
+	}
+	if len(reloaded.history) != 2 || reloaded.history[1].Text != "continued" {
+		t.Fatalf("continued history = %#v", reloaded.history)
 	}
 }
 
@@ -171,11 +229,15 @@ func TestFailedUndoRestoresPythonState(t *testing.T) {
 	if err := a.SaveSession(); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(filepath.Join(a.sessionDir, "session.json.tmp"), 0o700); err != nil {
+	sessionPath := filepath.Join(a.sessionDir, sessionFilename)
+	if err := os.Chmod(sessionPath, 0o400); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.Undo(0); err == nil {
 		t.Fatal("expected undo to fail")
+	}
+	if err := os.Chmod(sessionPath, 0o600); err != nil {
+		t.Fatal(err)
 	}
 	output, failed, err := a.pythonREPL().execute(t.Context(), "value")
 	if err != nil || failed || output != "2" || len(a.history) != 2 {
@@ -222,7 +284,7 @@ func TestForkCopiesSessionState(t *testing.T) {
 	if err := a.Fork(newID, root); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(root, oldID, "session.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(root, oldID, sessionFilename)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(root, newID, a.history[0].REPLCheckpoint)); err != nil {
@@ -254,11 +316,11 @@ func TestSessionRejectsUnsupportedVersion(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	data, err := json.Marshal(sessionFile{Version: sessionVersion + 1, CWD: cwd})
+	data, err := json.Marshal(sessionHeader{Type: "session", Version: sessionVersion + 1, CWD: cwd})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "session.json"), data, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, sessionFilename), append(data, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := (&Agent{cwd: cwd}).ResumeSession(id, root); err == nil {
@@ -311,14 +373,53 @@ func fileMode(t *testing.T, path string) os.FileMode {
 	return info.Mode().Perm()
 }
 
+func TestResumeRestoresPrunedModelHistory(t *testing.T) {
+	root := t.TempDir()
+	id := "550e8400-e29b-41d4-a716-446655440000"
+	a := &Agent{cwd: t.TempDir(), provider: "openai", modelName: "test", history: []historyItem{
+		{Type: "message", Role: "user", Text: "first"},
+		{Type: "reasoning", Text: "thinking"},
+		{Type: "message", Role: "assistant", Text: "checking", transient: true},
+		{Type: "tool_call", CallID: "call-1", Name: "repl", Arguments: json.RawMessage(`{"code":"print(42)"}`)},
+		{Type: "tool_result", CallID: "call-1", Name: "repl", Text: "42\n"},
+		{Type: "message", Role: "assistant", Text: "done"},
+	}}
+	a.pruneTransientHistory()
+	if err := a.StartSession(id, root); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.SaveSession(); err != nil {
+		t.Fatal(err)
+	}
+	a.Close()
+
+	loaded := &Agent{cwd: a.cwd, provider: "openai", modelName: "test"}
+	defer loaded.Close()
+	if err := loaded.ResumeSession(id, root); err != nil {
+		t.Fatal(err)
+	}
+	conversation := loaded.Conversation()
+	if len(conversation) != 4 || conversation[1].Type != "tool_call" || conversation[2].Text != OmittedToolResult || conversation[3].Text != "done" {
+		t.Fatalf("restored conversation = %#v", conversation)
+	}
+	loaded.history = append(loaded.history, historyItem{Type: "message", Role: "user", Text: "next"})
+	input := loaded.input()
+	if len(input) != 5 || input[1].Type != "tool_call" || input[2].Text != OmittedToolResult || input[3].Text != "done" || input[4].Text != "next" {
+		t.Fatalf("model input = %#v", input)
+	}
+}
+
 func TestConversationRestoresDisplayableMessages(t *testing.T) {
 	a := &Agent{history: []historyItem{
 		{Type: "message", Role: "user", Text: "[2026-08-27T14:03:01+02:00]\n\nfix session restoring"},
-		{Type: "tool_call", Name: "repl", Arguments: json.RawMessage(`{"code":"pwd"}`)},
+		{Type: "tool_call", CallID: "call-1", Name: "repl", Arguments: json.RawMessage(`{"code":"pwd"}`)},
+		{Type: "tool_result", CallID: "call-1", Name: "repl", Text: "/tmp\n"},
 		{Type: "message", Role: "assistant", Text: "Fixed."},
 	}}
 	got := a.Conversation()
-	if len(got) != 2 || got[0].Role != "user" || got[0].Text != "fix session restoring" || got[1].Role != "assistant" || got[1].Text != "Fixed." {
+	if len(got) != 4 || got[0].Role != "user" || got[0].Text != "fix session restoring" ||
+		got[1].Type != "tool_call" || got[1].ToolID != "call-1" || got[1].ToolName != "repl" || got[1].ToolInput != "pwd" ||
+		got[2].Type != "tool_result" || got[2].Text != "/tmp\n" || got[3].Role != "assistant" || got[3].Text != "Fixed." {
 		t.Fatalf("conversation = %#v", got)
 	}
 }
@@ -335,12 +436,8 @@ func TestSessionSaveReplacesCurrentState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(root, id, "session.json"))
+	saved, err := readSession(filepath.Join(root, id, sessionFilename))
 	if err != nil {
-		t.Fatal(err)
-	}
-	var saved sessionFile
-	if err := json.Unmarshal(data, &saved); err != nil {
 		t.Fatal(err)
 	}
 	if len(saved.History) != 1 || saved.History[0].Text != "hello" {
