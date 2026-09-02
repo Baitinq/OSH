@@ -20,18 +20,16 @@ and no framework hidden underneath.
 
 ## Benchmarks
 
-fn is evaluated against Pi and Codex with `gpt-5.6-sol` at medium reasoning
-on SWE Atlas and HarnessBench.
+fn is evaluated against Pi and Codex with `gpt-5.6-sol` at medium reasoning.
 
-| Agent | SWE Atlas score | Tokens | HarnessBench score | Tokens | [ContextBench](BENCHMARKS.md#contextbench-issue-resolution) (20 tasks) |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| **fn agent** | **37.5%** | 25.24M | 87.02% | **1.91M** | **90%** |
-| Pi | 35.0% | **21.49M** | **87.30%** | 4.27M | 85% |
-| Codex | 30.0% | 82.12M | 84.94% | 7.38M | 85% |
+| Agent | SWE Atlas score | Tokens | HarnessBench score | Tokens | [ContextBench](BENCHMARKS.md#contextbench-issue-resolution) score | Tokens |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| **fn agent** | **37.5%** | 25.24M | 87.02% | **1.91M** | **90%** | 4.06M |
+| Pi | 35.0% | **21.49M** | **87.30%** | 4.27M | 85% | **3.59M** |
+| Codex | 30.0% | 82.12M | 84.94% | 7.38M | 85% | 7.69M |
 
 fn scored competitively while using 55–74% fewer tokens on HarnessBench and
-69% fewer than Codex on SWE Atlas. ContextBench used each harness's configured
-model; see [BENCHMARKS.md](BENCHMARKS.md) for methodology and artifacts.
+69% fewer than Codex on SWE Atlas. See [BENCHMARKS.md](BENCHMARKS.md) for details.
 
 ## Run
 
