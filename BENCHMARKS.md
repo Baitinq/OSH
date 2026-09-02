@@ -94,6 +94,7 @@ verifiers scored the resulting patches.
 - Harnesses: the same versions as the SWE Atlas comparison
 - Timeout: 25 minutes per agent attempt
 - Repetitions: one per task and harness
+- Artifact: [fn result record](benchmark-results/contextbench-fn-20-20260901.json)
 
 ### Results
 
@@ -103,10 +104,11 @@ verifiers scored the resulting patches.
 | Pi | 17/20 | 85% | **3.53M** | 0.07M | **3.59M** |
 | Codex | 17/20 | 85% | 7.64M | **0.05M** | 7.69M |
 
-All harnesses completed all 20 tasks without infrastructure exceptions. Paired
-outcomes do not show a significant difference: fn had two unique passes versus
-one for Pi, and one unique pass versus none for Codex (exact McNemar p=1.00 for
-both comparisons).
+All harnesses completed all 20 tasks without infrastructure exceptions. The
+checked-in fn result records 18/20 completed on September 1 with zero harness
+errors. Paired outcomes do not show a significant difference: fn had two unique
+passes versus one for Pi, and one unique pass versus none for Codex (exact McNemar
+p=1.00 for both comparisons).
 
 This run measures end-to-end issue resolution on tasks selected by ContextBench;
 it does **not** report ContextBench's official file, symbol, or span retrieval

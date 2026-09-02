@@ -29,7 +29,10 @@ fn is evaluated against Pi and Codex with `gpt-5.6-sol` at medium reasoning.
 | Codex | 30.0% | 82.12M | 84.94% | 7.38M |
 
 fn scored competitively while using 55–74% fewer tokens on HarnessBench and
-69% fewer than Codex on SWE Atlas. See [BENCHMARKS.md](BENCHMARKS.md) for details.
+69% fewer than Codex on SWE Atlas. On a 20-task
+[ContextBench](BENCHMARKS.md#contextbench-issue-resolution) subset, fn resolved
+**90%**, compared with 85% for both Pi and Codex. See
+[BENCHMARKS.md](BENCHMARKS.md) for details and artifacts.
 
 ## Run
 
