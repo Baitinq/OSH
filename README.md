@@ -22,7 +22,7 @@ and no framework hidden underneath.
 
 fn is evaluated against Pi and Codex with `gpt-5.6-sol` at medium reasoning.
 
-| Agent | SWE Atlas score | Tokens | HarnessBench score | Tokens | [ContextBench](BENCHMARKS.md#contextbench-issue-resolution) score | Tokens |
+| Agent | SWE Atlas score | Tokens | HarnessBench score | Tokens | ContextBench score | Tokens |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | **fn agent** | **37.5%** | 25.24M | 87.02% | **1.91M** | **90%** | 4.06M |
 | Pi | 35.0% | **21.49M** | **87.30%** | 4.27M | 85% | **3.93M** |
